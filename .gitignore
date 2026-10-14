@@ -1,6 +1,7 @@
 bin/
 obj/
 publish/
+artifacts/
 Releases/
 *.user
 .vs/
@@ -43,4 +44,5 @@ build-release.ps1
 *.pfx
 *.p12
 *.pem
+!src/LuaToolsGui/Resources/release-signing-public.pem
 *.snk

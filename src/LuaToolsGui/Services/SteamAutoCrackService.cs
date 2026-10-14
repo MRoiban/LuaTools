@@ -21,31 +21,17 @@ public enum SacPrepareResult
     RuntimeFailed,
 }
 
-/// <summary>
-/// Downloads and launches SteamAutoCrack (SteamAutoCracks/Steam-auto-crack).
-/// </summary>
-/// <remarks>
-/// <para>We can only <b>open</b> it. The published release contains a single GUI exe with no
-/// SteamAutoCrack.CLI.exe, and that GUI parses no command-line arguments, so there is no way to hand it
-/// an appid or a path. The user does everything inside their own window.</para>
-///
-/// <para>Their exe is a FRAMEWORK-DEPENDENT net10.0-windows single-file build: the bundle carries no
-/// hostpolicy/coreclr/System.Private.CoreLib and declares Microsoft.WindowsDesktop.App, so it cannot
-/// start without the .NET 10 <i>Desktop</i> runtime. <see cref="EnsureRuntimeAsync"/> installs that on
-/// demand through Velopack's Runtimes API, which we already depend on for updates.</para>
-///
-/// <para>Update handling mirrors <see cref="DepotDownloaderService"/> and <see cref="SteamlessService"/>:
-/// the installed release tag is recorded, re-checked at most every <see cref="ToolCheckInterval"/>, the
-/// asset digest is verified before extracting, and <b>every failure path falls back to an existing exe
-/// while still recording the attempt</b> so a failing check is not retried on the next click.</para>
-/// </remarks>
+/// <summary>Prepares and runs the original tool only after its separate opt-in and explicit user action.
+/// Consent receipts detect bundle changes and do not establish an independent audit.</summary>
 public class SteamAutoCrackService(
     GithubProxy gh,
     CacheService cache,
-    ILogger<SteamAutoCrackService> log)
+    ILogger<SteamAutoCrackService> log, SettingsService? settings = null)
 {
+    private bool IsEnabled(string component) => settings?.IsExecutableWorkflowEnabled(component) == true;
+
     private static readonly string ToolDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "steamautocrack");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "steamautocrack");
 
     private static string ExePath => Path.Combine(ToolDir, "SteamAutoCrack.exe");
 
@@ -104,7 +90,7 @@ public class SteamAutoCrackService(
         try
         {
             var runtime = Runtimes.GetRuntimeByName(RuntimeId);
-            return runtime is not null && await runtime.CheckIsInstalled();
+            return runtime is not null && await runtime.CheckIsInstalled().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -113,150 +99,29 @@ public class SteamAutoCrackService(
         }
     }
 
-    /// <summary>
-    /// Make sure the .NET 10 Desktop runtime is present, installing it if not. Returns Ready when their
-    /// exe can actually start.
-    /// </summary>
+    /// <summary>Check for an already installed runtime; never download or invoke a runtime installer.</summary>
     public async Task<SacPrepareResult> EnsureRuntimeAsync(
         IProgress<double?>? progress, CancellationToken ct = default)
     {
-        try
-        {
-            var runtime = Runtimes.GetRuntimeByName(RuntimeId);
-            if (runtime is null)
-            {
-                log.LogDebug("Unknown .NET runtime id {Id}", RuntimeId);
-                return SacPrepareResult.RuntimeFailed;
-            }
-
-            if (await runtime.CheckIsInstalled()) return SacPrepareResult.Ready;
-
-            if (!await runtime.CheckIsSupported())
-            {
-                log.LogDebug("{Runtime} is not supported on this machine", runtime.DisplayName);
-                return SacPrepareResult.RuntimeFailed;
-            }
-
-            Directory.CreateDirectory(ToolDir);
-            string installer = Path.Combine(ToolDir, $"{runtime.Id}.exe");
-            await runtime.DownloadToFile(installer, p => progress?.Report(p / 100d), null, null);
-            ct.ThrowIfCancellationRequested();
-
-            // Not quiet: this elevates, and the user should see what they are approving.
-            var result = await runtime.InvokeInstaller(installer, false, null);
-            try { File.Delete(installer); } catch { /* leftover installer is harmless */ }
-
-            return result switch
-            {
-                Runtimes.RuntimeInstallResult.InstallSuccess => SacPrepareResult.Ready,
-                Runtimes.RuntimeInstallResult.UserCancelled => SacPrepareResult.RuntimeDeclined,
-                Runtimes.RuntimeInstallResult.RestartRequired => SacPrepareResult.RuntimeNeedsRestart,
-                _ => SacPrepareResult.RuntimeFailed,
-            };
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            log.LogDebug(ex, "Installing the .NET runtime for SteamAutoCrack failed");
-            return SacPrepareResult.RuntimeFailed;
-        }
+        UserAuthorizedDependencies.RequireEnabled("SteamAutoCrack", IsEnabled);
+        ct.ThrowIfCancellationRequested();
+        if (await RuntimeInstalledAsync()) return SacPrepareResult.Ready;
+        throw new InvalidOperationException("Runtime installation is unavailable in this build.");
     }
 #pragma warning restore CS0618
 
     // ── Tool ─────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Ensure SteamAutoCrack is on disk and reasonably current. Null only if no usable copy exists.
-    /// </summary>
-    /// <param name="force">
-    /// Skip the throttle. Load-bearing for the background-update path: <see cref="IsUpdateAvailableAsync"/>
-    /// records the check timestamp, so without this the job it queues would see "checked recently" and
-    /// skip the very download it was queued to perform.
-    /// </param>
+    /// <summary>Prepare the original dependency bundle only for an explicit action with this tool enabled.
+    /// User consent does not establish an independent upstream audit.</summary>
     public async Task<string?> EnsureToolAsync(
         IProgress<DownloadProgress>? progress, bool force = false, CancellationToken ct = default)
     {
-        if (!force && File.Exists(ExePath) && CheckedRecently(cache.SteamAutoCrackCheckedAtMs)) return ExePath;
-
         await _gate.WaitAsync(ct);
-        bool have = false;
         try
         {
-            have = File.Exists(ExePath);
-            if (!force && have && CheckedRecently(cache.SteamAutoCrackCheckedAtMs)) return ExePath; // won the race
-
-            // A failed lookup still counts as "we looked", so an offline click backs off instead of
-            // re-walking the whole GithubProxy mirror chain every time the button is pressed.
-            void RecordAttempt() =>
-                cache.SteamAutoCrackCheckedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-            string url = $"https://api.github.com/repos/{AppConfig.SteamAutoCrackRepo}/releases/latest";
-            using var res = await gh.SendAsync(url, ct);
-            if (res is null || !res.IsSuccessStatusCode)
-            {
-                log.LogDebug("SteamAutoCrack release lookup failed: {Status}", res?.StatusCode);
-                if (have) RecordAttempt();
-                return have ? ExePath : null;
-            }
-
-            var release = JsonSerializer.Deserialize<GithubRelease>(await res.Content.ReadAsStringAsync(ct), JsonOpts);
-            var asset = release?.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-            if (asset is null)
-            {
-                log.LogDebug("SteamAutoCrack release has no .zip asset");
-                if (have) RecordAttempt();
-                return have ? ExePath : null;
-            }
-
-            if (!force && have && !string.IsNullOrEmpty(release!.TagName)
-                             && string.Equals(release.TagName, cache.SteamAutoCrackVersion, StringComparison.Ordinal))
-            {
-                RecordAttempt();
-                return ExePath;
-            }
-
-            Directory.CreateDirectory(ToolDir);
-            string zipPath = Path.Combine(ToolDir, "steamautocrack.zip");
-            var sink = progress is null ? null : new ProgressRelay<double?>(f =>
-                progress.Report(new DownloadProgress(
-                    (long)((f ?? 0) * asset.Size), asset.Size > 0 ? asset.Size : null)));
-            await gh.DownloadAsync(asset.DownloadUrl, zipPath, sink, ct);
-
-            // Verify before extracting over a working copy: we launch this binary afterwards.
-            if (!AssetHash.Matches(zipPath, asset.Digest))
-            {
-                log.LogDebug("SteamAutoCrack asset digest mismatch; keeping the existing copy");
-                try { File.Delete(zipPath); } catch { }
-                if (have) RecordAttempt();
-                return have ? ExePath : null;
-            }
-
-            // Extract preserving the TREE. Unlike DepotDownloader's flat zip, Goldberg/ and TEMP/ sit
-            // beside the exe and their code resolves those from its own base directory, so flattening
-            // would break the bundled emulator and the seeded app list.
-            //
-            // This throws if the user has SteamAutoCrack OPEN (the exe is locked) - which a background
-            // update can easily hit. That is caught below, falls back to the existing copy and records
-            // the attempt, so it simply retries after the next interval. Not a case worth blocking on.
-            ZipFile.ExtractToDirectory(zipPath, ToolDir, overwriteFiles: true);
-            try { File.Delete(zipPath); } catch { /* leftover zip is harmless */ }
-
-            if (!File.Exists(ExePath))
-            {
-                if (have) RecordAttempt();
-                return have ? ExePath : null;
-            }
-
-            cache.SteamAutoCrackVersion = release!.TagName;
-            RecordAttempt();
-            return ExePath;
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex)
-        {
-            log.LogDebug(ex, "Obtaining SteamAutoCrack failed");
-            if (have) cache.SteamAutoCrackCheckedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            return have ? ExePath : null;
+            return await DependencyQuarantine.PrepareToolAsync(gh, "SteamAutoCrack", AppConfig.SteamAutoCrackRepo,
+                ToolDir, ExePath, a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase), null, ct, downloadProgress: progress, enabled: IsEnabled, explicitUserAction: true);
         }
         finally { _gate.Release(); }
     }
@@ -276,19 +141,12 @@ public class SteamAutoCrackService(
     /// </remarks>
     public async Task<bool> TryLaunchIfReadyAsync(CancellationToken ct = default)
     {
-        if (!File.Exists(ExePath)) return false;
+        if (!IsEnabled("SteamAutoCrack") || !File.Exists(ExePath)) return false;
         if (!await RuntimeInstalledAsync()) return false;
         return Launch();
     }
 
-    /// <summary>
-    /// Throttled "is there a newer build?" probe. No download, and never blocks a launch.
-    /// </summary>
-    /// <remarks>
-    /// Returns false when already current, when the 6h window has not elapsed, and on any failure -
-    /// recording the attempt each time so an offline machine does not re-walk the mirror chain on every
-    /// click. A true result is expected to be followed by <c>EnsureToolAsync(force: true)</c>.
-    /// </remarks>
+    /// <summary>Throttled latest-release metadata probe. Never downloads, installs or launches an artifact.</summary>
     public async Task<bool> IsUpdateAvailableAsync(CancellationToken ct = default)
     {
         if (!File.Exists(ExePath)) return false;
@@ -302,15 +160,9 @@ public class SteamAutoCrackService(
             void RecordAttempt() =>
                 cache.SteamAutoCrackCheckedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            string url = $"https://api.github.com/repos/{AppConfig.SteamAutoCrackRepo}/releases/latest";
-            using var res = await gh.SendAsync(url, ct);
-            if (res is null || !res.IsSuccessStatusCode) { RecordAttempt(); return false; }
-
-            var release = JsonSerializer.Deserialize<GithubRelease>(await res.Content.ReadAsStringAsync(ct), JsonOpts);
+            bool available = await ProbeLatestReleaseAsync(gh, cache.SteamAutoCrackVersion, ct);
             RecordAttempt();
-
-            return !string.IsNullOrEmpty(release?.TagName)
-                && !string.Equals(release!.TagName, cache.SteamAutoCrackVersion, StringComparison.Ordinal);
+            return available;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -322,6 +174,16 @@ public class SteamAutoCrackService(
         finally { _gate.Release(); }
     }
 
+    internal static async Task<bool> ProbeLatestReleaseAsync(GithubProxy github, string? installedVersion, CancellationToken ct)
+    {
+        string url = $"https://api.github.com/repos/{AppConfig.SteamAutoCrackRepo}/releases/latest";
+        using var response = await github.SendAsync(url, ct);
+        if (response is null || !response.IsSuccessStatusCode) return false;
+        var release = JsonSerializer.Deserialize<GithubRelease>(await response.Content.ReadAsStringAsync(ct), JsonOpts);
+        return !string.IsNullOrEmpty(release?.TagName)
+            && !string.Equals(release.TagName, installedVersion, StringComparison.Ordinal);
+    }
+
     /// <summary>Open SteamAutoCrack's window. Fire-and-forget; we don't wait for it to exit.</summary>
     public bool Launch()
     {
@@ -329,6 +191,8 @@ public class SteamAutoCrackService(
         try
         {
             // WorkingDirectory matters: their exe looks for Goldberg/ and TEMP/ next to itself.
+            UserAuthorizedDependencies.RequireDirectory("SteamAutoCrack", ToolDir, IsEnabled);
+            if (!RuntimeInstalledAsync().GetAwaiter().GetResult()) return false;
             Process.Start(new ProcessStartInfo(ExePath)
             {
                 UseShellExecute = true,

@@ -1,0 +1,112 @@
+name: Build and test reviewed source
+
+on:
+  pull_request:
+  push:
+    branches: [main, master, security-hardened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Use installed .NET 8 SDK
+        shell: pwsh
+        run: |
+          $sdk = dotnet --list-sdks | Where-Object { $_ -match '^8\.0\.' } | Select-Object -Last 1
+          if (-not $sdk) { throw 'A trusted .NET 8 SDK is required on the runner.' }
+          $version = ($sdk -split ' ')[0]
+          @{ sdk = @{ version = $version; rollForward = 'disable' } } | ConvertTo-Json | Set-Content global.json
+          dotnet --version
+      - name: Restore pinned package graph
+        run: dotnet restore LuaToolsGui.sln --locked-mode
+      - name: Build
+        run: dotnet build LuaToolsGui.sln -c Release --no-restore
+      - name: Test
+        run: dotnet test LuaToolsGui.sln -c Release --no-build --no-restore
+      - name: Publish fork for review
+        run: dotnet publish src/LuaToolsGui/LuaToolsGui.csproj -c Release --no-restore --self-contained false -o artifacts/publish
+      - name: Package and hash
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/publish/* -DestinationPath artifacts/LuaTools-security-hardened.zip
+          $hash = Get-FileHash artifacts/LuaTools-security-hardened.zip -Algorithm SHA256
+          "$($hash.Hash.ToLowerInvariant())  LuaTools-security-hardened.zip" | Set-Content artifacts/SHA256SUMS.txt
+          "Commit: $env:GITHUB_SHA`nSDK: $(dotnet --version)" | Set-Content artifacts/BUILD.txt
+      - name: Upload review artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: security-hardened-${{ github.sha }}
+          path: |
+            artifacts/LuaTools-security-hardened.zip
+            artifacts/SHA256SUMS.txt
+            artifacts/BUILD.txt
+
+  release:
+    needs: build
+    if: github.repository == 'MRoiban/LuaTools' && github.ref == 'refs/heads/security-hardened' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: windows-2022
+    concurrency:
+      group: signed-fork-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tested commit with full version history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select installed SDK
+        shell: pwsh
+        run: |
+          $sdk = dotnet --list-sdks | Where-Object { $_ -match '^8\.0\.' } | Select-Object -Last 1
+          if (-not $sdk) { throw 'A trusted .NET 8 SDK is required.' }
+          @{ sdk = @{ version = ($sdk -split ' ')[0]; rollForward = 'disable' } } | ConvertTo-Json | Set-Content global.json
+      - name: Derive monotonic version from fork commits
+        id: version
+        shell: pwsh
+        run: |
+          $base = '946125981a7addb6150e83886443cc8ddb68931b'
+          git merge-base --is-ancestor $base HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Release branch must descend from the reviewed baseline.' }
+          $count = [int](git rev-list --count "$base..HEAD")
+          if ($count -lt 1 -or $count -gt 65534) { throw 'Commit count outside version range.' }
+          "value=1.4.$count" >> $env:GITHUB_OUTPUT
+      - name: Restore pinned package graph
+        run: dotnet restore src/LuaToolsGui/LuaToolsGui.csproj --locked-mode
+      - name: Publish tested source with commit version
+        run: dotnet publish src/LuaToolsGui/LuaToolsGui.csproj -c Release --no-restore --self-contained false -p:Version=${{ steps.version.outputs.value }} -p:InformationalVersion=${{ steps.version.outputs.value }}+${{ github.sha }} -o artifacts/publish
+      - name: Package portable release
+        shell: pwsh
+        run: Compress-Archive -Path artifacts/publish/* -DestinationPath artifacts/LuaTools-${{ steps.version.outputs.value }}-win-x64.zip
+      - name: Sign manifest with independent release key
+        shell: pwsh
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: ./scripts/sign-release.ps1 -Version '${{ steps.version.outputs.value }}' -Commit '${{ github.sha }}'
+      - name: Publish signed release atomically
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          $tip = gh api repos/MRoiban/LuaTools/git/ref/heads/security-hardened --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify default branch tip.' }
+          if ($tip -ne $env:GITHUB_SHA) { Write-Host 'Superseded tested commit; skip publishing.'; exit 0 }
+          gh release view "v$env:RELEASE_VERSION" --repo MRoiban/LuaTools *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host 'Release already exists; immutable version skipped.'; exit 0 }
+          gh release create "v$env:RELEASE_VERSION" "artifacts/LuaTools-$env:RELEASE_VERSION-win-x64.zip" artifacts/release.json artifacts/release.sig --repo MRoiban/LuaTools --target $env:GITHUB_SHA --title "LuaTools $env:RELEASE_VERSION" --notes "Security-hardened fork portable build. Source commit: $env:GITHUB_SHA. Requires .NET 8 Desktop Runtime x64. Updates require a signature matching the client-pinned release key." --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
+          $tip = gh api repos/MRoiban/LuaTools/git/ref/heads/security-hardened --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot recheck default branch tip.' }
+          if ($tip -ne $env:GITHUB_SHA) { Write-Host 'Newer commit arrived during upload; leave draft unpublished.'; exit 0 }
+          gh release edit "v$env:RELEASE_VERSION" --repo MRoiban/LuaTools --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

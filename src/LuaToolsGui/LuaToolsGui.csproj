@@ -10,9 +10,10 @@
     <AssemblyName>LuaTools</AssemblyName>
     <AssemblyTitle>LuaTools</AssemblyTitle>
     <Product>LuaTools</Product>
-    <Version>1.1.3</Version>
+    <Version>1.4.0</Version>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <!-- Velopack needs a custom Main (Program.Main) that runs before WPF -->
+    <!-- Custom Main initializes culture and the isolated single-instance identity before WPF. -->
     <StartupObject>LuaToolsGui.Program</StartupObject>
   </PropertyGroup>
 
@@ -38,12 +39,13 @@
   <!-- Embed icon.ico as a resource so the Window Icon="icon.ico" can resolve it at runtime -->
   <ItemGroup>
     <Resource Include="icon.ico" />
+    <EmbeddedResource Include="Resources\release-signing-public.pem" LogicalName="LuaToolsGui.release-signing-public.pem" />
+    <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\SECURITY.md" Link="SECURITY.md" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\DEPENDENCY_TRUST.md" Link="DEPENDENCY_TRUST.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- Nothing in public/ is bundled anymore. The frontend (luatools.js) is fetched from GitHub releases
-       by PluginInstallerService into %AppData%\LuaToolsGui\plugin; the Millennium-aware polyfill is inline
-       (CefInjectorService.BuildInlinePolyfill); and the manifest-source list falls back to the hardcoded
-       defaults in HttpServerService when api.json is absent. -->
+  <!-- No third-party plugin or executable dependency is bundled or approved by this build. -->
 
 
   <!-- Localization RESX. We hand-maintain Strings.Designer.cs (works under dotnet watch), so disable the

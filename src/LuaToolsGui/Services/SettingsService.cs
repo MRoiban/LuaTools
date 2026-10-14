@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace LuaToolsGui.Services;
@@ -18,8 +20,7 @@ public class AppSettings
     // tell "never set" (→ default ON) from an explicit user choice.
     public bool? AutoUpdateApps { get; set; }
 
-    // When true (default), donate spare Steam decryption keys to the community pool. Nullable so
-    // "never set" (→ default ON) is distinguishable from an explicit user choice.
+    // Legacy serialized field; always ignored and normalized to false by fork policy.
     public bool? DonateKeys { get; set; }
 
     // Manage-page results-per-page. 0 = "All" (single infinite scroll). Nullable so "never set"
@@ -38,7 +39,7 @@ public class AppSettings
     public string? Language { get; set; }
 
     // The user's own Hubcap (hubcapmanifest.com) API key ("smm_…"). Null = not configured; key-gated
-    // sources stay locked until set. Stored locally. The app calls Hubcap directly with it.
+    // sources stay locked until set. Stored as CurrentUser DPAPI ciphertext, never plaintext.
     public string? HubcapApiKey { get; set; }
 
     // When true, register the app to launch on Windows sign-in (HKCU …\Run). Nullable so "never set"
@@ -53,21 +54,51 @@ public class AppSettings
     // Nullable so "never set" (→ default OFF) is distinguishable from an explicit choice.
     public bool? FastFetch { get; set; }
 
-    // How host names are resolved: "Auto" (default), "Always" or "Never". Stored in English because
-    // it is matched in code; the Settings page localizes the display only. Null = never set → "Auto".
-    // See AppHttp for what each mode does.
+    public bool ExecutableGameFixesEnabled { get; set; }
+    public bool BetterSteamToolsEnabled { get; set; }
+    public bool OpenSteamToolsEnabled { get; set; }
+    public bool SteamPluginEnabled { get; set; }
+    public bool DepotDownloaderEnabled { get; set; }
+    public bool SteamlessEnabled { get; set; }
+    public bool SteamAutoCrackEnabled { get; set; }
+    public bool CloudRedirectEnabled { get; set; }
+
+    // Optional DNS-over-HTTPS preference; missing or invalid values use system DNS.
     public string? DnsMode { get; set; }
 }
 
 public class SettingsService
 {
-    private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui");
-    private static readonly string FilePath = Path.Combine(Dir, "settings.json");
-
+    private readonly string Dir;
+    private readonly string FilePath;
+    private readonly string TmpPath;
+    private readonly string BakPath;
+    private readonly bool _persist;
     private AppSettings _settings = new();
 
-    public SettingsService() => Load();
+    public SettingsService() : this(null, Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName)) { }
+
+    // Without a directory, policy tests remain entirely in memory. A supplied directory isolates
+    // persistence tests from the real user profile and exercises the normal atomic save/load path.
+    internal SettingsService(AppSettings? settings, string? directory = null)
+    {
+        _persist = directory is not null;
+        Dir = directory is null ? string.Empty : Path.GetFullPath(directory);
+        FilePath = Path.Combine(Dir, "settings.json");
+        TmpPath = FilePath + ".tmp";
+        BakPath = FilePath + ".bak";
+        if (settings is not null) _settings = settings;
+        else if (_persist) Load();
+        EnforceForkPolicy();
+    }
+
+    private void EnforceForkPolicy()
+    {
+        _settings.DonateKeys = false;
+        _settings.StartWithWindows = false;
+        if (UnprotectApiKey(_settings.HubcapApiKey) is null) _settings.HubcapApiKey = null;
+    }
 
     /// <summary>User-chosen Steam folder. Null = auto-detect from registry. Persisted only when set.</summary>
     public string? SteamPathOverride
@@ -94,11 +125,11 @@ public class SettingsService
         set { _settings.AutoUpdateApps = value; Save(); }
     }
 
-    /// <summary>When true (default), donate spare Steam decryption keys to the community pool.</summary>
+    /// <summary>Donation is permanently disabled, including for existing settings.</summary>
     public bool DonateKeys
     {
-        get => _settings.DonateKeys ?? true; // default ON
-        set { _settings.DonateKeys = value; Save(); }
+        get => false;
+        set { _settings.DonateKeys = false; Save(); }
     }
 
     /// <summary>Manage-page results-per-page (default 24). 0 = "All" (single infinite scroll).</summary>
@@ -133,15 +164,15 @@ public class SettingsService
     /// <summary>The user's Hubcap API key ("smm_…"), or null if not configured.</summary>
     public string? HubcapApiKey
     {
-        get => _settings.HubcapApiKey;
-        set { _settings.HubcapApiKey = string.IsNullOrWhiteSpace(value) ? null : value; Save(); }
+        get => UnprotectApiKey(_settings.HubcapApiKey);
+        set { _settings.HubcapApiKey = ProtectApiKey(value); Save(); }
     }
 
     /// <summary>When true, the app is registered to launch on Windows sign-in (default OFF).</summary>
     public bool StartWithWindows
     {
-        get => _settings.StartWithWindows ?? false; // default OFF
-        set { _settings.StartWithWindows = value; Save(); }
+        get => false;
+        set { _settings.StartWithWindows = false; Save(); }
     }
 
     /// <summary>When true, minimizing hides the window to the system tray (default OFF).</summary>
@@ -154,27 +185,166 @@ public class SettingsService
     /// <summary>When true, FastFetch auto-picks the first available source and downloads immediately (default OFF).</summary>
     public bool FastFetch
     {
-        get => _settings.FastFetch ?? false; // default OFF
+        get => _settings.FastFetch ?? false;
         set { _settings.FastFetch = value; Save(); }
     }
 
-    /// <summary>
-    /// How host names are resolved: "Auto" (default), "Always" or "Never". See <see cref="AppHttp"/>.
-    /// </summary>
-    /// <remarks>
-    /// Defaults to Auto rather than off on purpose. A user whose ISP DNS-blocks lua.tools cannot reach
-    /// anything in the app to discover that a setting would fix it, so an opt-in toggle would be found
-    /// by everyone except the people who need it. Auto costs unaffected users nothing: the system
-    /// resolver is still tried first and DoH only engages once it has actually failed.
-    /// </remarks>
+    /// <summary>Validated DNS preference; system DNS is the default, DNS-over-HTTPS requires opt-in.</summary>
     public string DnsMode
     {
-        get => _settings.DnsMode is "Always" or "Never" ? _settings.DnsMode : "Auto";
-        set { _settings.DnsMode = value; Save(); }
+        get => _settings.DnsMode is "Auto" or "Always" or "Never" ? _settings.DnsMode : "Never";
+        set { _settings.DnsMode = value is "Auto" or "Always" or "Never" ? value : "Never"; Save(); }
     }
 
-    private static readonly string TmpPath = FilePath + ".tmp";
-    private static readonly string BakPath = FilePath + ".bak";
+    public bool ExecutableGameFixesEnabled
+    {
+        get => _settings.ExecutableGameFixesEnabled;
+        set
+        {
+            if (_settings.ExecutableGameFixesEnabled == value) return;
+            _settings.ExecutableGameFixesEnabled = value;
+            try { Save(); }
+            catch { _settings.ExecutableGameFixesEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("DenuvoFix", value);
+        }
+    }
+
+    public bool BetterSteamToolsEnabled
+    {
+        get => _settings.BetterSteamToolsEnabled;
+        set
+        {
+            if (_settings.BetterSteamToolsEnabled == value) return;
+            _settings.BetterSteamToolsEnabled = value;
+            try { Save(); }
+            catch { _settings.BetterSteamToolsEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("BetterSteamTools", value);
+        }
+    }
+
+    public bool OpenSteamToolsEnabled
+    {
+        get => _settings.OpenSteamToolsEnabled;
+        set
+        {
+            if (_settings.OpenSteamToolsEnabled == value) return;
+            _settings.OpenSteamToolsEnabled = value;
+            try { Save(); }
+            catch { _settings.OpenSteamToolsEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("OpenSteamTools", value);
+        }
+    }
+
+    public bool SteamPluginEnabled
+    {
+        get => _settings.SteamPluginEnabled;
+        set
+        {
+            if (_settings.SteamPluginEnabled == value) return;
+            _settings.SteamPluginEnabled = value;
+            try { Save(); }
+            catch { _settings.SteamPluginEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("LuaToolsPlugin", value);
+        }
+    }
+
+    public bool DepotDownloaderEnabled
+    {
+        get => _settings.DepotDownloaderEnabled;
+        set
+        {
+            if (_settings.DepotDownloaderEnabled == value) return;
+            _settings.DepotDownloaderEnabled = value;
+            try { Save(); }
+            catch { _settings.DepotDownloaderEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("DepotDownloader", value);
+        }
+    }
+
+    public bool SteamlessEnabled
+    {
+        get => _settings.SteamlessEnabled;
+        set
+        {
+            if (_settings.SteamlessEnabled == value) return;
+            _settings.SteamlessEnabled = value;
+            try { Save(); }
+            catch { _settings.SteamlessEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("Steamless", value);
+        }
+    }
+
+    public bool SteamAutoCrackEnabled
+    {
+        get => _settings.SteamAutoCrackEnabled;
+        set
+        {
+            if (_settings.SteamAutoCrackEnabled == value) return;
+            _settings.SteamAutoCrackEnabled = value;
+            try { Save(); }
+            catch { _settings.SteamAutoCrackEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("SteamAutoCrack", value);
+        }
+    }
+
+    public bool CloudRedirectEnabled
+    {
+        get => _settings.CloudRedirectEnabled;
+        set
+        {
+            if (_settings.CloudRedirectEnabled == value) return;
+            _settings.CloudRedirectEnabled = value;
+            try { Save(); }
+            catch { _settings.CloudRedirectEnabled = !value; throw; }
+            ExecutableWorkflowChanged?.Invoke("CloudRedirect", value);
+        }
+    }
+
+    public event Action<string, bool>? ExecutableWorkflowChanged;
+
+    public bool IsExecutableWorkflowEnabled(string component) => component switch
+    {
+        "DenuvoFix" => ExecutableGameFixesEnabled,
+        "BetterSteamTools" => BetterSteamToolsEnabled,
+        "OpenSteamTools" => OpenSteamToolsEnabled,
+        "LuaToolsPlugin" or "LuaToolsPluginFrontend" => SteamPluginEnabled,
+        "DepotDownloader" => DepotDownloaderEnabled,
+        "Steamless" => SteamlessEnabled,
+        "SteamAutoCrack" => SteamAutoCrackEnabled,
+        "CloudRedirect" or "CloudRedirectAddon" => CloudRedirectEnabled,
+        _ => false,
+    };
+
+    private const string ApiKeyPrefix = "dpapi:v1:";
+
+    internal static string? ProtectApiKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        byte[] plain = Encoding.UTF8.GetBytes(value);
+        try
+        {
+            return ApiKeyPrefix + Convert.ToBase64String(
+                ProtectedData.Protect(plain, null, DataProtectionScope.CurrentUser));
+        }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+
+    internal static string? UnprotectApiKey(string? value)
+    {
+        if (value is null || !value.StartsWith(ApiKeyPrefix, StringComparison.Ordinal)) return null;
+        byte[]? plain = null;
+        try
+        {
+            plain = ProtectedData.Unprotect(Convert.FromBase64String(value[ApiKeyPrefix.Length..]),
+                null, DataProtectionScope.CurrentUser);
+            return Encoding.UTF8.GetString(plain);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
+        {
+            return null;
+        }
+        finally { if (plain is not null) CryptographicOperations.ZeroMemory(plain); }
+    }
 
     private void Load()
     {
@@ -216,6 +386,9 @@ public class SettingsService
 
     private void Save()
     {
+        EnforceForkPolicy();
+        if (!_persist) return;
+
         // Nothing worth persisting → don't leave a settings file behind.
         // Every persisted field must be listed here. A field left out is treated as "nothing worth
         // keeping", so a user whose ONLY change was that setting gets the file deleted and the setting
@@ -231,7 +404,16 @@ public class SettingsService
             && _settings.HubcapApiKey is null
             && _settings.StartWithWindows is null
             && _settings.MinimizeToTray is null
-            && _settings.FastFetch is null;
+            && _settings.FastFetch is null
+            && _settings.DnsMode is null
+            && !_settings.ExecutableGameFixesEnabled
+            && !_settings.BetterSteamToolsEnabled
+            && !_settings.OpenSteamToolsEnabled
+            && !_settings.SteamPluginEnabled
+            && !_settings.DepotDownloaderEnabled
+            && !_settings.SteamlessEnabled
+            && !_settings.SteamAutoCrackEnabled
+            && !_settings.CloudRedirectEnabled;
         if (empty)
         {
             foreach (var p in new[] { FilePath, BakPath, TmpPath })

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -62,12 +62,12 @@ public record AppOverview(
 public class SteamAppInfoCache
 {
     private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui");
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName);
     // Full raw appdetails 'data' blob per appid: the single on-disk source of truth. Name + header image
     // (the fast in-RAM index below) are derived from these on demand; there is no separate appinfo.json.
-    private static readonly string DetailsDir = Path.Combine(Dir, "details");
+    private readonly string DetailsDir = Path.Combine(Dir, "details");
 
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(15));
+    private readonly HttpClient _http;
     // In-memory fast path for name/header-image. Populated by network resolves, and lazily rehydrated from
     // the /details blobs on a GetCached miss. A null value means "looked, no usable details" (negative
     // cache) so we don't re-read a missing/empty blob on every grid render.
@@ -88,13 +88,22 @@ public class SteamAppInfoCache
     private readonly ILogger<SteamAppInfoCache> _log;
 
     public SteamAppInfoCache(CacheService cache, ILogger<SteamAppInfoCache> log)
+        : this(cache, log, AppHttp.Create(TimeSpan.FromSeconds(15)), Path.Combine(Dir, "details")) { }
+
+    internal SteamAppInfoCache(CacheService cache, ILogger<SteamAppInfoCache> log, HttpMessageHandler handler, string detailsDir)
+        : this(cache, log, AppHttp.CreateForTesting(TimeSpan.FromSeconds(15), handler), detailsDir) { }
+
+    private SteamAppInfoCache(CacheService cache, ILogger<SteamAppInfoCache> log, HttpClient http, string detailsDir)
     {
+        _http = http;
+        DetailsDir = detailsDir;
         _cache2 = cache;
         _log = log;
         // Restore the rolling window from a previous run so we don't burst fresh into a counting window.
         var now = DateTime.UtcNow;
-        foreach (long ms in _cache2.GetSteamApiRequestTimes())
+        foreach (long ms in _cache2.GetSteamApiRequestTimes().Take(190).Order())
         {
+            if (ms < 0 || ms > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) continue;
             var t = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime;
             if (now - t < Window) _requestTimes.Enqueue(t);
         }
@@ -120,13 +129,14 @@ public class SteamAppInfoCache
 
     /// <summary>Derive name + header image from the cached /details blob, or null if it's absent, empty
     /// (the delisted "{}" marker), or unparseable.</summary>
-    private static SteamAppInfo? ReadInfoFromDetails(long appid)
+    private SteamAppInfo? ReadInfoFromDetails(long appid)
     {
         try
         {
             if (!File.Exists(DetailsPath(appid))) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(DetailsPath(appid)));
+            using var doc = JsonDocument.Parse(CatalogDataPolicy.Read(DetailsPath(appid), CatalogDataPolicy.JsonBytes));
             var d = doc.RootElement;
+            ValidateDetails(d, appid);
             if (d.ValueKind != JsonValueKind.Object) return null;
             string? name = d.TryGetProperty("name", out var n) ? n.GetString() : null;
             if (string.IsNullOrWhiteSpace(name)) return null;
@@ -203,6 +213,7 @@ public class SteamAppInfoCache
     /// are derived from it, so each app is only ever fetched once.</summary>
     public async Task<SteamAppInfo?> ResolveAsync(long appid, CancellationToken ct = default)
     {
+        if (!CatalogDataPolicy.IsId(appid)) return null;
         if (_cache.TryGetValue(appid, out var cached)) return cached;
 
         // cc=us so region-blocked games (e.g. titles banned in the user's country) still resolve.
@@ -224,6 +235,7 @@ public class SteamAppInfoCache
                 if (!res.IsSuccessStatusCode) return null;
 
                 using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+                CatalogDataPolicy.Validate(doc.RootElement);
                 if (FindAppDetailsEntry(doc.RootElement, appid) is not { } entry)
                 {
                     // Steam changed the response shape again. Resolve nothing, cache nothing — a null
@@ -232,16 +244,17 @@ public class SteamAppInfoCache
                     return null;
                 }
 
-                // success:false carries no "data" at all, and a success:true with no usable data object
-                // is just as empty. Either way Steam has nothing for this app.
-                if (!entry.TryGetProperty("success", out var okEl) || okEl.ValueKind != JsonValueKind.True ||
-                    !entry.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+                // Only an explicit unavailable response may produce a persistent empty marker.
+                if (!entry.TryGetProperty("success", out var okEl) || okEl.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new InvalidDataException();
+                if (okEl.ValueKind == JsonValueKind.False)
                 {
                     // Delisted/unavailable → no details to cache for filters; mark so backfill skips it.
-                    _ = SaveFullDetailsAsync(appid, "{}");
+                    await SaveFullDetailsAsync(appid, "{}");
                     return null;
                 }
 
+                var data = entry.GetProperty("data");
+                ValidateDetails(data, appid);
                 string? name = data.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
                 if (string.IsNullOrWhiteSpace(name)) return null;
 
@@ -251,7 +264,7 @@ public class SteamAppInfoCache
 
                 // Persist the whole 'data' blob (this is the full payload). The single on-disk source of
                 // truth; name + header image are re-derived from it (no separate appinfo.json).
-                _ = SaveFullDetailsAsync(appid, data.GetRawText());
+                await SaveFullDetailsAsync(appid, data.GetRawText());
                 return info;
             }
             catch (OperationCanceledException) { return null; }
@@ -263,12 +276,20 @@ public class SteamAppInfoCache
     // ── Full details (for filters) ───────────────────────────────────
 
     /// <summary>True if the full raw appdetails blob is already cached on disk for this appid.</summary>
-    public bool HasFullDetails(long appid) => File.Exists(DetailsPath(appid));
+    public bool HasFullDetails(long appid) => GetFullDetails(appid) is not null;
 
     /// <summary>Read the cached full appdetails 'data' JSON for this appid, or null if not cached.</summary>
     public string? GetFullDetails(long appid)
     {
-        try { return HasFullDetails(appid) ? File.ReadAllText(DetailsPath(appid)) : null; }
+        try
+        {
+            if (!CatalogDataPolicy.IsId(appid)) return null;
+            var bytes = CatalogDataPolicy.Read(DetailsPath(appid), CatalogDataPolicy.JsonBytes);
+            using var doc = JsonDocument.Parse(bytes);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            if (doc.RootElement.EnumerateObject().Any()) ValidateDetails(doc.RootElement, appid);
+            return System.Text.Encoding.UTF8.GetString(bytes);
+        }
         catch { return null; }
     }
 
@@ -490,6 +511,7 @@ public class SteamAppInfoCache
     /// </summary>
     public async Task<bool> EnsureFullDetailsAsync(long appid, CancellationToken ct = default, bool background = false)
     {
+        if (!CatalogDataPolicy.IsId(appid)) return false;
         if (HasFullDetails(appid)) return true;
 
         // cc=us so region-blocked games (e.g. titles banned in the user's country) still resolve.
@@ -510,6 +532,7 @@ public class SteamAppInfoCache
                 if (!res.IsSuccessStatusCode) return false;
 
                 using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+                CatalogDataPolicy.Validate(doc.RootElement);
                 if (FindAppDetailsEntry(doc.RootElement, appid) is not { } entry)
                 {
                     // Nothing landed on disk, so say so. Deliberately NOT the "{}" marker: that is
@@ -519,8 +542,8 @@ public class SteamAppInfoCache
                     return false;
                 }
 
-                if (!entry.TryGetProperty("success", out var okEl) || okEl.ValueKind != JsonValueKind.True ||
-                    !entry.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+                if (!entry.TryGetProperty("success", out var okEl) || okEl.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) throw new InvalidDataException();
+                if (okEl.ValueKind == JsonValueKind.False)
                 {
                     // Delisted / unavailable even in a neutral region → won't ever resolve. Cache an
                     // empty marker so backfill stops retrying and it's not counted as "still fetching".
@@ -528,6 +551,8 @@ public class SteamAppInfoCache
                     return true;
                 }
 
+                var data = entry.GetProperty("data");
+                ValidateDetails(data, appid);
                 await SaveFullDetailsAsync(appid, data.GetRawText());
 
                 // Opportunistically warm the session RAM index too if it's missing.
@@ -563,16 +588,32 @@ public class SteamAppInfoCache
         }
     }
 
-    private static string DetailsPath(long appid) => Path.Combine(DetailsDir, $"{appid}.json");
+    private string DetailsPath(long appid) => Path.Combine(DetailsDir, $"{appid}.json");
 
     private async Task SaveFullDetailsAsync(long appid, string rawJson)
     {
         try
         {
-            Directory.CreateDirectory(DetailsDir);
-            await File.WriteAllTextAsync(DetailsPath(appid), rawJson);
+            await CatalogDataPolicy.WriteAsync(DetailsPath(appid), System.Text.Encoding.UTF8.GetBytes(rawJson));
         }
         catch { /* best effort */ }
+    }
+
+    private static void ValidateDetails(JsonElement data, long appid)
+    {
+        CatalogDataPolicy.Validate(data);
+        if (data.ValueKind != JsonValueKind.Object || !DataNamesApp(data, appid)
+            || !data.TryGetProperty("name", out var name) || name.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(name.GetString()) || name.GetString()!.Length > 4096)
+            throw new InvalidDataException();
+        if (data.TryGetProperty("header_image", out var image)
+            && (image.ValueKind != JsonValueKind.String || image.GetString()!.Length > 4096)) throw new InvalidDataException();
+        if (data.TryGetProperty("recommendations", out var recommendations)
+            && recommendations.TryGetProperty("total", out var total)
+            && (!total.TryGetInt64(out var reviews) || reviews < 0)) throw new InvalidDataException();
+        if (data.TryGetProperty("metacritic", out var metacritic)
+            && metacritic.TryGetProperty("score", out var score)
+            && (!score.TryGetInt32(out var value) || value < 0 || value > 100)) throw new InvalidDataException();
     }
 
     // >0 while an interactive (non-background) throttle acquisition is queued. Background work (the Manage

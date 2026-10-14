@@ -1,64 +1,25 @@
-<p align="center">
-  <img width="1920" alt="lt" src="https://github.com/user-attachments/assets/658f539a-f4a9-4ad5-a3a2-6bb7aa6809bd" />
+# LuaTools security-focused fork
 
-</p>
+Security-focused fork of [madoiscool/LuaTools](https://github.com/madoiscool/LuaTools), based on tag `v1.3.2`, commit `946125981a7addb6150e83886443cc8ddb68931b`. The original MIT license and copyright are retained in [LICENSE](LICENSE).
 
-# LuaTools
-<p>
-  <img align="right" height="250" src="https://github.com/user-attachments/assets/df083fb0-9be7-4690-9f0f-c8b0a73da881" />
+The WPF desktop interface is retained. This fork removes key donation, analytics and upstream self-updates, enforces scoped outbound HTTPS policies, validates downloaded data, and disables executable workflows by default. Eight independent Settings switches allow explicit subsequent installation or execution of unreviewed dependencies. Enabling a switch is user consent, not an independent audit or hash approval. [ENDPOINTS.md](ENDPOINTS.md) records the original integration contracts, preserved workflows, controlled tests, sanitized HTTP observations and remaining incompatibilities. See [SECURITY.md](SECURITY.md) for the trust boundaries.
 
-  [Discord](https://discord.gg/luatools) • [Website](https://lua.tools) • [Git Mirror](https://git.lua.tools/luatools)
-  
-  A Windows desktop client for managing Steam manifest/lua configurations, built with WPF on .NET 8.
-    
-  LuaTools browses and installs manifest sources, edits `stplug-in` lua files (depot pinning,
-  per-depot enable/disable), manages unlocker modes, and injects a companion plugin into Steam's
-  store pages.
-  
-  It ships fully translated in 29 languages and auto-updates via Velopack.
-  <br><sub>Found a translation error? Tell us about it over on [Discord](https://discord.gg/luatools)</sub>
-</p>
+## Build locally
 
-## Statistics
-<div>
-  <img src="https://img.shields.io/github/downloads/madoiscool/luatools/LuaTools-win-Setup.exe?displayAssetName=true&style=for-the-badge" />
-  <img src="https://img.shields.io/github/downloads/madoiscool/luatools/LuaTools-win-Portable.zip?displayAssetName=true&style=for-the-badge" />
-</div>
+Windows with the .NET 8 Desktop Runtime and a compatible .NET SDK is required.
 
-<a href="https://www.star-history.com/?repos=madoiscool%2Fluatools&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=madoiscool/luatools&type=date&theme=dark&legend=top-left&sealed_token=1SX6CDP2N0Emx5IbGfQmEz4TxM11iXtfLKL9K1utRzINJPEDv55f5XEYjliBUB1No6wbcWbMs-cSzO65OC7kAlMLAHJXjqmDoeRCM6hVtW9xd7fyg8cr2DG4gATwkgym1JvgPs4_PeGi6XMAm7_2CVXU9UxRLBW_GP4-Qmd3-AosSRCM1Nkm7dEr2_Ut" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=madoiscool/luatools&type=date&legend=top-left&sealed_token=1SX6CDP2N0Emx5IbGfQmEz4TxM11iXtfLKL9K1utRzINJPEDv55f5XEYjliBUB1No6wbcWbMs-cSzO65OC7kAlMLAHJXjqmDoeRCM6hVtW9xd7fyg8cr2DG4gATwkgym1JvgPs4_PeGi6XMAm7_2CVXU9UxRLBW_GP4-Qmd3-AosSRCM1Nkm7dEr2_Ut" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=madoiscool/luatools&type=date&legend=top-left&sealed_token=1SX6CDP2N0Emx5IbGfQmEz4TxM11iXtfLKL9K1utRzINJPEDv55f5XEYjliBUB1No6wbcWbMs-cSzO65OC7kAlMLAHJXjqmDoeRCM6hVtW9xd7fyg8cr2DG4gATwkgym1JvgPs4_PeGi6XMAm7_2CVXU9UxRLBW_GP4-Qmd3-AosSRCM1Nkm7dEr2_Ut" />
- </picture>
-</a>
+```powershell
+dotnet restore LuaToolsGui.sln --locked-mode
+dotnet test LuaToolsGui.sln --configuration Release --no-restore
+dotnet publish src/LuaToolsGui/LuaToolsGui.csproj --configuration Release --no-restore --output publish
+```
 
-## Requirements
+Run `publish/LuaTools.exe`. The app uses a separate profile from upstream. Original HTTPS catalog, authentication, manifest, metadata and mirror integrations remain. Response-provided signed files and artwork use a separate credential-free public-HTTPS transfer policy. Executable game fixes, BetterSteamTools, OpenSteamTools, Steam plugin, DepotDownloaderMod, Steamless, SteamAutoCrack and CloudRedirect each default to off. Toggling saves the preference; use the existing Install or Run action afterward. No third-party binary is bundled or independently approved. The legacy plaintext manifest-source backend stays blocked; independent HTTPS Hubcap operations continue. Server availability and authorization remain outside the client's control.
 
-- Windows 10/11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (the released installer bundles a
-  check for the .NET 8 **Desktop Runtime** and installs it if missing; [building from source](https://github.com/madoiscool/LuaTools/blob/main/CONTRIBUTING.md#building-from-source--developing) needs
-  the full SDK
+The hosted fork is [MRoiban/LuaTools](https://github.com/MRoiban/LuaTools), on `security-hardened`; the original repository remains tracked as `upstream`. Release setup and update trust are documented in [RELEASES.md](RELEASES.md).
 
-## Installation
-You can find release builds on the [luatools website](https://lua.tools/app) or in the [releases](https://github.com/madoiscool/LuaTools/releases/latest) tab. 
+## Dependencies and updates
 
-## Credits / Adjacent software
+Application updates come only from this fork and require its pinned release-key signature. Downloading and staging are separate from the explicit restart that applies an update. Do not install upstream releases over this fork. NuGet dependency versions are captured in committed lockfiles; review lockfile changes before restoring updated dependencies. A lockfile provides reproducibility, not a source audit of each package.
 
-- [Millennium](https://steambrew.app/): the Steam plugin framework whose injection API this app
-  polyfills when Millennium isn't installed
-- [Velopack](https://velopack.io/): installer and auto-update framework
-- [DepotDownloaderMod](https://github.com/SteamAutoCracks/DepotDownloaderMod): downloads depot content
-  from Steam's CDN, powering the Depots page's Download action. A fork of
-  [DepotDownloader](https://github.com/SteamRE/DepotDownloader), fetched and run as a standalone tool
-- [SteamAutoCrack](https://github.com/SteamAutoCracks/Steam-auto-crack): fetched and launched from the
-  Downloads page
-- [Steamless](https://github.com/atom0s/Steamless): removes SteamStub from game executables
-- [CloudRedirect](https://github.com/Selectively11/CloudRedirect): Steam Cloud revival project, can be turned on via the mode page
-
-## Licence
-
-MIT. See [LICENSE](LICENSE).
-
-<img width="100%" alt="928c14bad5bbc258894b050af1e17ba8" src="https://github.com/user-attachments/assets/90ed4a2b-6fec-4afa-a56d-4983ea190ddb" />
-
+BetterSteamTools, OpenSteamTools, DepotDownloaderMod and companion scripts are separate trust decisions. See [DEPENDENCY_TRUST.md](DEPENDENCY_TRUST.md). The independent allowlist remains empty; publisher hashes and local authorization receipts do not establish authenticity. Turning a switch off blocks app-initiated installs, tool launches and plugin injection. It does not terminate external programs or uninstall native DLLs: Steam can load previously installed DLLs on later launches even while the switch is off. Automatic runtime installation, upstream app updates, telemetry and key donation remain disabled. Targeted dependency findings and review limits are recorded in [audits/README.md](audits/README.md); no dependency received independent approval.

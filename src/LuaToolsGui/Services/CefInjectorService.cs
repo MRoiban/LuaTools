@@ -11,17 +11,20 @@ namespace LuaToolsGui.Services;
 public class CefInjectorService : IHostedService
 {
     private readonly SteamService _steam;
+    private readonly SettingsService _settings;
+    private readonly SemaphoreSlim _lifecycle = new(1, 1);
+    private Task? _loopTask;
     private readonly ILogger<CefInjectorService> _log;
     private CancellationTokenSource? _cts;
     private string _luatoolsJs = "";
     private string _polyfillJs = "";
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(30));
+    private readonly HttpClient _http = AppHttp.CreateLoopback(TimeSpan.FromSeconds(30), 8080, 6767);
 
     // Persistent CDP WebSocket per tab (keyed by tab id), reused across calls so the fast RPC-drain
     // loop doesn't pay a connect handshake every tick. Opened lazily, evicted (and reopened next call)
     // on any socket error. Touched only from the single InjectionLoop task (+ StopAsync on shutdown),
     // so no locking is needed. _cdpId hands out unique CDP command ids for response correlation.
-    private readonly Dictionary<string, ClientWebSocket> _sockets = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ClientWebSocket> _sockets = new();
     private int _cdpId;
 
     // CDP is opened by the `.cef-enable-remote-debugging` junction PluginInstallerService manages, not by
@@ -37,20 +40,29 @@ public class CefInjectorService : IHostedService
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    public CefInjectorService(SteamService steam, ILogger<CefInjectorService> logger)
+    public CefInjectorService(SteamService steam, SettingsService settings, ILogger<CefInjectorService> logger)
     {
         _steam = steam;
+        _settings = settings;
         _log = logger;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-        await ReloadPluginFilesAsync();
-
-        _ = Task.Run(() => InjectionLoop(_cts.Token), _cts.Token);
-        _log.LogInformation("CEF injector started");
+        await _lifecycle.WaitAsync(cancellationToken);
+        try
+        {
+            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend")) return;
+            if (_loopTask is { IsCompleted: false }) return;
+            await ReloadPluginFilesAsync();
+            if (string.IsNullOrEmpty(_luatoolsJs)) return;
+            _cts?.Dispose();
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var loopToken = _cts.Token;
+            _loopTask = Task.Run(() => InjectionLoop(loopToken), loopToken);
+            _log.LogInformation("CEF injector started after explicit plugin activation");
+        }
+        finally { _lifecycle.Release(); }
     }
 
     /// <summary>(Re)reads luatools.js + the polyfill from disk into memory. Called once at startup, and
@@ -62,12 +74,27 @@ public class CefInjectorService : IHostedService
     /// next poll cycle (~1s) just picks up the new content, no page reload needed.</summary>
     public async Task ReloadPluginFilesAsync()
     {
-        var ct = _cts?.Token ?? CancellationToken.None;
+        if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend"))
+        {
+            _luatoolsJs = "";
+            _polyfillJs = "";
+            return;
+        }
 
         var jsPath = FindLuaToolsJs();
         if (jsPath is not null && File.Exists(jsPath))
         {
-            _luatoolsJs = await File.ReadAllTextAsync(jsPath, ct);
+            try
+            {
+                // Decode the exact bytes verified, rather than reopening a mutable file after hashing.
+                _luatoolsJs = Encoding.UTF8.GetString(UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPluginFrontend", jsPath, _settings.IsExecutableWorkflowEnabled));
+            }
+            catch (Exception ex)
+            {
+                _luatoolsJs = "";
+                _log.LogWarning(ex, "Plugin JavaScript rejected by dependency trust policy");
+            }
+            await Task.CompletedTask;
             _log.LogInformation("Loaded luatools.js ({Length} bytes)", _luatoolsJs.Length);
         }
         else
@@ -79,7 +106,15 @@ public class CefInjectorService : IHostedService
         var polyfillPath = FindPolyfillJs();
         if (polyfillPath is not null && File.Exists(polyfillPath))
         {
-            _polyfillJs = await File.ReadAllTextAsync(polyfillPath, ct);
+            try
+            {
+                _polyfillJs = Encoding.UTF8.GetString(UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPluginFrontend", polyfillPath, _settings.IsExecutableWorkflowEnabled));
+            }
+            catch (Exception ex)
+            {
+                _polyfillJs = BuildInlinePolyfill();
+                _log.LogWarning(ex, "External polyfill rejected by dependency trust policy");
+            }
         }
         else
         {
@@ -87,13 +122,28 @@ public class CefInjectorService : IHostedService
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _cts?.Cancel();
-        foreach (var ws in _sockets.Values)
-            try { ws.Dispose(); } catch { /* best effort on shutdown */ }
-        _sockets.Clear();
-        return Task.CompletedTask;
+        await _lifecycle.WaitAsync(cancellationToken);
+        try
+        {
+            _cts?.Cancel();
+            foreach (string tab in _sockets.Keys) EvictSocket(tab);
+            _luatoolsJs = "";
+            _polyfillJs = "";
+            if (_loopTask is { } loop)
+            {
+                try { await loop.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken); }
+                catch (OperationCanceledException) { }
+                catch (TimeoutException) { }
+                // Keep ownership of a slow canceled generation. Start cannot overlap it.
+                if (!loop.IsCompleted) return;
+            }
+            _loopTask = null;
+            _cts?.Dispose();
+            _cts = null;
+        }
+        finally { _lifecycle.Release(); }
     }
 
     // Loop cadence: tick fast (drain queued RPCs every tick so the page's calls resolve in ~150ms rather
@@ -112,6 +162,7 @@ public class CefInjectorService : IHostedService
         {
             try
             {
+                if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend")) break;
                 // ── Slow cadence (~1s): discover store tabs, ensure luatools.js is injected ──
                 if (tick % InjectEveryTicks == 0)
                 {
@@ -141,7 +192,8 @@ public class CefInjectorService : IHostedService
                             // to the home page, which has no "/app/" in its URL, so the old "/app/"-only filter
                             // meant the icon/popup never appeared there. luatools.js itself gates the per-game
                             // "Add via LuaTools" button to /app/ pages internally, so injecting store-wide is safe.
-                            if (tab.Url?.Contains("store.steampowered.com", StringComparison.OrdinalIgnoreCase) == true
+                            if (Uri.TryCreate(tab.Url, UriKind.Absolute, out var storeUri)
+                                && storeUri.Scheme == Uri.UriSchemeHttps && storeUri.IdnHost == "store.steampowered.com"
                                 && !string.IsNullOrEmpty(tab.WebSocketDebuggerUrl)
                                 && !string.IsNullOrEmpty(tab.Id))
                             {
@@ -265,23 +317,24 @@ public class CefInjectorService : IHostedService
             catch { }
         }
 
+        if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend"))
+            throw new InvalidOperationException("Steam plugin is disabled in Settings.");
         var url = BaseUrl + path;
-        if (mapping.HttpMethod == "GET")
-        {
-            return await _http.GetStringAsync(url);
-        }
-        else
-        {
-            var content = new StringContent(argsRaw ?? "{}", Encoding.UTF8, "application/json");
-            var resp = await _http.PostAsync(url, content);
-            return await resp.Content.ReadAsStringAsync();
-        }
+        using var request = new HttpRequestMessage(mapping.HttpMethod == "GET" ? HttpMethod.Get : HttpMethod.Post, url);
+        request.Headers.TryAddWithoutValidation(LocalPluginBridgePolicy.TokenHeader, LocalPluginBridgePolicy.Token);
+        if (mapping.HttpMethod != "GET")
+            request.Content = new StringContent(argsRaw ?? "{}", Encoding.UTF8, "application/json");
+        using var response = await _http.SendAsync(request, _cts?.Token ?? CancellationToken.None);
+        return await response.Content.ReadAsStringAsync(_cts?.Token ?? CancellationToken.None);
     }
 
     /// <summary>Return the reused (or freshly opened) CDP socket for a tab. Throws if the connect fails.
     /// The caller evicts on any exception.</summary>
     private async Task<ClientWebSocket> GetSocketAsync(string tabId, string wsUrl, CancellationToken ct)
     {
+        UserAuthorizedDependencies.RequireEnabled("LuaToolsPluginFrontend", _settings.IsExecutableWorkflowEnabled);
+        if (!IsAllowedDebuggerEndpoint(wsUrl))
+            throw new InvalidOperationException("Unexpected CEF debugger endpoint.");
         if (_sockets.TryGetValue(tabId, out var existing))
         {
             if (existing.State == WebSocketState.Open) return existing;
@@ -289,14 +342,26 @@ public class CefInjectorService : IHostedService
         }
 
         var ws = new ClientWebSocket();
+        ws.Options.Proxy = null;
         await ws.ConnectAsync(new Uri(wsUrl), ct);
         _sockets[tabId] = ws;
         return ws;
     }
 
+    public static bool IsAllowedDebuggerEndpoint(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
+        const string prefix = "/devtools/page/";
+        return uri.Scheme == "ws" && uri.Host == "127.0.0.1" && uri.Port == 8080
+            && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0
+            && uri.AbsolutePath.StartsWith(prefix, StringComparison.Ordinal)
+            && uri.AbsolutePath.Length > prefix.Length && uri.AbsolutePath.Length <= 1024
+            && uri.AbsolutePath[prefix.Length..].All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
+    }
+
     private void EvictSocket(string tabId)
     {
-        if (_sockets.Remove(tabId, out var ws))
+        if (_sockets.TryRemove(tabId, out var ws))
             try { ws.Dispose(); } catch { /* best effort */ }
     }
 
@@ -330,6 +395,7 @@ public class CefInjectorService : IHostedService
                 {
                     result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
                     if (result.MessageType == WebSocketMessageType.Close) { EvictSocket(tabId); return ""; }
+                    if (sb.Length + result.Count > 1024 * 1024) throw new InvalidDataException("CEF response exceeds the size limit.");
                     sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
                 } while (!result.EndOfMessage);
 
@@ -377,8 +443,8 @@ public class CefInjectorService : IHostedService
         // GitHub releases into %AppData%\LuaToolsGui\plugin. If it isn't installed yet, nothing injects.
         string[] candidates =
         {
-            Path.Combine(appData, "LuaToolsGui", "plugin", "public", "luatools.js"),
-            Path.Combine(appData, "LuaToolsGui", "plugin", "luatools.js"),
+            Path.Combine(appData, AppConfig.DataDirectoryName, "plugin", "public", "luatools.js"),
+            Path.Combine(appData, AppConfig.DataDirectoryName, "plugin", "luatools.js"),
         };
         foreach (var path in candidates)
             if (File.Exists(path)) return path;

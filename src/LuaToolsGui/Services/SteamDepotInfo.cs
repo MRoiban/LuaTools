@@ -1,5 +1,7 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net.Http;
+using System.IO;
+using System.Globalization;
 using System.Text.Json;
 
 namespace LuaToolsGui.Services;
@@ -54,12 +56,12 @@ public class SteamDepotInfo
     private readonly ConcurrentDictionary<long, (AppDepotInfo? Info, DateTime At)> _cache = new(); // memory-only
     private readonly ConcurrentDictionary<long, Task<AppDepotInfo?>> _inFlight = new();
 
-    public SteamDepotInfo() : this(AppHttp.SharedHandler) { }
+    public SteamDepotInfo() => _http = AppHttp.Create(TimeSpan.FromSeconds(15));
 
     /// <summary>Test seam: swap in a stub handler so caching behaviour can be checked by counting the
     /// requests that actually go out, rather than by hitting the real API.</summary>
     internal SteamDepotInfo(HttpMessageHandler handler) =>
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
+        _http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(15), handler);
 
     /// <summary>Injectable clock so the failure TTL is testable without sleeping.</summary>
     internal Func<DateTime> UtcNow { get; init; } = () => DateTime.UtcNow;
@@ -67,6 +69,7 @@ public class SteamDepotInfo
     /// <summary>Fetch + parse the content depots (memory-cached, deduped). Null on failure.</summary>
     public Task<AppDepotInfo?> GetAsync(long appId, CancellationToken ct = default)
     {
+        if (!CatalogDataPolicy.IsId(appId)) return Task.FromResult<AppDepotInfo?>(null);
         if (_cache.TryGetValue(appId, out var hit) &&
             (hit.Info is not null || UtcNow() - hit.At < FailureTtl))
             return Task.FromResult(hit.Info);
@@ -101,6 +104,7 @@ public class SteamDepotInfo
             if (!res.IsSuccessStatusCode) return Cache(appId, null);
 
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+            CatalogDataPolicy.Validate(doc.RootElement, maxString: 65536);
             if (!doc.RootElement.TryGetProperty("data", out var data) ||
                 !data.TryGetProperty(appId.ToString(), out var app))
                 return Cache(appId, null);
@@ -110,17 +114,17 @@ public class SteamDepotInfo
             {
                 foreach (var entry in depotMap.EnumerateObject())
                 {
-                    if (!long.TryParse(entry.Name, out long depotId)) continue;   // skip branches/baselanguages/etc.
-                    if (entry.Value.ValueKind != JsonValueKind.Object) continue;
+                    if (!long.TryParse(entry.Name, NumberStyles.None, CultureInfo.InvariantCulture, out long depotId))
+                    { if (entry.Name.All(char.IsAsciiDigit)) throw new InvalidDataException(); continue; }   // skip branches/baselanguages/etc.
+                    if (!CatalogDataPolicy.IsId(depotId) || entry.Value.ValueKind != JsonValueKind.Object) throw new InvalidDataException();
                     var v = entry.Value;
 
                     // Shared redistributable (VC++, DirectX, …). Belongs to another app. Keep it, flagged,
                     // AND keep the owning app id — the manifest can only be resolved from there.
                     bool isShared = v.TryGetProperty("depotfromapp", out var fromEl);
-                    long? fromAppId = isShared && long.TryParse(fromEl.GetString(), out long fa) ? fa : null;
+                    long? fromAppId = isShared ? ReadId(fromEl) : null;
 
-                    long? dlcAppId = v.TryGetProperty("dlcappid", out var dlcEl) && long.TryParse(dlcEl.GetString(), out long dlc)
-                        ? dlc : null;
+                    long? dlcAppId = v.TryGetProperty("dlcappid", out var dlcEl) ? ReadId(dlcEl) : null;
 
                     string? os = null, lang = null;
                     if (v.TryGetProperty("config", out var cfg) && cfg.ValueKind == JsonValueKind.Object)
@@ -130,6 +134,7 @@ public class SteamDepotInfo
                         else if (cfg.TryGetProperty("language", out var l2)) lang = l2.GetString();
                     }
 
+                    if (os?.Length > 256 || lang?.Length > 256) throw new InvalidDataException();
                     depots.Add(new ContentDepot(depotId, ReadPublicSize(v), dlcAppId, isShared, os, lang,
                         ReadPublicManifestId(v)) { FromAppId = fromAppId });
                 }
@@ -142,9 +147,7 @@ public class SteamDepotInfo
                 dm.TryGetProperty("branches", out var branches) &&
                 branches.TryGetProperty("public", out var pubBranch) &&
                 pubBranch.TryGetProperty("buildid", out var buildEl))
-                publicBuildId = buildEl.ValueKind == JsonValueKind.String
-                    ? buildEl.GetString()
-                    : buildEl.ToString();
+                publicBuildId = ReadUnsigned(buildEl);
 
             // Full declared DLC list: includes store-only DLC with no depot of their own.
             var dlcIds = new List<long>();
@@ -153,9 +156,10 @@ public class SteamDepotInfo
                 listEl.GetString() is { } csv)
             {
                 foreach (var part in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                    if (long.TryParse(part, out long id)) dlcIds.Add(id);
+                    { if (!long.TryParse(part, NumberStyles.None, CultureInfo.InvariantCulture, out long id) || !CatalogDataPolicy.IsId(id)) throw new InvalidDataException(); dlcIds.Add(id); }
             }
 
+            if (dlcIds.Count > 10000) throw new InvalidDataException();
             var launchExes = ParseLaunchExes(app);
 
             return Cache(appId, new AppDepotInfo(appId, depots, dlcIds, launchExes, publicBuildId));
@@ -171,7 +175,7 @@ public class SteamDepotInfo
         if (depot.TryGetProperty("manifests", out var m) &&
             m.TryGetProperty("public", out var pub) &&
             pub.TryGetProperty("gid", out var gidEl))
-            return gidEl.ValueKind == JsonValueKind.String ? gidEl.GetString() : gidEl.ToString();
+            { var gid = ReadUnsigned(gidEl); if (ulong.Parse(gid, CultureInfo.InvariantCulture) == 0) throw new InvalidDataException(); return gid; }
         return null;
     }
 
@@ -179,9 +183,11 @@ public class SteamDepotInfo
     {
         if (depot.TryGetProperty("manifests", out var m) &&
             m.TryGetProperty("public", out var pub) &&
-            pub.TryGetProperty("size", out var sizeEl) &&
-            long.TryParse(sizeEl.GetString(), out long size))
+            pub.TryGetProperty("size", out var sizeEl))
+        {
+            if (!long.TryParse(ReadUnsigned(sizeEl), NumberStyles.None, CultureInfo.InvariantCulture, out long size)) throw new InvalidDataException();
             return size;
+        }
         return 0;
     }
 
@@ -217,12 +223,26 @@ public class SteamDepotInfo
             if (!isWindows || hasBeta || hasOwnsDlc) continue;
 
             string norm = exe.Replace('/', '\\');
+            if (norm.Length > 4096 || norm.StartsWith("\\", StringComparison.Ordinal) || norm.Contains(':')
+                || norm.Split('\\').Any(part => part == "..") || norm.Any(char.IsControl)) throw new InvalidDataException();
             bool isDefault = e.TryGetProperty("type", out var tEl) &&
                              string.Equals(tEl.GetString(), "default", StringComparison.OrdinalIgnoreCase);
             (isDefault ? def : other).Add(norm);
         }
         // default entries first, de-duplicated, preserving order.
         return def.Concat(other).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static string ReadUnsigned(JsonElement value)
+    {
+        var text = value.ValueKind == JsonValueKind.String ? value.GetString() : value.GetRawText();
+        if (text is null || text.Length > 20 || !ulong.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out _)) throw new InvalidDataException();
+        return text;
+    }
+    private static long ReadId(JsonElement value)
+    {
+        if (!long.TryParse(ReadUnsigned(value), NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !CatalogDataPolicy.IsId(id)) throw new InvalidDataException();
+        return id;
     }
 
     private AppDepotInfo? Cache(long appId, AppDepotInfo? info)

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -12,10 +12,19 @@ namespace LuaToolsGui.Services;
 
 public class AuthService
 {
-    private static readonly string AuthFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "auth.dat");
+    private readonly string AuthFile;
+    private static readonly string DefaultAuthFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "auth.dat");
 
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(30));
+    private static readonly JsonSerializerOptions JsonOpts = new() { MaxDepth = 32 };
+    private readonly HttpClient _http;
+
+    public AuthService() : this(AppHttp.Create(TimeSpan.FromSeconds(30)), DefaultAuthFile) { }
+    internal AuthService(HttpClient http, string authFile)
+    {
+        _http = http;
+        AuthFile = authFile;
+    }
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     private string? _accessToken;
@@ -97,6 +106,7 @@ public class AuthService
         listener.Prefixes.Add($"http://localhost:{AppConfig.OAuthCallbackPort}/");
         listener.Start();
 
+        new OutboundNetworkPolicy().Validate(new Uri(authorizeUrl));
         Process.Start(new ProcessStartInfo(authorizeUrl) { UseShellExecute = true });
 
         string code;
@@ -122,15 +132,18 @@ public class AuthService
     /// </summary>
     public async Task SignInWithCodeAsync(string code, CancellationToken ct = default)
     {
+        code = code.Trim().ToUpperInvariant();
+        if (code.Length != 6 || code.Any(c => !char.IsAsciiLetterOrDigit(c)))
+            throw new AuthException(Resources.Strings.Settings_BotCode_Invalid);
         // Step 1: redeem the code for a Supabase magic-link token hash. The code itself is the credential.
-        var redeemReq = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.ApiBaseUrl}/api/auth/code/redeem")
+        using var redeemReq = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.ApiBaseUrl}/api/auth/code/redeem")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new { code = code.Trim().ToUpperInvariant() }),
                 Encoding.UTF8, "application/json"),
         };
 
-        var redeemRes = await _http.SendAsync(redeemReq, ct);
+        using var redeemRes = await _http.SendAsync(redeemReq, ct);
         string redeemBody = await redeemRes.Content.ReadAsStringAsync(ct);
         if (!redeemRes.IsSuccessStatusCode)
             throw new AuthException(redeemRes.StatusCode switch
@@ -141,8 +154,8 @@ public class AuthService
                 _ => Resources.Strings.Settings_BotCode_ServerError,
             });
 
-        var redeem = JsonSerializer.Deserialize<CodeRedeemResponse>(redeemBody);
-        if (redeem is null || string.IsNullOrEmpty(redeem.Token))
+        var redeem = JsonSerializer.Deserialize<CodeRedeemResponse>(redeemBody, JsonOpts);
+        if (redeem is null || !ApiContract.ValidCredential(redeem.Token))
             throw new AuthException(Resources.Strings.Settings_BotCode_ServerError);
 
         // Step 2: verify the magic-link token hash into an access/refresh session.
@@ -153,20 +166,21 @@ public class AuthService
 
     private async Task<SupabaseSession> VerifyMagicTokenAsync(string tokenHash, CancellationToken ct)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/verify")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/verify")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new { type = "magiclink", token_hash = tokenHash }),
                 Encoding.UTF8, "application/json"),
         };
+        HttpCredentialPurpose.Supabase.Apply(req);
         req.Headers.Add("apikey", AppConfig.SupabaseAnonKey);
 
-        var res = await _http.SendAsync(req, ct);
+        using var res = await _http.SendAsync(req, ct);
         string body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new AuthException(Resources.Strings.Settings_BotCode_ServerError);
 
-        return JsonSerializer.Deserialize<SupabaseSession>(body)
+        return JsonSerializer.Deserialize<SupabaseSession>(body, JsonOpts)
                ?? throw new AuthException(Resources.Strings.Settings_BotCode_ServerError);
     }
 
@@ -188,6 +202,13 @@ public class AuthService
                 throw new AuthException(Resources.Strings.Auth_Err_Timeout);
             }
 
+            if (!ctx.Request.IsLocal || ctx.Request.HttpMethod != "GET"
+                || ctx.Request.Url?.AbsolutePath != "/callback")
+            {
+                ctx.Response.StatusCode = 404;
+                ctx.Response.Close();
+                continue;
+            }
             string? code = HttpUtility.ParseQueryString(ctx.Request.Url?.Query ?? "").Get("code");
             string? error = HttpUtility.ParseQueryString(ctx.Request.Url?.Query ?? "").Get("error_description");
 
@@ -200,33 +221,34 @@ public class AuthService
             }
 
             bool ok = code is not null;
-            byte[] page = Encoding.UTF8.GetBytes(ResultPage(ok, error));
+            byte[] page = Encoding.UTF8.GetBytes(ResultPage(ok, null));
             ctx.Response.ContentType = "text/html; charset=utf-8";
             ctx.Response.ContentLength64 = page.Length;
             await ctx.Response.OutputStream.WriteAsync(page, timeout.Token);
             ctx.Response.Close();
 
-            if (!ok) throw new AuthException(error ?? "Sign-in was denied.");
+            if (!ok) throw new AuthException("Sign-in was denied.");
             return code!;
         }
     }
 
     private async Task<SupabaseSession> ExchangeCodeAsync(string code, string verifier, CancellationToken ct)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/token?grant_type=pkce")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/token?grant_type=pkce")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new { auth_code = code, code_verifier = verifier }),
                 Encoding.UTF8, "application/json"),
         };
+        HttpCredentialPurpose.Supabase.Apply(req);
         req.Headers.Add("apikey", AppConfig.SupabaseAnonKey);
 
-        var res = await _http.SendAsync(req, ct);
+        using var res = await _http.SendAsync(req, ct);
         string body = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
-            throw new AuthException(string.Format(Resources.Strings.Auth_Err_TokenExchangeFailed, (int)res.StatusCode, body));
+            throw new AuthException(string.Format(Resources.Strings.Auth_Err_TokenExchangeFailed, (int)res.StatusCode, "Token exchange was rejected."));
 
-        return JsonSerializer.Deserialize<SupabaseSession>(body)
+        return JsonSerializer.Deserialize<SupabaseSession>(body, JsonOpts)
                ?? throw new AuthException(Resources.Strings.Auth_Err_TokenExchangeEmpty);
     }
 
@@ -255,20 +277,21 @@ public class AuthService
 
     private async Task RefreshAsync()
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/token?grant_type=refresh_token")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{AppConfig.SupabaseUrl}/auth/v1/token?grant_type=refresh_token")
         {
             Content = new StringContent(
                 JsonSerializer.Serialize(new { refresh_token = _refreshToken }),
                 Encoding.UTF8, "application/json"),
         };
+        HttpCredentialPurpose.Supabase.Apply(req);
         req.Headers.Add("apikey", AppConfig.SupabaseAnonKey);
 
-        var res = await _http.SendAsync(req);
+        using var res = await _http.SendAsync(req);
         string body = await res.Content.ReadAsStringAsync();
         if (!res.IsSuccessStatusCode)
             throw new AuthException(string.Format(Resources.Strings.Auth_Err_RefreshFailed, (int)res.StatusCode));
 
-        var session = JsonSerializer.Deserialize<SupabaseSession>(body)
+        var session = JsonSerializer.Deserialize<SupabaseSession>(body, JsonOpts)
                       ?? throw new AuthException(Resources.Strings.Auth_Err_RefreshEmpty);
         ApplySession(session);
     }
@@ -284,6 +307,10 @@ public class AuthService
 
     private void ApplySession(SupabaseSession session)
     {
+        if (!ApiContract.ValidCredential(session.AccessToken) || !ApiContract.ValidCredential(session.RefreshToken)
+            || session.ExpiresIn <= 0 || session.ExpiresIn > 604800 || session.User is null
+            || !Guid.TryParse(session.User.Id, out _))
+            throw new AuthException("The authentication server returned an invalid session.");
         _accessToken = session.AccessToken;
         _refreshToken = session.RefreshToken;
         _expiresAt = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
@@ -316,13 +343,15 @@ public class AuthService
         try { File.Delete(AuthFile); } catch { /* best effort */ }
     }
 
-    private static StoredAuth? LoadStored()
+    private StoredAuth? LoadStored()
     {
         try
         {
             if (!File.Exists(AuthFile)) return null;
             byte[] plain = ProtectedData.Unprotect(File.ReadAllBytes(AuthFile), null, DataProtectionScope.CurrentUser);
-            return JsonSerializer.Deserialize<StoredAuth>(plain);
+            var stored = JsonSerializer.Deserialize<StoredAuth>(plain);
+            return stored is not null && ApiContract.ValidCredential(stored.AccessToken)
+                && ApiContract.ValidCredential(stored.RefreshToken) ? stored : null;
         }
         catch
         {
@@ -330,7 +359,7 @@ public class AuthService
         }
     }
 
-    private static void SaveStored(StoredAuth auth)
+    private void SaveStored(StoredAuth auth)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(AuthFile)!);
         byte[] enc = ProtectedData.Protect(

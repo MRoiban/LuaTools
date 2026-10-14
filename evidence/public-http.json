@@ -1,0 +1,294 @@
+{
+  "observed_at_utc": "2026-10-14T21:42:54.116055+00:00",
+  "notes": "Public read-only probes; no auth, cookies, plaintext requests, redirects or executable asset downloads. Raw bodies and response headers are not retained. Errors are evidence of this probe only.",
+  "exchanges": [
+    {
+      "name": "steam-search",
+      "method": "GET",
+      "url": "https://store.steampowered.com/api/storesearch/?term=Portal&l=english&cc=US",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": "3515",
+      "observed_bytes": 3515,
+      "over_limit": false,
+      "sha256": "2051f76be6201e214efe73ac142bddd58c9bc13d2b8fd8e837389ee40b27af08",
+      "json_type": "dict",
+      "top_level_keys": [
+        "items",
+        "total"
+      ],
+      "item_count": 2,
+      "sample_url_origins": [
+        "https://shared.akamai.steamstatic.com"
+      ]
+    },
+    {
+      "name": "steam-featured",
+      "method": "GET",
+      "url": "https://store.steampowered.com/api/featuredcategories?cc=us&l=english",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": null,
+      "observed_bytes": 51874,
+      "over_limit": false,
+      "sha256": "ed674fa260c48d4160e37252a667e608ab3ab4136c1b1afa4b05f27d03bdedfa",
+      "json_type": "dict",
+      "top_level_keys": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "coming_soon",
+        "genres",
+        "new_releases",
+        "specials",
+        "status",
+        "top_sellers",
+        "trailerslideshow"
+      ],
+      "item_count": 15,
+      "sample_url_origins": [
+        "https://shared.akamai.steamstatic.com",
+        "https://store.steampowered.com"
+      ]
+    },
+    {
+      "name": "steam-details",
+      "method": "GET",
+      "url": "https://store.steampowered.com/api/appdetails?appids=620&cc=us&l=english",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": "28432",
+      "observed_bytes": 28432,
+      "over_limit": false,
+      "sha256": "e4374d47718787a246422fe4deb2a352d58be6ed8dc69eaecf7ff312f087796a",
+      "json_type": "dict",
+      "top_level_keys": [
+        "620"
+      ],
+      "item_count": 1,
+      "sample_url_origins": [
+        "http://steamcommunity.com",
+        "http://www.thinkwithportals.com",
+        "https://shared.akamai.steamstatic.com",
+        "https://store.akamai.steamstatic.com",
+        "https://video.akamai.steamstatic.com",
+        "https://www.metacritic.com"
+      ]
+    },
+    {
+      "name": "morrenus-applist",
+      "method": "GET",
+      "url": "https://applist.morrenus.xyz/",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": null,
+      "observed_bytes": 26957752,
+      "over_limit": false,
+      "sha256": "043b3adee343a9d3a19e821948d8bc7d1c6214b7294a0f53ab6c6bd63e29dac9",
+      "json_type": "list",
+      "top_level_keys": null,
+      "item_count": 386479,
+      "sample_url_origins": []
+    },
+    {
+      "name": "steam-applist",
+      "method": "GET",
+      "url": "https://api.steampowered.com/ISteamApps/GetAppList/v2/",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 404,
+      "content_type": "text/html; charset=UTF-8",
+      "declared_bytes": "136",
+      "observed_bytes": 136,
+      "over_limit": false,
+      "sha256": "9efd8908e73ab8cb1b94e2a26808ffa87aabf0ae7b1afbdd8bcdde219cdedbc6",
+      "json_parse": "rejected"
+    },
+    {
+      "name": "steamcmd-info",
+      "method": "GET",
+      "url": "https://api.steamcmd.net/v1/info/620",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json",
+      "declared_bytes": "15713",
+      "observed_bytes": 15713,
+      "over_limit": false,
+      "sha256": "3245af43707304bdace05ac238306745752a82a4e7547bbbc4f256bd8990a274",
+      "json_type": "dict",
+      "top_level_keys": [
+        "data",
+        "status"
+      ],
+      "item_count": 2,
+      "sample_url_origins": [
+        "http://www.thinkwithportals.com",
+        "https://www.metacritic.com"
+      ]
+    },
+    {
+      "name": "lua-listings",
+      "method": "GET",
+      "url": "https://lua.tools/api/denuvo/listings",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json",
+      "declared_bytes": null,
+      "observed_bytes": 565341,
+      "over_limit": false,
+      "sha256": "042ddd842fa170bf98b16c55ac5fc6170a956a6067c7da22bd5ea2c08e9dcf2c",
+      "json_type": "dict",
+      "top_level_keys": [
+        "games",
+        "tags"
+      ],
+      "item_count": 2,
+      "sample_url_origins": [
+        "https://shared.akamai.steamstatic.com",
+        "https://shared.fastly.steamstatic.com"
+      ]
+    },
+    {
+      "name": "lua-fixes",
+      "method": "GET",
+      "url": "https://lua.tools/api/denuvo/fixes?appid=620",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json",
+      "declared_bytes": null,
+      "observed_bytes": 574,
+      "over_limit": false,
+      "sha256": "31d6213d1d3b9ad452c13f637eff22dad504f6615658ed2f2d27842cc55408c3",
+      "json_type": "dict",
+      "top_level_keys": [
+        "appid",
+        "fixes",
+        "header_image",
+        "name"
+      ],
+      "item_count": 4,
+      "sample_url_origins": [
+        "https://shared.akamai.steamstatic.com"
+      ]
+    },
+    {
+      "name": "hardware-list",
+      "method": "GET",
+      "url": "https://raw.githubusercontent.com/jsnli/steamappidlist/master/data/hardware_appid.json",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "text/plain; charset=utf-8",
+      "declared_bytes": "1933",
+      "observed_bytes": 1933,
+      "over_limit": false,
+      "sha256": "112e832af513af7d1428fd47fe6f2512e43bb082b5303ac4eac1a38cda76cdfc",
+      "json_type": "list",
+      "top_level_keys": null,
+      "item_count": 17,
+      "sample_url_origins": []
+    },
+    {
+      "name": "depot-release",
+      "method": "GET",
+      "url": "https://api.github.com/repos/mendy-tools/DepotDownloaderMod/releases/latest",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": "4319",
+      "observed_bytes": 4319,
+      "over_limit": false,
+      "sha256": "c79be1b9bdf6aec55224395ea90b6d1d75c99ad07bc969951def744eeda3dc4f",
+      "json_type": "dict",
+      "top_level_keys": [
+        "assets",
+        "assets_url",
+        "author",
+        "body",
+        "created_at",
+        "draft",
+        "html_url",
+        "id",
+        "immutable",
+        "name",
+        "node_id",
+        "prerelease",
+        "published_at",
+        "tag_name",
+        "tarball_url",
+        "target_commitish",
+        "updated_at",
+        "upload_url",
+        "url",
+        "zipball_url"
+      ],
+      "item_count": 20,
+      "sample_url_origins": [
+        "https://api.github.com",
+        "https://avatars.githubusercontent.com",
+        "https://github.com",
+        "https://uploads.github.com"
+      ]
+    },
+    {
+      "name": "plugin-release",
+      "method": "GET",
+      "url": "https://api.github.com/repos/madoiscool/LTSP/releases/latest",
+      "authentication": "none",
+      "redirects": "disabled",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "declared_bytes": "4691",
+      "observed_bytes": 4691,
+      "over_limit": false,
+      "sha256": "ea141d5c8db989e204aea97427602ae5ffa18e155c8f79df05c184712693eb08",
+      "json_type": "dict",
+      "top_level_keys": [
+        "assets",
+        "assets_url",
+        "author",
+        "body",
+        "created_at",
+        "draft",
+        "html_url",
+        "id",
+        "immutable",
+        "name",
+        "node_id",
+        "prerelease",
+        "published_at",
+        "tag_name",
+        "tarball_url",
+        "target_commitish",
+        "updated_at",
+        "upload_url",
+        "url",
+        "zipball_url"
+      ],
+      "item_count": 20,
+      "sample_url_origins": [
+        "https://api.github.com",
+        "https://avatars.githubusercontent.com",
+        "https://github.com",
+        "https://uploads.github.com"
+      ]
+    }
+  ]
+}

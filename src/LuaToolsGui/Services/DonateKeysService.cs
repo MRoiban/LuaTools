@@ -1,68 +1,16 @@
-﻿using System.IO;
-using System.Net.Http;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace LuaToolsGui.Services;
 
-/// <summary>
-/// Scans Steam's config/config.vdf for per-depot DecryptionKeys and donates any not yet sent to the
-/// community key pool. Ported from the LuaTools plugin's donate_keys.lua. Runs silently in the
-/// background on startup when the "Donate Keys" setting is on. Dedup is permanent (the backend accepts
-/// each depot only once per IP). Best-effort: never throws (fire-and-forget). Records sent appids only
-/// on HTTP 200, so failures retry next launch.
-/// </summary>
-public partial class DonateKeysService(SettingsService settings, SteamService steam, CacheService cache)
+/// <summary>Legacy compatibility surface. Key donation is permanently disabled in this fork.</summary>
+public partial class DonateKeysService
 {
-    private const string DonationUrl = AppConfig.ManifestBackendUrl + "/donatekeys/send";
-
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(15));
-
     [GeneratedRegex(@"^\d{1,10}$")]
     private static partial Regex AppIdRegex();
     [GeneratedRegex(@"^[a-zA-Z0-9]{64}$")]
     private static partial Regex KeyRegex();
 
-    /// <summary>Donate new decryption keys when enabled. Silent no-op on any failure / when off.</summary>
-    public async Task SendPendingKeysIfEnabledAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            if (!settings.DonateKeys) return;
-
-            string? root = steam.EffectivePath;
-            if (root is null) return;
-            string configPath = Path.Combine(root, "config", "config.vdf");
-            if (!File.Exists(configPath)) return;
-
-            var pairs = ExtractKeys(File.ReadAllText(configPath));
-            if (pairs.Count == 0) return;
-
-            // Dedup against everything we've ever donated: the backend accepts a depot only once per
-            // IP, so re-sending is wasted. Only genuinely-new keys (newly installed games) get sent.
-            var donated = new HashSet<string>(cache.GetDonatedAppIds());
-            var fresh = pairs.Where(p => !donated.Contains(p.appid)).ToList();
-            if (fresh.Count == 0) return;
-
-            string payload = string.Join(",", fresh.Select(p => $"{p.appid}:{p.key}"));
-            using var req = new HttpRequestMessage(HttpMethod.Post, DonationUrl)
-            {
-                Content = new StringContent(payload, Encoding.UTF8, "text/plain"),
-            };
-            req.Headers.TryAddWithoutValidation("User-Agent", AppConfig.DonateKeysUserAgent);
-
-            var res = await _http.SendAsync(req, ct);
-            if (res.StatusCode != System.Net.HttpStatusCode.OK) return; // don't record on failure → retry next launch
-
-            // Record the newly donated appids so we don't re-send them this window.
-            donated.UnionWith(fresh.Select(p => p.appid));
-            cache.SaveDonatedAppIds(donated);
-        }
-        catch
-        {
-            // Background task, never surface errors. Unsent keys retry on the next launch.
-        }
-    }
+    public Task SendPendingKeysIfEnabledAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     // ── VDF parsing (ported from the plugin's _parse_vdf_simple) ──────
 

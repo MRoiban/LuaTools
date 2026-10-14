@@ -1,102 +1,76 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 
 namespace LuaToolsGui.Services;
 
-/// <summary>
-/// Bulk appid → name lookup. Primary source is the Morrenus app list (a single static JSON,
-/// ~341k entries incl. delisted apps, no rate limit); falls back to Steam's GetAppList.
-/// Cached to disk and refreshed periodically. Used for game names; covers come from elsewhere.
-/// </summary>
+/// <summary>Bulk app names from Morrenus, with official Steam and bounded stale-cache fallback.</summary>
 public class SteamAppListCache
 {
     private const string MorrenusUrl = "https://applist.morrenus.xyz/";
     private const string SteamUrl = "https://api.steampowered.com/ISteamApps/GetAppList/v2/";
-
-    private static readonly string CacheFile =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "steam-applist.json");
-    private static readonly TimeSpan MaxAge = TimeSpan.FromDays(14);
-
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(60));
+    private const int MaximumEntries = 1000000;
+    private const int MaximumBytes = 64 * 1024 * 1024;
+    private readonly string _cacheFile;
+    private readonly HttpClient _http;
     private readonly ConcurrentDictionary<long, string> _names = new();
     private Task? _loadTask;
-
-    public string? GetName(long appid) => _names.TryGetValue(appid, out var n) ? n : null;
-
-    /// <summary>Ensure the name list is loaded (from disk, or downloaded once). Safe to call repeatedly.</summary>
+    public SteamAppListCache() : this(AppHttp.Create(TimeSpan.FromSeconds(60), responseBudget: HttpResponseBudget.LargeList),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "steam-applist.json")) { }
+    internal SteamAppListCache(HttpMessageHandler handler, string cacheFile) : this(AppHttp.CreateForTesting(TimeSpan.FromSeconds(60), handler, HttpResponseBudget.LargeList), cacheFile) { }
+    private SteamAppListCache(HttpClient http, string cacheFile) { _http = http; _cacheFile = cacheFile; }
+    public string? GetName(long appid) => _names.TryGetValue(appid, out var name) ? name : null;
     public Task EnsureLoadedAsync() => _loadTask ??= LoadAsync();
-
+    private bool ReadCache()
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(CatalogDataPolicy.Read(_cacheFile, MaximumBytes));
+            CatalogDataPolicy.Validate(doc.RootElement, MaximumEntries, 4096);
+            var names = new Dictionary<long, string>();
+            foreach (var entry in doc.RootElement.EnumerateObject())
+            {
+                if (!long.TryParse(entry.Name, out var id) || !CatalogDataPolicy.IsId(id) || entry.Value.ValueKind != JsonValueKind.String) return false;
+                var name = entry.Value.GetString()!;
+                if (!string.IsNullOrWhiteSpace(name)) names.Add(id, name);
+            }
+            if (names.Count == 0) return false;
+            foreach (var entry in names) _names[entry.Key] = entry.Value;
+            return true;
+        }
+        catch { return false; }
+    }
     private async Task LoadAsync()
     {
-        // Fresh disk cache → use it.
-        try
+        if (File.Exists(_cacheFile) && DateTime.UtcNow - File.GetLastWriteTimeUtc(_cacheFile) < TimeSpan.FromDays(14) && ReadCache()) return;
+        if (await DownloadAsync(MorrenusUrl, true) || await DownloadAsync(SteamUrl, false))
         {
-            if (File.Exists(CacheFile) && DateTime.UtcNow - File.GetLastWriteTimeUtc(CacheFile) < MaxAge)
-            {
-                var map = JsonSerializer.Deserialize<Dictionary<long, string>>(await File.ReadAllTextAsync(CacheFile));
-                if (map is { Count: > 0 })
-                {
-                    foreach (var (k, v) in map) _names[k] = v;
-                    return;
-                }
-            }
+            try { await CatalogDataPolicy.WriteAsync(_cacheFile, JsonSerializer.SerializeToUtf8Bytes(_names)); } catch { }
         }
-        catch { /* fall through to download */ }
-
-        // Download fresh: Morrenus first (reliable, includes delisted), then Steam as a fallback.
-        if (await TryDownloadAsync(MorrenusUrl, flatArray: true) ||
-            await TryDownloadAsync(SteamUrl, flatArray: false))
-        {
-            await SaveAsync();
-            return;
-        }
-
-        // Both sources failed: fall back to a stale cache if we have one.
-        try
-        {
-            if (_names.IsEmpty && File.Exists(CacheFile))
-            {
-                var map = JsonSerializer.Deserialize<Dictionary<long, string>>(await File.ReadAllTextAsync(CacheFile));
-                if (map is not null) foreach (var (k, v) in map) _names[k] = v;
-            }
-        }
-        catch { /* give up. Names fall back to lua-parsed / appid */ }
+        else ReadCache();
     }
-
-    /// <summary>Download one source. Morrenus is a flat [{appid,name}]; Steam nests under applist.apps.</summary>
-    private async Task<bool> TryDownloadAsync(string url, bool flatArray)
+    private async Task<bool> DownloadAsync(string url, bool flat)
     {
         try
         {
-            await using var stream = await _http.GetStreamAsync(url);
-            using var doc = await JsonDocument.ParseAsync(stream);
-            var apps = flatArray
-                ? doc.RootElement
-                : doc.RootElement.GetProperty("applist").GetProperty("apps");
-
+            using var response = await _http.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync());
+            CatalogDataPolicy.Validate(doc.RootElement, MaximumEntries, 4096);
+            var apps = flat ? doc.RootElement : doc.RootElement.GetProperty("applist").GetProperty("apps");
+            var names = new Dictionary<long, string>();
             foreach (var app in apps.EnumerateArray())
             {
-                long id = app.GetProperty("appid").GetInt64();
-                string? name = app.GetProperty("name").GetString();
-                if (!string.IsNullOrWhiteSpace(name)) _names[id] = name;
+                var id = app.GetProperty("appid").GetInt64();
+                var name = app.GetProperty("name").GetString();
+                if (!CatalogDataPolicy.IsId(id) || name is null) return false;
+                if (!string.IsNullOrWhiteSpace(name)) names[id] = name;
             }
-            return !_names.IsEmpty;
+            if (names.Count == 0) return false;
+            foreach (var entry in names) _names[entry.Key] = entry.Value;
+            return true;
         }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private async Task SaveAsync()
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(CacheFile)!);
-            await File.WriteAllTextAsync(CacheFile, JsonSerializer.Serialize(_names));
-        }
-        catch { /* best effort */ }
+        catch { return false; }
     }
 }

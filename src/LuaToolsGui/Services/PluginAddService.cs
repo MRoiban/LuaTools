@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services.Downloads;
@@ -140,7 +140,9 @@ public class PluginAddService(
                 // Hubcap is out of daily quota → fall through and let a lua.tools source take over.
             }
 
-            var statuses = await api.CheckSourcesAsync(appId.ToString());
+            Dictionary<string, string> statuses;
+            try { statuses = await api.CheckSourcesAsync(appId.ToString()); }
+            catch (ApiException) { statuses = []; }
 
             // Synthesize the Hubcap/Sadie row from the availability already checked above (or "unknown"
             // when no key is set, so it shows locked with the "needs a key" hint).

@@ -659,4 +659,13 @@ Cancel - keep downloading</value></data>
   <data name="Depot_Err_NoKeyFor" xml:space="preserve"><value>No decryption key in Lua for depot {0}.</value></data>
   <data name="Builds_Select_SharedHint" xml:space="preserve"><value>Shared runtime — usually already installed. Tick to download anyway.</value></data>
   <data name="Downloads_ClearHistory_Confirm" xml:space="preserve"><value>Remove all {0} entries from the download history? Downloaded files are not affected.</value></data>
+  <data name="Settings_Section_ExecutableWorkflows" xml:space="preserve"><value>Executable workflows</value></data>
+  <data name="Settings_ExecutableGameFixes" xml:space="preserve"><value>Executable game fixes</value></data>
+  <data name="Settings_BetterSteamTools" xml:space="preserve"><value>BetterSteamTools</value></data>
+  <data name="Settings_OpenSteamTools" xml:space="preserve"><value>OpenSteamTools</value></data>
+  <data name="Settings_SteamPlugin" xml:space="preserve"><value>Steam plugin</value></data>
+  <data name="Settings_DepotDownloader" xml:space="preserve"><value>DepotDownloaderMod</value></data>
+  <data name="Settings_Steamless" xml:space="preserve"><value>Steamless</value></data>
+  <data name="Settings_SteamAutoCrack" xml:space="preserve"><value>SteamAutoCrack</value></data>
+  <data name="Settings_CloudRedirect" xml:space="preserve"><value>CloudRedirect</value></data>
 </root>

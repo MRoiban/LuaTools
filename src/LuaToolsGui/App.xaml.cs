@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Threading;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services;
@@ -12,10 +12,30 @@ namespace LuaToolsGui;
 public partial class App : Application
 {
     private readonly IHost _host;
+    private readonly SemaphoreSlim _pluginRuntimeGate = new(1, 1);
 
-    // True when the app was cold-started solely to run a silent install AND MinimizeToTray is off,
-    // which means we auto-exit after the balloon so we don't leave a ghost tray icon behind.
-    private bool _exitAfterSilentInstall;
+    private async Task SetPluginRuntimeAsync(bool activate)
+    {
+        await _pluginRuntimeGate.WaitAsync();
+        try
+        {
+            var settings = _host.Services.GetRequiredService<SettingsService>();
+            var server = _host.Services.GetRequiredService<HttpServerService>();
+            var injector = _host.Services.GetRequiredService<CefInjectorService>();
+            if (activate && settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"))
+            {
+                await server.StartAsync(CancellationToken.None);
+                try { await injector.StartAsync(CancellationToken.None); }
+                catch { await server.StopAsync(CancellationToken.None); throw; }
+            }
+            else
+            {
+                await injector.StopAsync(CancellationToken.None);
+                await server.StopAsync(CancellationToken.None);
+            }
+        }
+        finally { _pluginRuntimeGate.Release(); }
+    }
 
     public App()
     {
@@ -23,6 +43,7 @@ public partial class App : Application
             .ConfigureServices(services =>
             {
                 services.AddSingleton<SettingsService>();
+                services.AddSingleton<UpdateService>();
                 services.AddSingleton<CacheService>();
                 services.AddSingleton<SteamService>();
                 services.AddSingleton<SteamAppListCache>();
@@ -35,8 +56,6 @@ public partial class App : Application
                 services.AddSingleton<Services.AppInfo.LaunchOptionsService>();
                 services.AddSingleton<LuaInstaller>();
                 services.AddSingleton<SteamLibraryService>();
-                services.AddSingleton<DonateKeysService>();
-                services.AddSingleton<AnalyticsService>();
                 services.AddSingleton<GithubProxy>();
                 services.AddSingleton<HardwareAppIdService>();
                 services.AddSingleton<SteamlessService>();
@@ -51,7 +70,6 @@ public partial class App : Application
                 services.AddSingleton<AuthService>();
                 services.AddSingleton<LuaToolsApiClient>();
                 services.AddSingleton<HubcapService>();
-                services.AddSingleton<UpdateService>();
                 // Central download queue. Singleton + hosted service (same pattern as HttpServerService
                 // below): the hosted lifetime runs the scheduler pump, and view models resolve the same
                 // instance to enqueue and observe.
@@ -61,11 +79,9 @@ public partial class App : Application
                 // Hook loader infrastructure
                 services.AddSingleton<PluginAddService>();
                 services.AddSingleton<HttpServerService>();
-                services.AddHostedService(sp => sp.GetRequiredService<HttpServerService>());
                 // Also resolvable as a plain singleton (not just IHostedService) so PluginInstallerService
                 // can call ReloadPluginFilesAsync() after install/uninstall. Same pattern as HttpServerService.
                 services.AddSingleton<CefInjectorService>();
-                services.AddHostedService(sp => sp.GetRequiredService<CefInjectorService>());
                 services.AddSingleton<DownloadViewModel>();
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<ManageViewModel>();
@@ -92,12 +108,6 @@ public partial class App : Application
             })
             .Build();
     }
-
-    private UpdateService Updates => _host.Services.GetRequiredService<UpdateService>();
-
-    // Guards RunUpdateFlowAsync so overlapping triggers (startup + the re-poke a DLL/Steam restart causes)
-    // never run it concurrently. A second caller drops out immediately.
-    private readonly System.Threading.SemaphoreSlim _updateFlowGate = new(1, 1);
 
     /// <summary>
     /// Warn when Steam has overwritten launch options we'd applied, and offer to put them back.
@@ -166,60 +176,8 @@ public partial class App : Application
                 string.Format(LuaToolsGui.Resources.Strings.Launch_ApplyFailed, result.Error), error: true);
     }
 
-    /// <summary>Set by OnStartup to <see cref="RunUpdateFlowAsync"/> so non-UI callers (e.g. the
-    /// /check-updates HTTP handler) can run the exact same update flow instead of a divergent one.</summary>
-    internal static Func<Task>? RunUpdateFlow;
-
-    /// <summary>The Steam-open update flow (fully silent): update the APP first, unconditionally, before
-    /// ever touching the plugin. Then, once the running app is guaranteed current, check/apply a plugin
-    /// update against it. Called on a loader (--tray-locked) launch and on the Steam-open re-check poke;
-    /// safe to call repeatedly.
-    /// <para>
-    /// App-before-plugin is load-bearing, not just tidy ordering: the app and plugin are NOT independently
-    /// safe to update out of order whenever a plugin release changes something the app's own compiled code
-    /// depends on (e.g. <see cref="Services.CefInjectorService"/>'s CDP port is a compile-time constant.
-    /// An old app build talking to a freshly-updated plugin that moved the port simply can't connect, and
-    /// won't self-heal until the app itself happens to update, which is not guaranteed to land in the same
-    /// pass: the app and plugin ship from separate repos on separate cadences, so one can succeed while the
-    /// other fails/lags). Restarting into the latest app FIRST, before it goes anywhere near a plugin
-    /// update, means whatever the plugin changes is always applied by a process that already understands
-    /// it.
-    /// </para></summary>
-    private async Task RunUpdateFlowAsync()
-    {
-        if (!_updateFlowGate.Wait(0)) return; // another run already in progress
-        try
-        {
-            // 1) Stage + immediately apply any app update, before touching the plugin at all.
-            //    ApplyAndRestart() terminates this process; the relaunched instance (launched with
-            //    --tray-locked) re-enters this same flow via OnStartup once it's already current, so this
-            //    run's job ends here. There is nothing safe left for THIS process to do.
-            try { await Updates.CheckAndStageAsync(); } catch { /* offline / not installed */ }
-            if (Updates.HasStagedUpdate)
-            {
-                Dispatcher.Invoke(() => Updates.ApplyAndRestart(new[] { "--minimized", "--tray-locked" }));
-                return;
-            }
-
-            // 2) No app update pending: safe to check/apply a plugin update against this (already-current) app.
-            try
-            {
-                var installer = _host.Services.GetRequiredService<PluginInstallerService>();
-                var st = await installer.GetStatusAsync(force: true);
-                if (st.UpdateAvailable)
-                {
-                    if (!st.DllMatches)
-                    {
-                        var t = _host.Services.GetRequiredService<ToastService>();
-                        Dispatcher.Invoke(() => t.Show("LuaTools", "Updating plugin. Steam will restart."));
-                    }
-                    await installer.InstallAsync(progress: null);
-                }
-            }
-            catch { /* offline / install error. Retry next Steam-open */ }
-        }
-        finally { _updateFlowGate.Release(); }
-    }
+    // Retained for legacy callers; no update flow is registered in this fork.
+    internal static Func<Task>? RunUpdateFlow => null;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -230,40 +188,17 @@ public partial class App : Application
         // it first means the very first call of the session already honours the user's choice.
         var dnsSettings = _host.Services.GetRequiredService<SettingsService>();
         AppHttp.ModeProvider = () => dnsSettings.DnsMode;
-
-        // Legacy cleanup: older builds staged downloads in ~/Downloads/LuaTools (they now stage in
-        // %TEMP% and self-delete). Remove any leftovers from that user-visible folder, best-effort.
-        // Also sweep the current %TEMP% staging folder: a crash mid-download, or an overwrite confirm
-        // the user never answered, leaves a staged zip nobody will ever delete.
-        _ = System.Threading.Tasks.Task.Run(() =>
+        // Only an explicit successful plugin installation activates its local runtime.
+        _host.Services.GetRequiredService<PluginInstallerService>().ActivatePlugin =
+            () => SetPluginRuntimeAsync(activate: true);
+        dnsSettings.ExecutableWorkflowChanged += async (component, enabled) =>
         {
-            try
-            {
-                string legacy = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "LuaTools");
-                if (System.IO.Directory.Exists(legacy)) System.IO.Directory.Delete(legacy, recursive: true);
-            }
-            catch { /* best effort, never block startup on cleanup */ }
-
-            Services.Downloads.HttpFileDownloader.SweepStale();
-        });
+            if (component != "LuaToolsPlugin" || enabled) return;
+            try { await SetPluginRuntimeAsync(activate: false); }
+            catch { /* Each request and injection also rechecks the disabled setting. */ }
+        };
 
         await _host.StartAsync();
-
-        // Rewrite any pre-3-mode SelectedMode BEFORE anything reads it. UnlockerService.SelectedMode
-        // would otherwise parse a legacy value to null and quietly present an unconfigured app. Users
-        // whose mode was retired outright (SteamTools, the CloudRedirect fix) have no mode now, so
-        // onboarding is forced back open: OnboardingComplete is a permanent flag that every existing
-        // user already has set, and clearing SelectedMode alone would leave them with no mode AND no
-        // overlay explaining why.
-        if (ModeMigration.Apply(_host.Services.GetRequiredService<SettingsService>()))
-            _host.Services.GetRequiredService<CacheService>().OnboardingComplete = false;
-
-        // Point OST/BST at config/stplug-in so lua writes hot-reload. Must run AFTER the migration
-        // above, which is what makes SelectedMode parse. The app no longer tells anyone to restart
-        // Steam for a lua change, so this registration is what makes that promise true — and it
-        // previously only ever ran during a mode install through this app.
-        _host.Services.GetRequiredService<UnlockerService>().EnsureLuaPathRegistered();
 
         var main = _host.Services.GetRequiredService<MainViewModel>();
         var settingsVm = _host.Services.GetRequiredService<SettingsViewModel>();
@@ -284,34 +219,9 @@ public partial class App : Application
                 Program.ShowWindowSignal,
                 (_, _) => Dispatcher.Invoke(() =>
                 {
-                    // A silent install relaunch stays headless: don't surface the window for it.
-                    string? pending = ProtocolService.TryReadPending();
-                    bool silent = pending is not null && ProtocolService.Parse(pending).Silent;
-                    if (!silent)
-                        window.RestoreFromTray();
-                    if (pending is not null)
-                        HandleProtocolUrl(pending);
+                    window.RestoreFromTray();
                 }),
                 null, System.Threading.Timeout.Infinite, executeOnlyOnce: false);
-
-        // A --tray-locked relaunch (the loader) signals this → enable close-to-tray for the session even if
-        // this instance was started without the flag. Idempotent; keeps firing for every relaunch.
-        if (Program.EnableTrayLockSignal is not null)
-            System.Threading.ThreadPool.RegisterWaitForSingleObject(
-                Program.EnableTrayLockSignal,
-                (_, _) => Program.SessionTrayLock = true,
-                null, System.Threading.Timeout.Infinite, executeOnlyOnce: false);
-
-        // A --tray-locked relaunch (the loader on Steam-open) signals this → re-run the update flow so an
-        // already-running app still updates when the user opens Steam. Guarded internally against overlap.
-        if (Program.RecheckUpdatesSignal is not null)
-            System.Threading.ThreadPool.RegisterWaitForSingleObject(
-                Program.RecheckUpdatesSignal,
-                (_, _) => _ = RunUpdateFlowAsync(),
-                null, System.Threading.Timeout.Infinite, executeOnlyOnce: false);
-
-        // Expose the same flow to non-UI callers (the /check-updates HTTP handler).
-        RunUpdateFlow = RunUpdateFlowAsync;
 
         // Settings' own "Sign in with Discord" button → browser OAuth (unchanged).
         settingsVm.RequestSignIn = () => main.SignInCommand.ExecuteAsync(null);
@@ -331,6 +241,12 @@ public partial class App : Application
         var toast = _host.Services.GetRequiredService<ToastService>();
         toast.Attach(window.RootSnackbar); // wire the presenter before anything can raise a toast
 
+        var updates = _host.Services.GetRequiredService<UpdateService>();
+        updates.UpdateReady += () => Dispatcher.Invoke(() => toast.ShowAction(
+            "LuaTools", LuaToolsGui.Resources.Strings.Plugin_Badge_UpdateAvailable, LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
+            () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } }));
+        _ = updates.CheckAndStageAsync();
+
         // Language changed → persistent toast offering an immediate relaunch.
         settingsVm.RequestRestartPrompt = () => Dispatcher.Invoke(() =>
             toast.ShowAction(
@@ -339,8 +255,6 @@ public partial class App : Application
                 LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
                 () => settingsVm.RequestRestart?.Invoke()));
 
-        // App updates now apply silently via RunUpdateFlowAsync (restart-on-Steam-open, unconditionally
-        // and before any plugin update), so no "Restart" prompt toast.
         var download = _host.Services.GetRequiredService<DownloadViewModel>();
 
         var manage = _host.Services.GetRequiredService<ManageViewModel>();
@@ -426,80 +340,17 @@ public partial class App : Application
                 await home.RefreshLibraryAsync();
         });
 
-        // Handle a protocol URL from the command line (first launch) or from a temp file left by a
-        // second instance that exited before the signal listener was wired up.
-        string? url = Program.StartupUrl ?? ProtocolService.TryReadPending();
+        // Open only the local catalog UI. No protocol installs, onboarding installers,
+        // key donation, analytics, upstream updates or automatic Steam modifications run here.
+        window.Show();
 
-        // A silent install launch (luatools://install/silent/<id>) runs headless: stay in the tray and
-        // never surface the window. The window's Loaded handler (which restores auth) won't fire when we
-        // skip Show(), so restore the session explicitly before the install runs.
-        bool silentStartup = (url is not null && ProtocolService.Parse(url).Silent) || Program.StartMinimized;
-
-        // Auto-exit after a silent install only when this was a COLD launch for it (StartupUrl came on the
-        // command line, not from an already-running second instance) AND the user doesn't keep a tray app
-        // around. Otherwise the app was already living somewhere and must stay.
-        _exitAfterSilentInstall = silentStartup
-            && Program.StartupUrl is not null
-            && !settingsVm.MinimizeToTray;
-
-        if (silentStartup)
-        {
-            window.StartSilent();
-            try { await main.InitializeAsync(); } catch { /* offline → install proceeds as guest */ }
-        }
-        else
-        {
-            window.Show();
-
-            // First-run onboarding: show the welcome overlay on a fresh install. Skip it (and mark done)
-            // when the user is already set up (a managed mode selected AND the plugin installed), so
-            // existing users / dev machines aren't nagged. Marking done here is permanent, so switching
-            // mode later never re-triggers onboarding (only ModeMigration ever clears it again).
-            var cache = _host.Services.GetRequiredService<CacheService>();
-            if (!cache.OnboardingComplete)
-            {
-                var unlocker = _host.Services.GetRequiredService<UnlockerService>();
-                var installer = _host.Services.GetRequiredService<PluginInstallerService>();
-                // Custom deliberately doesn't count: a first-run user can't meaningfully choose "I'll
-                // manage it myself" before they've been shown what the options are.
-                bool configured =
-                    unlocker.SelectedMode is (UnlockerMode.Ost or UnlockerMode.Bst)
-                    && installer.IsInstalledLocally();
-                if (configured) cache.OnboardingComplete = true;
-                else main.Onboarding.IsOpen = true;
-            }
-        }
-
-        if (url is not null)
-            HandleProtocolUrl(url);
-
-        // Background, non-blocking Steam-open update flow (app + plugin), but ONLY in the loader context
-        // (--tray-locked). A manual / protocol / silent-install launch skips it, so the app never
-        // auto-updates or restarts mid-manual-use. It only happens when Steam launches us. (Velopack only
-        // updates to a STRICTLY HIGHER version, so every release must bump --packVersion.)
-        if (Program.SessionTrayLock)
-            _ = RunUpdateFlowAsync();
-
-        // Background, non-blocking key donation (runs only when the setting is on; silent + deduped).
-        _ = _host.Services.GetRequiredService<DonateKeysService>().SendPendingKeysIfEnabledAsync();
-
-        // Anonymous app-launch ping (Umami). Fire-and-forget; never blocks.
-        _ = _host.Services.GetRequiredService<AnalyticsService>().TrackAppLaunchAsync();
-
-        // Warm the hardware-appid blacklist (refreshes from GitHub if the cache is stale). Fire-and-forget.
+        // Refresh bounded metadata through the validated catalog service.
         _ = _host.Services.GetRequiredService<HardwareAppIdService>().EnsureFreshAsync();
-
-        // Rescue manifests this app used to write into config\depotcache, which Steam never reads. Silent,
-        // idempotent, and costs nothing once the folder is gone. See DepotCacheMigrationService.
-        _ = _host.Services.GetRequiredService<DepotCacheMigrationService>().RunAsync();
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
-        // If an update was downloaded but not yet applied, stage it for after exit.
-        if (Updates.HasStagedUpdate)
-            Updates.ApplyOnExit();
-
+        await SetPluginRuntimeAsync(activate: false);
         await _host.StopAsync();
         _host.Dispose();
         base.OnExit(e);
@@ -550,26 +401,8 @@ public partial class App : Application
                 download.SeedSearch(appId.Value);
                 break;
             case "install":
-                if (silent)
-                {
-                    // Headless: don't navigate or surface; install in the background, then a tray balloon.
-                    _ = download.ProtocolInstall(appId.Value,
-                        (msg, error) => Dispatcher.Invoke(() =>
-                        {
-                            window.ShowInstallNotification(msg, error);
-                            // Cold launch + no tray app wanted → exit once the balloon has had time to show.
-                            // ProtocolInstall already awaited this item's completion, but the user (or the
-                            // store plugin) may have queued more; exiting now would cancel them mid-flight.
-                            var queue = _host.Services.GetRequiredService<Services.Downloads.DownloadQueue>();
-                            if (_exitAfterSilentInstall && queue.ActiveCount == 0)
-                                _ = Task.Delay(6000).ContinueWith(_ => Dispatcher.Invoke(Shutdown));
-                        }));
-                }
-                else
-                {
-                    window.NavigateToAdd();
-                    _ = download.ProtocolInstall(appId.Value);
-                }
+                window.NavigateToAdd();
+                download.SeedSearch(appId.Value);
                 break;
             case "manage":
                 window.NavigateToManage();

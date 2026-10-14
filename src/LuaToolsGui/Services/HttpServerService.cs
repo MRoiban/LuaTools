@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
@@ -21,8 +21,11 @@ public class HttpServerService : IHostedService
     private readonly CacheService _cache;
     private readonly IServiceProvider _services;
     private readonly ILogger<HttpServerService> _log;
+    private readonly SettingsService _settings;
+    private readonly object _lifecycle = new();
     private HttpListener? _listener;
     private CancellationTokenSource? _appCts;
+    private Task? _listenTask;
 
     // appid -> the queue item for its manifest download. Retained after completion so a late poll from
     // the store-page popup still sees "done" (the previous DownloadState dictionary behaved the same way).
@@ -30,18 +33,15 @@ public class HttpServerService : IHostedService
     private List<ApiSource> _apiSources = new();
     private bool _apiSourcesLoaded = false;
 
-    private static readonly string TempDir = Path.Combine(Path.GetTempPath(), "LuaTools", "downloads");
-    private const string ManifestBackendUrl = "http://167.235.229.108/check_apis";
-
     public HttpServerService(LuaInstaller installer, SteamService steam, CacheService cache,
-        IServiceProvider services, ILogger<HttpServerService> logger)
+        IServiceProvider services, ILogger<HttpServerService> logger, SettingsService settings)
     {
         _installer = installer;
         _steam = steam;
         _cache = cache;
         _services = services;
         _log = logger;
-        Directory.CreateDirectory(TempDir);
+        _settings = settings;
     }
 
     private void LoadApiSources()
@@ -72,7 +72,15 @@ public class HttpServerService : IHostedService
                             var successCode = entry.TryGetProperty("success_code", out var sc) ? sc.GetInt32() : 200;
                             var enabled = !entry.TryGetProperty("enabled", out var en) || en.GetBoolean();
                             if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(url) && enabled)
-                                _apiSources.Add(new ApiSource(name, url, successCode));
+                            {
+                                try
+                                {
+                                    new OutboundNetworkPolicy().Validate(new Uri(url.Replace("<appid>", "1")));
+                                    _apiSources.Add(new ApiSource(name, url, successCode));
+                                }
+                                catch (HttpRequestException) { }
+                                catch (UriFormatException) { }
+                            }
                         }
                     }
                     _log.LogInformation("Loaded {Count} API sources from api.json", _apiSources.Count);
@@ -84,101 +92,115 @@ public class HttpServerService : IHostedService
                 }
             }
         }
-        _log.LogWarning("api.json not found, using fallback sources");
-        _apiSources = new()
-        {
-            new("Ryuu", "http://167.235.229.108/<appid>", 200),
-            new("Sushi", "https://raw.githubusercontent.com/sushi-dev55-alt/sushitools-games-repo-alt/refs/heads/main/<appid>.zip", 200),
-        };
+        _log.LogWarning("api.json not found; source catalogue unavailable");
+        _apiSources = new();
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _appCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _listener = new HttpListener();
-        _listener.Prefixes.Add("http://127.0.0.1:6767/");
-        try { _listener.Start(); }
-        catch (HttpListenerException)
+        lock (_lifecycle)
         {
-            _log.LogWarning("HttpListener could not start on 127.0.0.1:6767, attempting netsh reservation");
+            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin") || cancellationToken.IsCancellationRequested
+                || _listener?.IsListening == true) return Task.CompletedTask;
+            _appCts?.Cancel();
+            _appCts?.Dispose();
+            _appCts = null;
+            _listener?.Close();
+            _listener = null;
+            var listener = new HttpListener();
+            listener.Prefixes.Add($"http://127.0.0.1:{LocalPluginBridgePolicy.Port}/");
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo("netsh", "http add urlacl url=http://127.0.0.1:6767/ user=Everyone")
-                {
-                    Verb = "runas",
-                    UseShellExecute = true,
-                    CreateNoWindow = true,
-                };
-                System.Diagnostics.Process.Start(psi)?.WaitForExit(3000);
-                _listener.Start();
+                listener.Start();
             }
             catch (Exception ex)
             {
+                listener.Close();
                 _log.LogError(ex, "Failed to start HTTP server on :6767");
-                return Task.CompletedTask;
+                throw;
             }
+            _appCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _listener = listener;
+            _listenTask = ListenLoop(listener, _appCts.Token);
         }
-
         _log.LogInformation("HTTP server listening on http://127.0.0.1:6767");
-        _ = Task.Run(() => ListenLoop(_appCts.Token), _appCts.Token);
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _appCts?.Cancel();
-        try { _listener?.Stop(); } catch { }
-        return Task.CompletedTask;
+        Task? loop;
+        CancellationTokenSource? stopped;
+        lock (_lifecycle)
+        {
+            stopped = _appCts;
+            _appCts = null;
+            loop = _listenTask;
+            _listenTask = null;
+            stopped?.Cancel();
+            try { _listener?.Close(); } catch { }
+            _listener = null;
+        }
+        try { if (loop is not null) await loop.WaitAsync(cancellationToken); }
+        catch (OperationCanceledException) { }
+        finally { stopped?.Dispose(); }
     }
 
-    private async Task ListenLoop(CancellationToken ct)
+    private async Task ListenLoop(HttpListener listener, CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested && _listener?.IsListening == true)
+        while (!ct.IsCancellationRequested && listener.IsListening)
         {
             try
             {
-                var ctx = await _listener.GetContextAsync().WaitAsync(ct);
-                _ = Task.Run(() => HandleRequest(ctx), ct);
+                var ctx = await listener.GetContextAsync().WaitAsync(ct);
+                _ = HandleRequest(ctx, ct);
             }
             catch (OperationCanceledException) { break; }
             catch (HttpListenerException) { break; }
+            catch (ObjectDisposedException) { break; }
             catch { }
         }
     }
 
-    private async Task HandleRequest(HttpListenerContext ctx)
+    private async Task HandleRequest(HttpListenerContext ctx, CancellationToken ct)
     {
         var req = ctx.Request;
         var resp = ctx.Response;
 
-        SetCors(resp);
         resp.ContentType = "application/json; charset=utf-8";
 
         try
         {
+            if (!LocalPluginBridgePolicy.IsAuthorized(_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"),
+                req.Url, req.Headers["Host"], req.RemoteEndPoint?.Address, req.IsLocal,
+                req.Headers["Origin"], req.Headers[LocalPluginBridgePolicy.TokenHeader]))
+            {
+                resp.StatusCode = 403;
+                return;
+            }
+            if (req.HttpMethod is not ("GET" or "POST")) { resp.StatusCode = 405; return; }
+            string requestBody = await LocalPluginBridgePolicy.ReadBodyAsync(req.InputStream, req.ContentLength64, ct);
+            ct.ThrowIfCancellationRequested();
+            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")) { resp.StatusCode = 403; return; }
             string? path = req.Url?.AbsolutePath.TrimEnd('/');
             // Log everything except the noisy status poll.
             if (path is not null && !path.StartsWith("/add-status/") && !path.StartsWith("/has/"))
                 PluginLog.Log($"HTTP {req.HttpMethod} {path}");
             (int status, string body) = path switch
             {
-                // Answer CORS preflight FIRST. Otherwise it matches a POST route (the
-                // matchers ignore method) and returns non-2xx, so the browser blocks the
-                // real request (this is why JSON POSTs like /add-source did nothing).
-                _ when req.HttpMethod == "OPTIONS" => (204, ""),
-                var p when MatchGet(p, "/has/{appid}", out var id) => await HandleHas(long.Parse(id)),
+                var p when req.HttpMethod == "GET" && MatchGet(p, "/has/{appid}", out var id) => await HandleHas(long.Parse(id)),
                 // Steam-plugin headless add: reflects the app's real DownloadViewModel.
-                var p when MatchPost(p, "/add/{appid}", out var id) => await HandleAdd(long.Parse(id), req),
-                var p when MatchGet(p, "/add-status/{appid}", out var id) => HandleAddStatus(long.Parse(id)),
-                var p when MatchPost(p, "/add-source/{appid}", out var id) => await HandleAddSource(long.Parse(id), req),
-                var p when MatchPost(p, "/check-sources/{appid}", out var id) => await HandleCheckSources(long.Parse(id)),
-                var p when MatchPost(p, "/download/{appid}", out var id) => await HandleDownload(long.Parse(id), req),
-                var p when MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
-                var p when MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
-                var p when MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
-                var p when MatchPost(p, "/open/fix/{appid}", out var id) => HandleOpenFix(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/add/{appid}", out var id) => HandleAdd(long.Parse(id), requestBody),
+                var p when req.HttpMethod == "GET" && MatchGet(p, "/add-status/{appid}", out var id) => HandleAddStatus(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/add-source/{appid}", out var id) => HandleAddSource(long.Parse(id), requestBody),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/check-sources/{appid}", out var id) => await HandleCheckSources(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
+                var p when req.HttpMethod == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/open/fix/{appid}", out var id) => HandleOpenFix(long.Parse(id)),
                 "/open/settings" when req.HttpMethod == "POST" => HandleOpenSettings(),
-                "/open-url" when req.HttpMethod == "POST" => await HandleOpenUrl(req),
+                "/open-url" when req.HttpMethod == "POST" => HandleOpenUrl(requestBody),
                 "/restart-steam" when req.HttpMethod == "POST" => HandleRestartSteam(),
                 "/check-updates" when req.HttpMethod == "POST" => await HandleCheckUpdates(),
                 "/loaded-apps" when req.HttpMethod == "GET" => await HandleReadLoadedApps(),
@@ -192,15 +214,18 @@ public class HttpServerService : IHostedService
             var bytes = Encoding.UTF8.GetBytes(body);
             await resp.OutputStream.WriteAsync(bytes);
         }
-        catch (Exception ex)
+        catch (InvalidDataException) { resp.StatusCode = 413; }
+        catch (DecoderFallbackException) { resp.StatusCode = 400; }
+        catch (OperationCanceledException) { resp.StatusCode = 408; }
+        catch (Exception)
         {
             resp.StatusCode = 500;
-            var body = Encoding.UTF8.GetBytes(JsonErr(ex.Message));
-            await resp.OutputStream.WriteAsync(body);
+            var body = Encoding.UTF8.GetBytes(JsonErr("Bridge request failed."));
+            try { await resp.OutputStream.WriteAsync(body, ct); } catch { }
         }
         finally
         {
-            resp.Close();
+            try { resp.Close(); } catch { }
         }
     }
 
@@ -216,7 +241,7 @@ public class HttpServerService : IHostedService
             if (parts[i].StartsWith("{")) { id = pathParts[i]; continue; }
             if (!string.Equals(parts[i], pathParts[i], StringComparison.OrdinalIgnoreCase)) return false;
         }
-        return !string.IsNullOrEmpty(id);
+        return ApiContract.IsAppId(id);
     }
 
     private static bool MatchPost(string? path, string pattern, out string id) =>
@@ -234,15 +259,14 @@ public class HttpServerService : IHostedService
 
     /// <summary>Trigger the fully headless add (PluginAddService. Dynamic sources, Hubcap, key-gating,
     /// usage, FastFetch auto-download). Uses services only; the app window is never touched.</summary>
-    private async Task<(int, string)> HandleAdd(long appId, HttpListenerRequest req)
+    private (int, string) HandleAdd(long appId, string body)
     {
         // The store page passes the game name it already displays, so PluginAddService can skip a
         // lua.tools /details lookup. Best-effort: a missing/blank name just falls back to a fetch.
         string? name = null;
         try
         {
-            using var reader = new StreamReader(req.InputStream, req.ContentEncoding);
-            var json = JsonSerializer.Deserialize<JsonElement>(await reader.ReadToEndAsync());
+            var json = JsonSerializer.Deserialize<JsonElement>(body);
             if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("name", out var n))
                 name = n.GetString();
         }
@@ -291,11 +315,8 @@ public class HttpServerService : IHostedService
     }
 
     /// <summary>Plugin picked a source by name (FastFetch-off path) → download+install it headlessly.</summary>
-    private async Task<(int, string)> HandleAddSource(long appId, HttpListenerRequest req)
+    private (int, string) HandleAddSource(long appId, string body)
     {
-        string body;
-        using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
-            body = await reader.ReadToEndAsync();
         string source = "";
         try
         {
@@ -304,7 +325,6 @@ public class HttpServerService : IHostedService
                 source = s.GetString() ?? "";
         }
         catch { }
-        PluginLog.Log($"/add-source/{appId} body='{body}' parsed source='{source}'");
         if (string.IsNullOrWhiteSpace(source)) return (400, JsonErr("source is required"));
 
         _services.GetRequiredService<PluginAddService>().Pick(appId, source);
@@ -331,11 +351,8 @@ public class HttpServerService : IHostedService
         }
     }
 
-    private async Task<(int, string)> HandleDownload(long appId, HttpListenerRequest req)
+    private (int, string) HandleDownload(long appId, string body)
     {
-        string body;
-        using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
-            body = await reader.ReadToEndAsync();
 
         var json = JsonSerializer.Deserialize<JsonElement>(body);
         // Download is by source NAME (the app's authenticated proxy resolves it). Accept
@@ -483,11 +500,8 @@ public class HttpServerService : IHostedService
             : new { success = false, error = (string?)"Failed to restart Steam" }));
     }
 
-    private async Task<(int, string)> HandleOpenUrl(HttpListenerRequest req)
+    private (int, string) HandleOpenUrl(string body)
     {
-        string body;
-        using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
-            body = await reader.ReadToEndAsync();
 
         string url = "";
         try
@@ -498,9 +512,8 @@ public class HttpServerService : IHostedService
         }
         catch { /* fall through to validation */ }
 
-        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return (400, JsonErr("Invalid URL"));
+        try { new OutboundNetworkPolicy().Validate(new Uri(url)); }
+        catch { return (400, JsonErr("URL is not permitted by network policy")); }
 
         try
         {
@@ -600,13 +613,6 @@ public class HttpServerService : IHostedService
     // ── Download worker ───────────────────────────────────────────────
 
     // ── Helpers ───────────────────────────────────────────────────────
-
-    private static void SetCors(HttpListenerResponse resp)
-    {
-        resp.AddHeader("Access-Control-Allow-Origin", "*");
-        resp.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        resp.AddHeader("Access-Control-Allow-Headers", "Content-Type");
-    }
 
     private static string Json(object obj) => JsonSerializer.Serialize(obj);
     private static string JsonErr(string msg) => JsonSerializer.Serialize(new { success = false, error = msg });

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -11,8 +11,8 @@ namespace LuaToolsGui.Services;
 /// </summary>
 public class CoverCache
 {
-    private static readonly string CoversDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "covers");
+    private readonly string CoversDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "covers");
 
     // Reject only truncated/empty bodies. We don't gate on a size threshold: some legit covers are
     // tiny (e.g. Undertale 391540's header.jpg is ~5 KB. Mostly black, highly compressible), and a
@@ -36,12 +36,15 @@ public class CoverCache
         return hash.Equals(PlaceholderSha256, StringComparison.OrdinalIgnoreCase);
     }
 
-    private readonly HttpClient _http = AppHttp.Create(TimeSpan.FromSeconds(20));
+    private readonly HttpClient? _http;
+    public CoverCache() { }
+    internal CoverCache(HttpMessageHandler handler, string coversDir)
+    { _http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(20), handler, HttpResponseBudget.Image); CoversDir = coversDir; }
     private readonly SemaphoreSlim _ioGate = new(1, 1);
     private readonly ConcurrentDictionary<long, Task<string?>> _inFlight = new();
     private readonly ConcurrentDictionary<long, byte> _noCover = new(); // appids with no usable cover (this session)
 
-    private static string PathFor(long appid) => Path.Combine(CoversDir, $"{appid}.jpg");
+    private string PathFor(long appid) => Path.Combine(CoversDir, $"{appid}.jpg");
 
     /// <summary>True if the bytes start with the JPEG magic number (FF D8 FF).</summary>
     private static bool IsJpeg(byte[] b) => b.Length >= 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF;
@@ -51,19 +54,16 @@ public class CoverCache
     /// only files whose length exactly matches the placeholder get hashed).</summary>
     public string? GetLocalPath(long appid)
     {
+        if (!CatalogDataPolicy.IsId(appid)) return null;
         string p = PathFor(appid);
         if (!File.Exists(p)) return null;
 
         try
         {
-            if (new FileInfo(p).Length == PlaceholderLength &&
-                IsHeaderCapsulePlaceholder(File.ReadAllBytes(p)))
-            {
-                File.Delete(p);
-                return null; // stale placeholder removed → caller re-resolves via header_image
-            }
+            var bytes = CatalogDataPolicy.Read(p, SafeImageLoader.MaximumBytes);
+            if (!IsJpeg(bytes) || IsHeaderCapsulePlaceholder(bytes) || SafeImageLoader.Decode(bytes, 1024) is null) return null;
         }
-        catch { /* if we can't check/delete, just use what's there */ }
+        catch { return null; }
 
         return p;
     }
@@ -80,31 +80,35 @@ public class CoverCache
     /// </summary>
     public Task<string?> EnsureAsync(long appid, string remoteUrl, CancellationToken ct = default)
     {
+        if (!CatalogDataPolicy.IsId(appid)) return Task.FromResult<string?>(null);
         string path = PathFor(appid);
-        if (File.Exists(path)) return Task.FromResult<string?>(path);
+        if (GetLocalPath(appid) is { } local) return Task.FromResult<string?>(local);
         if (string.IsNullOrWhiteSpace(remoteUrl)) return Task.FromResult<string?>(null);
 
         // One download per appid even if asked concurrently (prefetch + page view).
-        return _inFlight.GetOrAdd(appid, _ => DownloadAsync(appid, path, remoteUrl, ct));
+        var task = _inFlight.GetOrAdd(appid, _ => DownloadAsync(appid, path, remoteUrl, ct));
+        if (task.IsCompleted) _inFlight.TryRemove(appid, out _);
+        return task;
     }
 
     private async Task<string?> DownloadAsync(long appid, string path, string remoteUrl, CancellationToken ct)
     {
         try
         {
-            byte[] bytes = await _http.GetByteArrayAsync(remoteUrl, ct);
+            if (!Uri.TryCreate(remoteUrl, UriKind.Absolute, out var destination)) return null;
+            using var scoped = _http is null ? AppHttp.CreateExternalDataClient(TimeSpan.FromSeconds(20), destination, HttpResponseBudget.Image) : null;
+            byte[] bytes = await (_http ?? scoped!).GetByteArrayAsync(destination, ct);
             // A 404 throws (caught below); a real cover is a JPEG. Reject error/HTML bodies that
             // slip through with a 200 by checking the magic bytes, not the size.
             if (bytes.Length < MinValidBytes || !IsJpeg(bytes)) return null;
             // The predictable CDN URL can serve Steam's grey placeholder (a valid JPEG). Reject it so
             // the caller falls back to the real appdetails header_image.
-            if (IsHeaderCapsulePlaceholder(bytes)) return null;
+            if (IsHeaderCapsulePlaceholder(bytes) || SafeImageLoader.Decode(bytes, 1024) is null) return null;
 
             await _ioGate.WaitAsync(ct);
             try
             {
-                Directory.CreateDirectory(CoversDir);
-                await File.WriteAllBytesAsync(path, bytes, ct);
+                await CatalogDataPolicy.WriteAsync(path, bytes, ct);
             }
             finally
             {

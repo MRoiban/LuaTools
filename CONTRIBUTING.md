@@ -19,11 +19,10 @@ dotnet test
 
 ### Releases
 
-Official builds are packaged and signed by the maintainers, so the release tooling isn't part of
-this repo. Released builds are framework-dependent (~10 MB) and the setup auto-installs the .NET 8
-Desktop Runtime on a clean machine; the app then self-updates through Velopack.
-
-To produce a local build for testing, `dotnet publish -c Release` is enough.
+Fork builds come from reviewed source, locked NuGet dependencies and passing tests.
+See [SECURITY.md](SECURITY.md) for the build commands, trust boundary and manual release
+review process. CI uploads review artifacts only; upstream binaries and Velopack
+installers are not a source of fork releases.
 
 ### Layout
 
@@ -56,29 +55,12 @@ Translation contributions are pull requests against those files. See
 [`src/LuaToolsGui/Resources/README.md`](src/LuaToolsGui/Resources/README.md) for the translator
 guide, including which terms to leave untranslated and why.
 
-### 2. Every GitHub request goes through `GithubProxy`
+### 2. Keep the fork's network and dependency boundaries
 
-The app must work in regions where `github.com` and `api.github.com` are blocked. **Never call
-GitHub directly.** Route through `Services/GithubProxy.cs` (a DI singleton), which tries the direct
-URL first and then falls through capability-matched mirrors:
-
-```csharp
-await gh.SendAsync(url, ct);                          // API / metadata
-await gh.DownloadAsync(url, dest, progress, ct);      // release-asset binaries
-```
-
-The Velopack auto-updater is covered too. `UpdateService` passes a `ProxiedFileDownloader` that
-reuses `GithubProxy.Candidates`, so the update feed and `.nupkg` fall back to mirrors as well.
-
-### 3. Store-page plugin calls go through `callServerMethod`
-
-The injected store-page script runs inside an HTTPS page and cannot raw-`fetch` a localhost
-backend; mixed-content policy kills it silently. Any new store-page → backend call must go through
-`Millennium.callServerMethod("luatools", "<Name>", args)` and needs a matching entry in
-`CefInjectorService.CallBackendMethod`'s `methodMap`. An unmapped name silently no-ops instead of
-erroring.
-
-`Millennium.callServerMethod` resolves one of two ways depending on the user's setup: under
-Millennium it's the framework's own object, and otherwise it's the queue-based polyfill
-`CefInjectorService` injects ahead of the plugin script. Either way the actual HTTP request is made
-outside the browser, which is what sidesteps the mixed-content block.
+Requests must use the approved HTTPS destination policy. System DNS is the default;
+the original DNS settings allow explicit opt-in to bounded Cloudflare DNS-over-HTTPS. Do not add
+unapproved mirrors, certificate bypasses, silent key sharing, analytics, automatic
+upstream updates, executable downloads, or Steam injection startup hooks. GitHub data
+requests use `GithubProxy`, which validates direct URLs and the original approved
+capability-matched mirror origins.
+See [SECURITY.md](SECURITY.md) before changing these boundaries.

@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +14,7 @@ public record LanguageOption(string Display, string? Tag);
 
 /// <summary>A DNS resolution mode. <see cref="Tag"/> is the stored value and stays English ("Auto",
 /// "Always", "Never") because it is matched in code; only <see cref="Display"/> is localized.</summary>
+
 public record DnsModeOption(string Display, string Tag);
 
 public partial class SettingsViewModel : ObservableObject
@@ -71,36 +72,36 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnFastFetchChanged(bool value) => _settings.FastFetch = value;
 
+    // Executable workflow switches persist consent only; actions remain on their original pages.
+    [ObservableProperty] private bool _executableGameFixesEnabled;
+    partial void OnExecutableGameFixesEnabledChanged(bool value) => _settings.ExecutableGameFixesEnabled = value;
+
+    [ObservableProperty] private bool _betterSteamToolsEnabled;
+    partial void OnBetterSteamToolsEnabledChanged(bool value) => _settings.BetterSteamToolsEnabled = value;
+
+    [ObservableProperty] private bool _openSteamToolsEnabled;
+    partial void OnOpenSteamToolsEnabledChanged(bool value) => _settings.OpenSteamToolsEnabled = value;
+
+    [ObservableProperty] private bool _steamPluginEnabled;
+    partial void OnSteamPluginEnabledChanged(bool value) => _settings.SteamPluginEnabled = value;
+
+    [ObservableProperty] private bool _depotDownloaderEnabled;
+    partial void OnDepotDownloaderEnabledChanged(bool value) => _settings.DepotDownloaderEnabled = value;
+
+    [ObservableProperty] private bool _steamlessEnabled;
+    partial void OnSteamlessEnabledChanged(bool value) => _settings.SteamlessEnabled = value;
+
+    [ObservableProperty] private bool _steamAutoCrackEnabled;
+    partial void OnSteamAutoCrackEnabledChanged(bool value) => _settings.SteamAutoCrackEnabled = value;
+
+    [ObservableProperty] private bool _cloudRedirectEnabled;
+    partial void OnCloudRedirectEnabledChanged(bool value) => _settings.CloudRedirectEnabled = value;
+
     /// <summary>Donate spare Steam decryption keys to the community pool. Persisted via SettingsService.</summary>
     [ObservableProperty] private bool _donateKeys;
 
-    partial void OnDonateKeysChanged(bool value) => _settings.DonateKeys = value;
 
     // ── Startup behavior ────────────────────────────────────────────
-    private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "LuaTools";
-
-    /// <summary>Launch the app on Windows sign-in (writes HKCU …\Run). Persisted via SettingsService.</summary>
-    [ObservableProperty] private bool _startWithWindows;
-
-    partial void OnStartWithWindowsChanged(bool value)
-    {
-        _settings.StartWithWindows = value;
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-            if (key is null) return;
-            if (value)
-                // --minimized: start silently in the tray on sign-in so it just serves the
-                // local backend (127.0.0.1:6767) for the Steam plugin without stealing focus.
-                key.SetValue(RunValueName, $"\"{Environment.ProcessPath}\" --minimized");
-            else
-                key.DeleteValue(RunValueName, throwOnMissingValue: false);
-        }
-        catch { /* registry write blocked. Setting is still saved, just not applied this run */ }
-    }
-
-    /// <summary>Minimize to the system tray instead of the taskbar. Persisted via SettingsService.</summary>
     [ObservableProperty] private bool _minimizeToTray;
 
     partial void OnMinimizeToTrayChanged(bool value)
@@ -255,8 +256,14 @@ public partial class SettingsViewModel : ObservableObject
         RefreshSteam();
         _autoUpdateApps = settings.AutoUpdateApps; // init from saved value (default ON) without triggering Save
         _fastFetch = settings.FastFetch;
-        _donateKeys = settings.DonateKeys;
-        _startWithWindows = settings.StartWithWindows; // default OFF. Init without triggering the registry write
+        _executableGameFixesEnabled = settings.ExecutableGameFixesEnabled;
+        _betterSteamToolsEnabled = settings.BetterSteamToolsEnabled;
+        _openSteamToolsEnabled = settings.OpenSteamToolsEnabled;
+        _steamPluginEnabled = settings.SteamPluginEnabled;
+        _depotDownloaderEnabled = settings.DepotDownloaderEnabled;
+        _steamlessEnabled = settings.SteamlessEnabled;
+        _steamAutoCrackEnabled = settings.SteamAutoCrackEnabled;
+        _cloudRedirectEnabled = settings.CloudRedirectEnabled;
         _minimizeToTray = settings.MinimizeToTray;
         _hubcapIsKeyConfigured = !string.IsNullOrEmpty(settings.HubcapApiKey);
 
@@ -264,10 +271,11 @@ public partial class SettingsViewModel : ObservableObject
         _suppressLanguagePrompt = true;
         _selectedLanguage = LanguageOptions.FirstOrDefault(o => o.Tag == settings.Language) ?? LanguageOptions[0];
         _suppressLanguagePrompt = false;
+        _selectedDnsMode = DnsModeOptions.FirstOrDefault(o => o.Tag == settings.DnsMode)
+            ?? DnsModeOptions.First(o => o.Tag == "Never");
 
         // Assign the backing field, not the property: going through the setter would fire the change
         // handler and write the default straight back to disk on first open.
-        _selectedDnsMode = DnsModeOptions.FirstOrDefault(o => o.Tag == settings.DnsMode) ?? DnsModeOptions[0];
     }
 
     private void RefreshSteam()

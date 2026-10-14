@@ -1,8 +1,7 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LuaToolsGui.Services;
@@ -139,24 +138,7 @@ public partial class LuaTileViewModel : ObservableObject
     }
 
     /// <summary>Decode a local image file into a frozen, thumbnail-sized bitmap (off-UI, lock-free).</summary>
-    private static ImageSource? LoadFrozen(string path)
-    {
-        try
-        {
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad; // load fully, release the file handle
-            bmp.DecodePixelWidth = 248;                 // tile width. Faster decode, less memory
-            bmp.UriSource = new Uri(path, UriKind.Absolute);
-            bmp.EndInit();
-            bmp.Freeze();
-            return bmp;
-        }
-        catch
-        {
-            return null; // unreadable file → leave blank
-        }
-    }
+    private static ImageSource? LoadFrozen(string path) => SafeImageLoader.LoadLocal(path, 248);
 
     private void SetName(string name)
     {

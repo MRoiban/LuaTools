@@ -112,17 +112,19 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
     /// Write a lua to <paramref name="dest"/>. Comments out manifest pins when AutoUpdate is on, UNLESS
     /// <paramref name="forceLocked"/> is set (Denuvo fixes must stay version-pinned → keep setManifestid).
     /// </summary>
-    private void WriteLua(string sourceLuaPath, string dest, bool forceLocked = false)
+    private void WriteLua(string sourceLuaPath, string dest, bool forceLocked = false, long? appId = null)
     {
+        ManifestContentPolicy.EnsureNoReparsePoints(sourceLuaPath);
+        ManifestContentPolicy.EnsureNoReparsePoints(dest);
+        using var stream = File.OpenRead(sourceLuaPath);
+        byte[] bytes = ManifestContentPolicy.ReadBounded(stream, ManifestContentPolicy.MaxLuaBytes);
+        ManifestContentPolicy.ValidateLua(bytes, appId);
         if (AutoUpdate && !forceLocked)
         {
-            string lua = File.ReadAllText(sourceLuaPath);
+            string lua = new System.Text.UTF8Encoding(false, true).GetString(bytes);
             File.WriteAllText(dest, CommentOutManifestPins(lua));
         }
-        else
-        {
-            File.Copy(sourceLuaPath, dest, overwrite: true);
-        }
+        else File.WriteAllBytes(dest, bytes);
         StampNow(dest);
     }
 
@@ -145,11 +147,14 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
 
         try
         {
+            ManifestContentPolicy.ValidateLuaFile(luaPath, appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(dir);
             Directory.CreateDirectory(dir);
             string dest = Path.Combine(dir, $"{appId}.lua");
+            ManifestContentPolicy.EnsureNoReparsePoints(dest);
             string? buildId = BuildIdFromFileName(luaPath);
 
-            WriteLua(luaPath, dest, KeepPinsFor(buildId, forceLocked));
+            WriteLua(luaPath, dest, KeepPinsFor(buildId, forceLocked), appId);
             CaptureInstalled(appId, dest, buildId, source); // exactly what Steam now reads → the active build
             RecordLoaded(appId);
             return new InstallResult(LuaInstalled: true, ManifestCount: 0, Failed: [], Error: null);
@@ -243,15 +248,23 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
         if (dir is null) return InstallResult.Fail(Resources.Strings.Err_SteamNotFound);
         try
         {
+            ManifestContentPolicy.EnsureNoReparsePoints(manifestPath);
+            using var input = File.OpenRead(manifestPath);
+            byte[] manifestData = ManifestContentPolicy.ReadManifestData(
+                ManifestContentPolicy.ReadBounded(input, ManifestContentPolicy.MaxManifestBytes), Path.GetFileName(manifestPath));
+            ManifestContentPolicy.EnsureNoReparsePoints(dir);
             Directory.CreateDirectory(dir);
             string dest = Path.Combine(dir, Path.GetFileName(manifestPath));
+            ManifestContentPolicy.EnsureNoReparsePoints(dest);
             // Content-addressed name → identical bytes if it already exists. Skip (counts as installed)
             // rather than overwrite, which would needlessly fail when Steam has the file open.
             if (!File.Exists(dest))
             {
-                File.Copy(manifestPath, dest, overwrite: false);
+                using var output = new FileStream(dest, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                output.Write(manifestData);
                 StampNow(dest);
             }
+            ManifestContentPolicy.ValidateManifestFile(dest);
             return new InstallResult(LuaInstalled: false, ManifestCount: 1, Failed: [], Error: null);
         }
         catch (Exception ex)
@@ -273,7 +286,25 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
             return InstallResult.Fail(Resources.Strings.Err_SteamNotFound);
 
         ZipArchive archive;
-        try { archive = ZipFile.OpenRead(zipPath); }
+        try
+        {
+            ManifestContentPolicy.EnsureNoReparsePoints(zipPath);
+            archive = ZipFile.OpenRead(zipPath);
+            try
+            {
+                ManifestContentPolicy.ValidateArchive(archive, expectedAppId: appId);
+                ManifestContentPolicy.EnsureNoReparsePoints(plugDir);
+                ManifestContentPolicy.EnsureNoReparsePoints(depotDir);
+                foreach (var entry in archive.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name) || ManifestContentPolicy.IsDocumentation(entry.Name)) continue;
+                    string target = entry.Name.EndsWith(".lua", StringComparison.OrdinalIgnoreCase)
+                        ? Path.Combine(plugDir, $"{appId}.lua") : Path.Combine(depotDir, entry.Name);
+                    ManifestContentPolicy.EnsureNoReparsePoints(target);
+                }
+            }
+            catch { archive.Dispose(); throw; }
+        }
         catch (Exception ex) { return InstallResult.Fail(string.Format(Resources.Strings.Err_OpenDownloadFailed, ex.Message)); }
 
         bool luaInstalled = false;
@@ -304,6 +335,8 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
                 // "file in use" failure when Steam is running and already has that manifest open.
                 if (isManifest && File.Exists(dest))
                 {
+                    try { ManifestContentPolicy.ValidateManifestFile(dest); }
+                    catch { failed.Add(name); continue; }
                     manifestCount++;
                     continue;
                 }
@@ -321,7 +354,7 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
                             // has already been flattened to <appid>.lua above, so it can't be read from there.
                             string? buildId = BuildIdFromFileName(name);
 
-                            WriteLua(tmp, dest, KeepPinsFor(buildId, forceLocked));
+                            WriteLua(tmp, dest, KeepPinsFor(buildId, forceLocked), appId);
                             CaptureInstalled(appId, dest, buildId, source);
                             luaInstalled = true;
                             RecordLoaded(appId);
@@ -330,7 +363,11 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
                     }
                     else
                     {
-                        entry.ExtractToFile(dest, overwrite: true);
+                        ManifestContentPolicy.EnsureNoReparsePoints(dest);
+                        using var input = entry.Open();
+                        byte[] manifestData = ManifestContentPolicy.ReadManifestData(
+                            ManifestContentPolicy.ReadBounded(input, ManifestContentPolicy.MaxManifestBytes), name);
+                        File.WriteAllBytes(dest, manifestData);
                         StampNow(dest);
                         manifestCount++;
                     }

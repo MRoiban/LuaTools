@@ -43,10 +43,8 @@ public class DepotCacheMigrationTests : IDisposable
     // ── Fixtures ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// A byte-for-byte minimal real manifest: the 8-byte section header (metadata magic + length)
-    /// followed by a protobuf carrying just depot id (field 1) and gid (field 2). This is what
-    /// <c>ManifestFile.TryRead</c> actually looks for, so a synthetic one exercises the true gate
-    /// without committing a binary fixture or depending on the machine having Steam installed.
+    /// A controlled manifest-shaped fixture: empty payload, identity metadata, and EOF marker.
+    /// It exercises framing and identity gates without implying an authentic Steam signature.
     /// </summary>
     private static byte[] ManifestBytes(long depotId, ulong gid)
     {
@@ -56,10 +54,12 @@ public class DepotCacheMigrationTests : IDisposable
         meta.Add(0x10);                 // field 2 (gid), varint
         meta.AddRange(Varint(gid));
 
-        var file = new byte[8 + meta.Count];
-        BinaryPrimitives.WriteUInt32LittleEndian(file, 0x1F4812BE);            // metadata magic
-        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(4), (uint)meta.Count);
-        meta.CopyTo(file, 8);
+        var file = new byte[20 + meta.Count];
+        BinaryPrimitives.WriteUInt32LittleEndian(file, 0x71F617D0);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(8), 0x1F4812BE);            // metadata magic
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(12), (uint)meta.Count);
+        meta.CopyTo(file, 16);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(16 + meta.Count), 0x32C415AB);
         return file;
     }
 

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.IO.Compression;
 using LuaToolsGui.Models;
 
@@ -93,6 +93,7 @@ public class ManifestJobFactory(
             covers.GetLocalPath(appId),
             (_, progress, ct) =>
             {
+                if (!isManifestSlot) ExecutableFixPolicy.RequireEnabled(settings);
                 // Verify the game is on disk BEFORE the request. /api/denuvo/download spends a slot of
                 // the server-side daily limit and the fix zip is game binaries, so discovering "not
                 // installed" in the install phase (where ApplyDenuvoFix still checks, as a backstop)
@@ -163,34 +164,22 @@ public class ManifestJobFactory(
             null,
             async (item, progress, ct) =>
             {
-                // Runtime BEFORE the 41 MB tool: no point paying for the download if the user declines
-                // the elevation prompt.
-                OnUi(() => item.Detail = Resources.Strings.Downloads_SAC_GettingRuntime);
-                var runtimeProgress = new ProgressRelay<double?>(f =>
-                {
-                    if (f is { } v) progress.Report(new DownloadProgress((long)(v * 1000), 1000));
-                });
-                var prepared = await sac.EnsureRuntimeAsync(runtimeProgress, ct);
-                if (prepared != SacPrepareResult.Ready)
-                {
-                    // Declining the prompt, and "installed but needs a reboot", are both outcomes where
-                    // nothing went wrong — they settle as Cancelled so the row isn't dressed as an error.
-                    bool notAFailure = prepared is SacPrepareResult.RuntimeDeclined
-                                              or SacPrepareResult.RuntimeNeedsRestart;
-                    throw new DownloadAbortedException(prepared switch
+                string exe = await PrepareSteamAutoCrackAsync(
+                    async () =>
                     {
-                        SacPrepareResult.RuntimeDeclined => Resources.Strings.Err_CancelledByUser,
-                        SacPrepareResult.RuntimeNeedsRestart => Resources.Strings.Downloads_SAC_Err_Restart,
-                        _ => Resources.Strings.Downloads_SAC_Err_Runtime,
-                    }, isCancellation: notAFailure);
-                }
-
-                OnUi(() => item.Detail = Resources.Strings.Downloads_SAC_GettingTool);
-                progress.Report(new DownloadProgress(0, null)); // hand the bar back before the real download
-                // force when this job was queued by the background update probe: that probe already
-                // recorded the check timestamp, so the throttle would otherwise skip this download.
-                string? exe = await sac.EnsureToolAsync(progress, force: !launchWhenDone, ct)
-                    ?? throw new DownloadAbortedException(Resources.Strings.Downloads_SAC_Err_Tool);
+                        OnUi(() => item.Detail = Resources.Strings.Downloads_SAC_GettingTool);
+                        progress.Report(new DownloadProgress(0, null));
+                        return await sac.EnsureToolAsync(progress, force: false, ct);
+                    },
+                    async () =>
+                    {
+                        OnUi(() => item.Detail = Resources.Strings.Downloads_SAC_GettingRuntime);
+                        var runtimeProgress = new ProgressRelay<double?>(f =>
+                        {
+                            if (f is { } v) progress.Report(new DownloadProgress((long)(v * 1000), 1000));
+                        });
+                        return await sac.EnsureRuntimeAsync(runtimeProgress, ct);
+                    }, launchWhenDone);
 
                 OnUi(() => item.Detail = null);
                 // Directory sentinel, same as CreateDepotJob: the queue's staged-file cleanup no-ops on it.
@@ -202,6 +191,30 @@ public class ManifestJobFactory(
                 : new JobResult(false, Resources.Strings.Downloads_SAC_Err_Launch)),
             ConfirmAsync: null,
             OnFinished: onFinished);
+    }
+
+    internal static async Task<string> PrepareSteamAutoCrackAsync(
+        Func<Task<string?>> acquireReviewedTool, Func<Task<SacPrepareResult>> checkRuntime, bool launchRequested)
+    {
+        // A status probe cannot queue automatic executable acquisition or installation.
+        if (!launchRequested)
+            throw new DownloadAbortedException(DependencyTrustPolicy.BlockedMessage("SteamAutoCrack"));
+        // Acquisition may finish in inert quarantine and fail the independent trust gate. It must
+        // happen before the runtime requirement, so an absent runtime cannot suppress acquisition.
+        string exe = await acquireReviewedTool()
+            ?? throw new DownloadAbortedException(Resources.Strings.Downloads_SAC_Err_Tool);
+        var prepared = await checkRuntime(); // Only reached after a reviewed local bundle is returned.
+        if (prepared != SacPrepareResult.Ready)
+        {
+            bool notAFailure = prepared is SacPrepareResult.RuntimeDeclined or SacPrepareResult.RuntimeNeedsRestart;
+            throw new DownloadAbortedException(prepared switch
+            {
+                SacPrepareResult.RuntimeDeclined => Resources.Strings.Err_CancelledByUser,
+                SacPrepareResult.RuntimeNeedsRestart => Resources.Strings.Downloads_SAC_Err_Restart,
+                _ => Resources.Strings.Downloads_SAC_Err_Runtime,
+            }, isCancellation: notAFailure);
+        }
+        return exe;
     }
 
     private async Task<DownloadedFile> RunDepotsAsync(
@@ -454,6 +467,9 @@ public class ManifestJobFactory(
             {
                 Directory.CreateDirectory(unzipDir);
                 using var archive = ZipFile.OpenRead(staged.FilePath);
+                ManifestContentPolicy.ValidateArchive(archive, manifestPackage: false);
+                if (archive.Entries.Count(e => !string.IsNullOrEmpty(e.Name)) != 1)
+                    throw new InvalidDataException("A depot manifest wrapper must contain exactly one file.");
                 var entry = archive.Entries.FirstOrDefault(e => !string.IsNullOrEmpty(e.Name))
                     ?? throw new DownloadAbortedException(Resources.Strings.Depot_Err_NoManifest);
 
@@ -540,7 +556,7 @@ public class ManifestJobFactory(
     {
         try
         {
-            bool isZip = file.FileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+            bool isZip = IsZip(file.FilePath);
             var result = isZip
                 ? installer.InstallZip(file.FilePath, appId, forceLocked: true)
                 : installer.InstallLuaFile(file.FilePath, appId, forceLocked: true);
@@ -589,6 +605,9 @@ public class ManifestJobFactory(
     {
         try
         {
+            // Explicit opt-in authorizes unreviewed code for this workflow only.
+            // Keep a bounded immutable snapshot and full archive/path validation.
+            byte[] authorizedBundle = ExecutableFixPolicy.ReadPackage(settings, file.FilePath);
             string? installDir = library.GetInstallDir(appId);
             if (installDir is null)
             {
@@ -600,6 +619,7 @@ public class ManifestJobFactory(
             string fixKey = SafeFixKey(fixId);
             string fixDir = Path.Combine(installDir, FixRecordDir);
             string recordPath = Path.Combine(fixDir, $"{fixKey}.json");
+            ManifestContentPolicy.EnsureNoReparsePoints(recordPath);
 
             var record = new DenuvoFixRecord
             {
@@ -609,7 +629,8 @@ public class ManifestJobFactory(
             };
 
             // ── Phase 1: plan. File.Exists only; nothing on disk changes yet. ──────────────────────
-            using var archive = ZipFile.OpenRead(file.FilePath);
+            using var archive = new ZipArchive(new MemoryStream(authorizedBundle), ZipArchiveMode.Read);
+            ManifestContentPolicy.ValidateArchive(archive, manifestPackage: false);
             var plan = new List<(string RelPath, string Dest, string? BakRel, ZipArchiveEntry Entry)>();
             int failed = 0;
 
@@ -617,6 +638,8 @@ public class ManifestJobFactory(
             {
                 if (string.IsNullOrEmpty(entry.Name)) continue;
                 string relPath = entry.FullName.Replace('\\', '/');
+                if (relPath.Split('/').Any(p => p.Equals(FixRecordDir, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidDataException("Fix archives may not overwrite their backup records.");
 
                 // A zip entry naming its way out of the game folder is never legitimate; skip it and
                 // count it, rather than writing wherever it points.
@@ -632,6 +655,7 @@ public class ManifestJobFactory(
             }
 
             // ── Phase 2: commit. Nothing has been touched yet, so failing here costs nothing. ──────
+            ExecutableFixPolicy.RequireEnabled(settings);
             foreach (var (relPath, _, bakRel, _) in plan)
                 record.Files.Add(new DenuvoFixRecordEntry
                 {
@@ -658,10 +682,13 @@ public class ManifestJobFactory(
             {
                 try
                 {
+                    ExecutableFixPolicy.RequireEnabled(settings);
+                    ManifestContentPolicy.EnsureNoReparsePoints(dest);
                     DenuvoFixRecordEntry recordEntry;
                     if (bakRel is not null)
                     {
                         string bakAbs = Path.Combine(fixDir, bakRel);
+                        ManifestContentPolicy.EnsureNoReparsePoints(bakAbs);
                         if (!File.Exists(bakAbs)) // never clobber a known-good .bak
                         {
                             Directory.CreateDirectory(Path.GetDirectoryName(bakAbs)!);
@@ -681,6 +708,8 @@ public class ManifestJobFactory(
                         recordEntry = new DenuvoFixRecordEntry { RelativePath = relPath, Action = "added" };
                     }
 
+                    ManifestContentPolicy.EnsureNoReparsePoints(dest);
+                    ExecutableFixPolicy.RequireEnabled(settings);
                     Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                     entry.ExtractToFile(dest, overwrite: true);
 
@@ -763,8 +792,11 @@ public class ManifestJobFactory(
     {
         try
         {
+            ManifestContentPolicy.ValidateRelativePath(relative);
+            ManifestContentPolicy.EnsureNoReparsePoints(root);
             string rootFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
             string full = Path.GetFullPath(Path.Combine(rootFull, relative));
+            ManifestContentPolicy.EnsureNoReparsePoints(full);
             return full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                 ? full
                 : null;

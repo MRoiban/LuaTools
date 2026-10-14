@@ -3,34 +3,14 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace LuaToolsGui;
 
-/// <summary>
-/// Loads an image path/URL into a BitmapImage with CacheOption=OnLoad, so cached cover files on
-/// disk aren't left locked (allowing later refresh/clear). Handles local paths and http(s) URLs.
-/// </summary>
+/// <summary>Decodes local cached images without file locks or WPF URL/UNC network loading.</summary>
 public class ImagePathToSourceConverter : IValueConverter
 {
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is not string s || string.IsNullOrWhiteSpace(s)) return null;
-        try
-        {
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-            bmp.UriSource = new Uri(s, UriKind.Absolute);
-            bmp.EndInit();
-            return bmp;
-        }
-        catch
-        {
-            return null; // bad path/URL. Show nothing
-        }
-    }
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        Services.SafeImageLoader.LoadLocal(value as string);
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();

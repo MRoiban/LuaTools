@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:markdig="clr-namespace:Markdig.Wpf;assembly=Markdig.Wpf"
+    xmlns:services="clr-namespace:LuaToolsGui.Services"
     xmlns:res="clr-namespace:LuaToolsGui.Resources"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:vm="clr-namespace:LuaToolsGui.ViewModels"
@@ -483,6 +484,7 @@
                                                 </ItemsControl>
 
                                                 <markdig:MarkdownViewer
+                                                    Pipeline="{x:Static services:SafeMarkdown.Pipeline}"
                                                     Margin="0,4,0,0"
                                                     Markdown="{Binding Description}"
                                                     PreviewMouseWheel="Markdown_PreviewMouseWheel"

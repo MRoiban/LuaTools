@@ -90,9 +90,17 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
     /// </remarks>
     public void EnsureLuaPathRegistered()
     {
-        if (SelectedMode is not (UnlockerMode.Ost or UnlockerMode.Bst)) return;
+        if (SelectedMode is not { } mode || mode is not (UnlockerMode.Ost or UnlockerMode.Bst)
+            || !settings.IsExecutableWorkflowEnabled(Def(mode).DisplayName)) return;
         if (steam.EffectivePath is not { } root) return;
-        try { EnsureOpenSteamToolLuaPath(root); } catch { /* config tweak is best-effort */ }
+        try
+        {
+            var def = Def(mode);
+            UserAuthorizedDependencies.RequireFiles(def.DisplayName, ConsentReceiptPath(def.DisplayName),
+                def.PlaceFiles.ToDictionary(f => f, f => Path.Combine(root, f)), settings.IsExecutableWorkflowEnabled);
+            EnsureOpenSteamToolLuaPath(root);
+        }
+        catch { /* cached files without a matching consent receipt do not activate */ }
     }
 
     // ── State query ─────────────────────────────────────────────────
@@ -207,7 +215,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
     /// <summary>Download + verify a mode's files, place them in the Steam root, remove the other mode's
     /// unique files, and persist the selection. Best-effort per file (locked files land in Failed).</summary>
     public async Task<ModeInstallResult> InstallAsync(
-        UnlockerMode mode, IProgress<double?>? progress = null, CancellationToken ct = default)
+        UnlockerMode mode, IProgress<double?>? progress = null, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
         var def = Def(mode);
 
@@ -219,6 +227,9 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
             return ModeInstallResult.Ok();
         }
 
+        string component = def.DisplayName;
+        if (!settings.IsExecutableWorkflowEnabled(component))
+            return ModeInstallResult.Fail($"Enable {component} in Settings before installing it.");
         string? root = steam.EffectivePath;
         if (root is null || !steam.IsValid)
             return ModeInstallResult.Fail(Resources.Strings.Err_SteamNotFound);
@@ -244,7 +255,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
             version = release.TagName;
         }
 
-        string staging = Path.Combine(Path.GetTempPath(), "LuaToolsGui", "mode", Guid.NewGuid().ToString("N"));
+        string staging = Path.Combine(Path.GetTempPath(), AppConfig.DataDirectoryName, "mode", Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(staging);
@@ -271,14 +282,17 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
                     wantedZipDigest = AssetHash.ParseDigest(asset.Digest);
                 }
 
-                string zipPath = Path.Combine(staging, zipName);
-                await DownloadToFileAsync(zipUrl, zipPath, progress, ct);
-
+                var downloadedAsset = new GithubAsset { Name = zipName, DownloadUrl = zipUrl };
+                string zipPath = await DependencyQuarantine.AcquireAssetAsync(gh, component,
+                    def.Owner + "/" + def.Repo, downloadedAsset, progress, ct);
+                UserAuthorizedDependencies.RequireEnabled(component, settings.IsExecutableWorkflowEnabled);
                 zipDigest = AssetHash.OfFile(zipPath);
                 if (wantedZipDigest is { } want && !zipDigest.Equals(want, StringComparison.OrdinalIgnoreCase))
                     return ModeInstallResult.Fail(Resources.Strings.Err_VerifyFailed);
 
-                staged = ExtractWanted(zipPath, def.PlaceFiles, staging);
+                UserAuthorizedDependencies.ValidateArchiveAndExtract(component, zipPath, staging,
+                    settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
+                staged = FindWanted(staging, def.PlaceFiles);
                 var missing = def.PlaceFiles.Where(f => !staged.ContainsKey(f)).ToList();
                 if (missing.Count > 0)
                     return ModeInstallResult.Fail(string.Format(Resources.Strings.Err_DownloadMissingFiles, string.Join(", ", missing)));
@@ -290,21 +304,8 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
                     return ModeInstallResult.Fail(string.Format(Resources.Strings.Err_VerifyFailedFile, manifest.File));
             }
 
-            // 2. Copy verified files into the Steam root (overwrite). Locked files → Failed (Steam running).
+            InstallConsentedModeFiles(component, staged, root, ConsentReceiptPath(component), settings.IsExecutableWorkflowEnabled);
             var failed = new List<string>();
-            foreach (string file in def.PlaceFiles)
-            {
-                try
-                {
-                    string dest = Path.Combine(root, file);
-                    File.Copy(staged[file], dest, overwrite: true);
-                    StampNow(dest);
-                }
-                catch
-                {
-                    failed.Add(file);
-                }
-            }
 
             // 3. This mode is now the active one. (No cleanup of other modes' files. Just overwrite.)
             settings.SelectedMode = mode.ToString();
@@ -314,7 +315,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
             // their config pointed at stplug-in.
             cache.OpenSteamToolsInstalledZipDigest = zipDigest;
             cache.OpenSteamToolsInstalledVersion = version;
-            try { EnsureOpenSteamToolLuaPath(root); } catch { /* config tweak is best-effort */ }
+            try { UserAuthorizedDependencies.RequireEnabled(component, settings.IsExecutableWorkflowEnabled); EnsureOpenSteamToolLuaPath(root); } catch { /* config tweak is best-effort */ }
 
             return failed.Count > 0
                 ? new ModeInstallResult(false, string.Format(Resources.Strings.Err_WriteFailedCount, failed.Count), failed)
@@ -595,18 +596,27 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
 
     /// <summary>Enable: download cloud_redirect.dll if missing (verified), then set [cloud] enabled = true.
     /// Takes effect on the next Steam launch.</summary>
-    public async Task<ModeInstallResult> EnableCloudRedirectAsync(IProgress<double?>? progress = null, CancellationToken ct = default)
+    public async Task<ModeInstallResult> EnableCloudRedirectAsync(IProgress<double?>? progress = null, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
+        if (!settings.IsExecutableWorkflowEnabled("CloudRedirectAddon"))
+            return ModeInstallResult.Fail("Enable CloudRedirect in Settings before installing or enabling its add-on.");
         string? root = steam.EffectivePath;
         if (root is null || !steam.IsValid)
             return ModeInstallResult.Fail(Resources.Strings.Err_SteamNotFound);
 
-        if (!File.Exists(Path.Combine(root, CloudRedirectDll)))
+        if (!IsConsentedCloudAddon(root))
         {
-            var dl = await DownloadCloudRedirectDllAsync(root, progress, ct);
+            var dl = await DownloadCloudRedirectDllAsync(root, progress, ct, reviewedInstallApproved);
             if (!dl.Success) return dl;
         }
-        try { SetOpenSteamToolCloudEnabled(root, true); }
+        try
+        {
+            UserAuthorizedDependencies.RequireFiles("CloudRedirectAddon", ConsentReceiptPath("CloudRedirectAddon"),
+                new Dictionary<string, string> { [CloudRedirectDll] = Path.Combine(root, CloudRedirectDll) },
+                settings.IsExecutableWorkflowEnabled);
+            ManifestContentPolicy.EnsureNoReparsePoints(Path.Combine(root, "opensteamtool.toml"));
+            SetOpenSteamToolCloudEnabled(root, true);
+        }
         catch (Exception ex) { return ModeInstallResult.Fail(ex.Message); }
         return ModeInstallResult.Ok();
     }
@@ -623,34 +633,48 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
 
     /// <summary>Update: replace cloud_redirect.dll with the latest (verified). Fails with a "close Steam"
     /// message if Steam holds the existing dll open.</summary>
-    public async Task<ModeInstallResult> UpdateCloudRedirectAsync(IProgress<double?>? progress = null, CancellationToken ct = default)
+    public async Task<ModeInstallResult> UpdateCloudRedirectAsync(IProgress<double?>? progress = null, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
         string? root = steam.EffectivePath;
         if (root is null || !steam.IsValid)
             return ModeInstallResult.Fail(Resources.Strings.Err_SteamNotFound);
-        return await DownloadCloudRedirectDllAsync(root, progress, ct);
+        return await DownloadCloudRedirectDllAsync(root, progress, ct, reviewedInstallApproved);
     }
 
-    private async Task<ModeInstallResult> DownloadCloudRedirectDllAsync(string root, IProgress<double?>? progress, CancellationToken ct)
+    private async Task<ModeInstallResult> DownloadCloudRedirectDllAsync(string root, IProgress<double?>? progress, CancellationToken ct, bool reviewedInstallApproved)
     {
+        if (!settings.IsExecutableWorkflowEnabled("CloudRedirectAddon"))
+            return ModeInstallResult.Fail("Enable CloudRedirect in Settings before installing or enabling its add-on.");
         var release = await FetchCloudRedirectReleaseAsync(forceRefresh: true, ct);
         if (release is null) return ModeInstallResult.Fail(Resources.Strings.Err_GithubUnreachable);
         var asset = FindAsset(release, CloudRedirectDll);
         if (asset is null) return ModeInstallResult.Fail(string.Format(Resources.Strings.Err_ReleaseMissingFile, CloudRedirectDll));
 
-        string staging = Path.Combine(Path.GetTempPath(), "LuaToolsGui", "cloud", Guid.NewGuid().ToString("N"));
+        string staging = Path.Combine(Path.GetTempPath(), AppConfig.DataDirectoryName, "cloud", Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(staging);
-            string tmp = Path.Combine(staging, CloudRedirectDll);
-            await DownloadToFileAsync(asset.DownloadUrl, tmp, progress, ct);
+            string tmp = await DependencyQuarantine.AcquireAssetAsync(gh, "CloudRedirectAddon", AppConfig.CloudRedirectRepo, asset, progress, ct);
+            UserAuthorizedDependencies.RequireEnabled("CloudRedirectAddon", settings.IsExecutableWorkflowEnabled);
             if (AssetHash.ParseDigest(asset.Digest) is { } want && !AssetHash.OfFile(tmp).Equals(want, StringComparison.OrdinalIgnoreCase))
                 return ModeInstallResult.Fail(string.Format(Resources.Strings.Err_VerifyFailedFile, CloudRedirectDll));
 
             try
             {
                 string dest = Path.Combine(root, CloudRedirectDll);
-                File.Copy(tmp, dest, overwrite: true);
+                UserAuthorizedDependencies.RecordFiles("CloudRedirectAddon", Path.Combine(staging, "consent.json"),
+                    new Dictionary<string, string> { [CloudRedirectDll] = tmp }, settings.IsExecutableWorkflowEnabled,
+                    explicitUserAction: true);
+                UserAuthorizedDependencies.RequireFiles("CloudRedirectAddon", Path.Combine(staging, "consent.json"),
+                    new Dictionary<string, string> { [CloudRedirectDll] = tmp }, settings.IsExecutableWorkflowEnabled);
+                UserAuthorizedDependencies.RequireEnabled("CloudRedirectAddon", settings.IsExecutableWorkflowEnabled);
+                ManifestContentPolicy.EnsureNoReparsePoints(dest);
+                byte[] payload = UserAuthorizedDependencies.ReadVerifiedBytes("CloudRedirectAddon",
+                    Path.Combine(staging, "consent.json"), CloudRedirectDll, tmp, settings.IsExecutableWorkflowEnabled);
+                File.WriteAllBytes(dest, payload);
+                UserAuthorizedDependencies.RecordFiles("CloudRedirectAddon", ConsentReceiptPath("CloudRedirectAddon"),
+                    new Dictionary<string, string> { [CloudRedirectDll] = dest }, settings.IsExecutableWorkflowEnabled,
+                    explicitUserAction: true);
                 StampNow(dest);
             }
             catch
@@ -838,19 +862,67 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
                    !a.Name.Contains("Debug", StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Extract just the wanted files from a zip into <paramref name="destDir"/> (flattened).</summary>
-    private static Dictionary<string, string> ExtractWanted(string zipPath, string[] wanted, string destDir)
+    internal static string ConsentReceiptPath(string component) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName,
+        "consent", "install", component + ".json");
+
+    private bool IsConsentedCloudAddon(string root)
+    {
+        try
+        {
+            UserAuthorizedDependencies.RequireFiles("CloudRedirectAddon", ConsentReceiptPath("CloudRedirectAddon"),
+                new Dictionary<string, string> { [CloudRedirectDll] = Path.Combine(root, CloudRedirectDll) },
+                settings.IsExecutableWorkflowEnabled);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    internal static void InstallConsentedModeFiles(string component, IReadOnlyDictionary<string, string> staged,
+        string destination, string receiptPath, Func<string, bool> enabled)
+    {
+        UserAuthorizedDependencies.RequireEnabled(component, enabled);
+        if (staged.Count == 0) throw new InvalidDataException("Dependency archive lacks install targets.");
+        var snapshots = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        var targets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, path) in staged)
+        {
+            ManifestContentPolicy.ValidateRelativePath(name);
+            if (Path.GetFileName(name) != name) throw new InvalidDataException("Invalid dependency target.");
+            string target = Path.Combine(destination, name);
+            ManifestContentPolicy.EnsureNoReparsePoints(target);
+            snapshots.Add(name, UserAuthorizedDependencies.ReadVerifiedBytes(component, path, enabled));
+            targets.Add(name, target);
+        }
+        foreach (var (name, target) in targets)
+        {
+            UserAuthorizedDependencies.RequireEnabled(component, enabled);
+            ManifestContentPolicy.EnsureNoReparsePoints(target);
+            File.WriteAllBytes(target, snapshots[name]);
+            StampNow(target);
+        }
+        foreach (var (name, target) in targets)
+        {
+            using var input = File.OpenRead(target);
+            if (!ManifestContentPolicy.ReadBounded(input, 512 * 1024 * 1024).AsSpan().SequenceEqual(snapshots[name]))
+                throw new InvalidDataException("Installed dependency differs from the authorized bytes.");
+        }
+        UserAuthorizedDependencies.RecordFiles(component, receiptPath, targets, enabled, explicitUserAction: true);
+        UserAuthorizedDependencies.RequireFiles(component, receiptPath, targets, enabled);
+    }
+
+    /// <summary>After complete archive validation, select exactly one source for every original install target.</summary>
+    internal static Dictionary<string, string> FindWanted(string directory, string[] wanted)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        using var archive = ZipFile.OpenRead(zipPath);
-        foreach (var entry in archive.Entries)
+        foreach (string file in wanted)
         {
-            if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
-            string? match = wanted.FirstOrDefault(w => w.Equals(entry.Name, StringComparison.OrdinalIgnoreCase));
-            if (match is null || result.ContainsKey(match)) continue;
-            string dest = Path.Combine(destDir, match);
-            entry.ExtractToFile(dest, overwrite: true);
-            result[match] = dest;
+            ManifestContentPolicy.ValidateRelativePath(file);
+            if (Path.GetFileName(file) != file) throw new InvalidDataException("Invalid dependency target.");
+            var matches = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+                .Where(path => Path.GetFileName(path).Equals(file, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count > 1) throw new InvalidDataException("Ambiguous dependency archive target.");
+            if (matches.Count == 1) result[file] = matches[0];
         }
         return result;
     }

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -17,12 +17,17 @@ namespace LuaToolsGui.Services;
 public partial class HubcapService
 {
     // Hubcap-keyed downloads can be large manifest zips; allow a generous timeout like the lua.tools client.
-    private readonly HttpClient _http =
-        AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.HubcapBaseUrl));
+    private readonly HttpClient _http;
+    public HubcapService() : this(AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.HubcapBaseUrl))) { }
+    internal HubcapService(HttpClient http)
+    {
+        _http = http;
+        _http.BaseAddress ??= new Uri(AppConfig.HubcapBaseUrl);
+    }
 
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true, MaxDepth = 32 };
 
-    [GeneratedRegex("^smm_[0-9a-f]{96}$")]
+    [GeneratedRegex(@"\Asmm_[0-9a-f]{96}\z")]
     private static partial Regex KeyFormatRegex();
 
     /// <summary>Local format check. Hubcap keys are "smm_" followed by 96 lowercase hex chars.</summary>
@@ -33,9 +38,13 @@ public partial class HubcapService
     {
         try
         {
-            var res = await _http.GetAsync($"/api/v1/user/stats?api_key={Uri.EscapeDataString(key)}", ct);
+            if (!IsValidKeyFormat(key)) return null;
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/user/stats?api_key={Uri.EscapeDataString(key)}");
+            HttpCredentialPurpose.Hubcap.Apply(req);
+            using var res = await _http.SendAsync(req, ct);
             if (!res.IsSuccessStatusCode) return null;
-            return await ReadJsonAsync<HubcapStats>(res, ct);
+            var stats = await ReadJsonAsync<HubcapStats>(res, ct);
+            return stats is not null && stats.DailyUsage >= 0 && stats.DailyLimit > 0 ? stats : null;
         }
         catch { return null; }
     }
@@ -45,11 +54,15 @@ public partial class HubcapService
     {
         try
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/status/{Uri.EscapeDataString(appid)}");
+            if (!IsValidKeyFormat(key)) return null;
+            ApiContract.RequireAppId(appid);
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/status/{Uri.EscapeDataString(appid)}");
+            HttpCredentialPurpose.Hubcap.Apply(req);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-            var res = await _http.SendAsync(req, ct);
+            using var res = await _http.SendAsync(req, ct);
             if (!res.IsSuccessStatusCode) return null;
-            return await ReadJsonAsync<HubcapManifestStatus>(res, ct);
+            var status = await ReadJsonAsync<HubcapManifestStatus>(res, ct);
+            return status is not null && ApiContract.ValidText(status.Status, 128) ? status : null;
         }
         catch { return null; }
     }
@@ -59,8 +72,13 @@ public partial class HubcapService
     public async Task<DownloadedFile> DownloadManifestAsync(
         string appid, string key, IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
+        ApiContract.RequireAppId(appid);
+        if (!IsValidKeyFormat(key)) throw new ArgumentException("Invalid Hubcap key format.");
         var url = $"/api/v1/manifest/{Uri.EscapeDataString(appid)}?api_key={Uri.EscapeDataString(key)}";
-        using var res = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        HttpCredentialPurpose.Hubcap.Apply(req);
+        HttpResponseBudget.Download.Apply(req);
+        using var res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!res.IsSuccessStatusCode)
         {
             string message = res.StatusCode switch

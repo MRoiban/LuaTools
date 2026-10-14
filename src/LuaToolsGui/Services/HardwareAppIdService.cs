@@ -19,7 +19,7 @@ public class HardwareAppIdService
 
     private readonly GithubProxy _gh;
     private readonly CacheService _cache;
-    private readonly HashSet<long> _ids;
+    private HashSet<long> _ids;
     private Task? _loadTask;
 
     public HardwareAppIdService(GithubProxy gh, CacheService cache)
@@ -27,11 +27,12 @@ public class HardwareAppIdService
         _gh = gh;
         _cache = cache;
         // Seed from whatever was last cached so the filter works on the very first frame.
-        _ids = [.. cache.GetHardwareAppIds()];
+        _ids = [.. cache.GetHardwareAppIds().Take(10001).Where(CatalogDataPolicy.IsId)];
+        if (_ids.Count > 10000) _ids.Clear();
     }
 
     /// <summary>True if this appid is Steam hardware that should be hidden. Synchronous + allocation-free.</summary>
-    public bool IsBlacklisted(long appId) => _ids.Contains(appId);
+    public bool IsBlacklisted(long appId) => Volatile.Read(ref _ids).Contains(appId);
 
     /// <summary>Ensure the blacklist is reasonably fresh: refetch from GitHub if the cache is stale or empty,
     /// else no-op. Runs at most once per session. Never throws. On failure the seeded/stale set stays.</summary>
@@ -40,6 +41,7 @@ public class HardwareAppIdService
     private async Task RefreshIfStaleAsync()
     {
         long fetchedAt = _cache.GetHardwareAppIdsFetchedAt();
+        if (fetchedAt < 0 || fetchedAt > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) fetchedAt = 0;
         bool fresh = fetchedAt > 0 && _ids.Count > 0
             && DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(fetchedAt) < MaxAge;
         if (fresh) return; // cached copy is recent enough
@@ -50,12 +52,8 @@ public class HardwareAppIdService
             if (res is null || !res.IsSuccessStatusCode) return; // keep the seeded/stale set
 
             string body = await res.Content.ReadAsStringAsync();
-            var entries = JsonSerializer.Deserialize<List<HardwareApp>>(body, JsonOpts);
-            if (entries is null || entries.Count == 0) return; // empty/garbage → don't wipe a good cache
-
-            var ids = entries.Where(e => e.AppId > 0).Select(e => e.AppId).Distinct().ToList();
-            _ids.Clear();
-            foreach (long id in ids) _ids.Add(id);
+            var ids = ParseIds(body);
+            Volatile.Write(ref _ids, ids.ToHashSet());
             _cache.SaveHardwareAppIds(ids, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         }
         catch
@@ -63,6 +61,16 @@ public class HardwareAppIdService
             // Offline / all mirrors down / parse error → keep the existing set. Best-effort, like the
             // other caches; the blacklist is a nicety, never a hard dependency.
         }
+    }
+
+    internal static List<long> ParseIds(string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        CatalogDataPolicy.Validate(doc.RootElement, maxString: 4096);
+        var entries = JsonSerializer.Deserialize<List<HardwareApp>>(body, JsonOpts);
+        if (entries is null || entries.Count == 0 || entries.Any(e => e is null || !CatalogDataPolicy.IsId(e.AppId)))
+            throw new System.IO.InvalidDataException();
+        return entries.Select(e => e.AppId).Distinct().ToList();
     }
 
     /// <summary>One entry of the hardware_appid.json array (only the appid matters to us).</summary>

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 
 namespace LuaToolsGui.Services;
@@ -59,10 +59,10 @@ public class CacheData
 /// </summary>
 public class CacheService
 {
-    private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui");
-    private static readonly string FilePath = Path.Combine(Dir, "cache.json");
-    private static readonly string TmpPath = FilePath + ".tmp";
+    private readonly string Dir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName);
+    private readonly string FilePath;
+
 
     /// <summary>
     /// Serializes every read-modify-write of the cache.
@@ -79,7 +79,8 @@ public class CacheService
 
     private CacheData _cache = new();
 
-    public CacheService() => Load();
+    public CacheService() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "cache.json")) { }
+    internal CacheService(string path) { FilePath = path; Dir = Path.GetDirectoryName(path)!; Load(); }
 
     /// <summary>OpenSteamTools: the release tag last installed (for the up-to-date check).</summary>
     public string? OpenSteamToolsInstalledVersion
@@ -229,7 +230,7 @@ public class CacheService
         try
         {
             if (File.Exists(FilePath))
-                _cache = JsonSerializer.Deserialize<CacheData>(File.ReadAllText(FilePath)) ?? new CacheData();
+                _cache = JsonSerializer.Deserialize<CacheData>(CatalogDataPolicy.Read(FilePath, CatalogDataPolicy.JsonBytes)) ?? new CacheData();
         }
         catch
         {
@@ -261,10 +262,11 @@ public class CacheService
             && _cache.SteamAutoCrackCheckedAtMs == 0;
         if (empty)
         {
-            try { if (File.Exists(FilePath)) File.Delete(FilePath); } catch { /* best effort */ }
+            try { CatalogDataPolicy.CheckLocal(FilePath); if (File.Exists(FilePath)) File.Delete(FilePath); } catch { /* best effort */ }
             return;
         }
 
+        CatalogDataPolicy.CheckLocal(FilePath);
         Directory.CreateDirectory(Dir);
 
         // Write-then-move, the same shape SettingsService uses. A bare WriteAllText that is interrupted
@@ -272,7 +274,6 @@ public class CacheService
         // resetting to an empty cache — silently discarding everything, including the permanent
         // DonatedAppIds list. File.Move over an existing file is atomic on NTFS.
         string json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(TmpPath, json);
-        File.Move(TmpPath, FilePath, overwrite: true);
+        CatalogDataPolicy.WriteAsync(FilePath, System.Text.Encoding.UTF8.GetBytes(json)).GetAwaiter().GetResult();
     }
 }

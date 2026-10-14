@@ -610,5 +610,55 @@ public class LuaVaultTests : IDisposable
         Assert.Contains(variants, v => v.DisplayLabel == "keeper" && v.BuildId == "18234567");
         Assert.Contains(reopened.AppsWithVariants(), id => id == AppId);
     }
+    [Fact]
+    public void ExecutableLuaCannotBeSavedOrCaptured()
+    {
+        WriteLive(AutoUpdatingLua);
+        const string payload = "addappid(386940)\nos.execute('calc')";
+        Assert.False(_vault.WriteLive(AppId, payload));
+        Assert.Equal(AutoUpdatingLua, ReadLive());
+        Assert.Null(_vault.SaveText(AppId, payload, "unsafe"));
+        string staged = Path.Combine(_tmp, "unsafe.lua");
+        File.WriteAllText(staged, payload);
+        Assert.Null(_vault.Capture(AppId, staged, LuaVariantKind.Build, "123"));
+    }
+
+    [Fact]
+    public void TamperedStoredVariantCannotBecomeLiveOnPageLoad()
+    {
+        string staged = Path.Combine(_tmp, "build.lua");
+        File.WriteAllText(staged, PinnedBuildLua);
+        var variant = _vault.Capture(AppId, staged, LuaVariantKind.Build, "123");
+        Assert.NotNull(variant);
+        string stored = Path.Combine(_tmp, "luavault", AppId.ToString(), variant.Hash + ".lua");
+        File.WriteAllText(stored, "os.execute('calc')");
+        Assert.Null(_vault.ApplyBuildIfNothingLive(AppId));
+        Assert.False(File.Exists(LivePath));
+        Assert.False(_vault.Apply(AppId, variant));
+    }
+
+    [Fact]
+    public void InvalidVaultIdentityCannotTraverseOutOfVault()
+    {
+        string staged = Path.Combine(_tmp, "build.lua");
+        File.WriteAllText(staged, PinnedBuildLua);
+        var variant = _vault.Capture(AppId, staged, LuaVariantKind.Build, "123");
+        Assert.NotNull(variant);
+        Assert.False(_vault.Apply(AppId, variant with { Hash = "../../outside" }));
+        Assert.False(File.Exists(LivePath));
+    }
+
+    [Fact]
+    public void LuaForAnotherApplicationCannotBeStoredOrSavedLive()
+    {
+        WriteLive(AutoUpdatingLua);
+        Assert.False(_vault.WriteLive(AppId, "addappid(480)"));
+        Assert.Equal(AutoUpdatingLua, ReadLive());
+        Assert.Null(_vault.SaveText(AppId, "addappid(480)", "substitution"));
+        string staged = Path.Combine(_tmp, "wrong-app.lua");
+        File.WriteAllText(staged, "addappid(480)");
+        Assert.Null(_vault.Capture(AppId, staged, LuaVariantKind.Build, "123"));
+    }
+
 }
     

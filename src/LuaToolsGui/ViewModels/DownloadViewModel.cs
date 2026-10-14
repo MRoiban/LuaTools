@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -533,7 +533,13 @@ public partial class DownloadViewModel : ObservableObject
             }
             else
             {
-                var statuses = await _api.CheckSourcesAsync(Details.AppId.ToString());
+                Dictionary<string, string> statuses;
+                try { statuses = await _api.CheckSourcesAsync(Details.AppId.ToString()); }
+                catch (ApiException ex)
+                {
+                    statuses = [];
+                    Error = ex.Message;
+                }
 
                 // The manifest backend no longer reports the Hubcap/Morrenus source. Synthesize it
                 // ourselves from a direct Hubcap status check (or show it locked if no key is set).

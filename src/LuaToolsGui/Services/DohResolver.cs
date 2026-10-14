@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -44,9 +44,7 @@ public class DohResolver
 
     public DohResolver(HttpMessageHandler? handler = null)
     {
-        _http = handler is null
-            ? new HttpClient { Timeout = TimeSpan.FromSeconds(5) }
-            : new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
+        _http = AppHttp.CreateDns(handler);
         _http.DefaultRequestHeaders.Accept.Add(new("application/dns-json"));
     }
 

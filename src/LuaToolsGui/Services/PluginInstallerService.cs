@@ -38,11 +38,12 @@ public sealed record PluginStatus(
 /// "launch LuaTools.exe when Steam opens", with no CDP hook, no load-timing race, and no dual-slot
 /// redundancy needed anymore.
 /// </summary>
-public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjectorService injector)
+public class PluginInstallerService(SteamService steam, SettingsService settings, GithubProxy gh, CefInjectorService injector)
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private const string PluginZipAsset = "plugin.zip";
+    public Func<Task>? ActivatePlugin { get; set; }
 
     /// <summary>The one DLL-proxy slot the loader ships as. <c>winmm.dll</c> is loaded dynamically (audio)
     /// by steam.exe, is never a KnownDLL on Win10 or Win11, and isn't claimed by Millennium (wsock32/
@@ -143,7 +144,7 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
         p?.WaitForExit(5000);
     }
 
-    private static readonly HttpClient PortProbeHttp = AppHttp.Create(TimeSpan.FromMilliseconds(800));
+    private static readonly HttpClient PortProbeHttp = AppHttp.CreateLoopback(TimeSpan.FromMilliseconds(800), 8080);
 
     /// <summary>Best-effort check for whether CDP's fixed port is occupied by something OTHER than Steam's
     /// own CDP server. A bare bind-test can't make that distinction: once the junction is doing its job and
@@ -177,7 +178,7 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
     }
 
     private static string FrontendDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "plugin");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "plugin");
     private static string LuatoolsJsPath => Path.Combine(FrontendDir, "public", "luatools.js");
     private static string ManifestPath => Path.Combine(FrontendDir, "installed.json");
 
@@ -262,19 +263,8 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
         bool legacy = LegacyDllPaths.Any(File.Exists);
         bool loader = anySlotPresent || legacy;
 
-        // Self-heal the CDP junction on every status check, not just when InstallAsync happens to run.
-        // InstallAsync only fires on a fresh install or when a version bump makes UpdateAvailable true. Once
-        // the plugin is fully up to date, nothing else ever re-touches the marker. If it's ever removed after
-        // that point (inconsistent Millennium-version cleanup, AV quarantining the reparse point, a Steam
-        // repair, manual deletion), CDP silently stops working and the ONLY thing that used to fix it was a
-        // full uninstall+reinstall (forces InstallAsync unconditionally). Exactly the workaround users have
-        // been reporting. GetStatusAsync runs on every Steam-open poke, so checking here closes that gap
-        // continuously instead of only at version-bump time. Cheap when already correct (single attribute
-        // check, no shellout) and only touches the loader DLL is actually installed.
-        if (loader && CdpMarkerPath is { } liveMarkerPath)
-            CreateCdpMarkerJunction(liveMarkerPath);
-
-        bool port8080Busy = await IsPort8080BusyAsync();
+        // Status is read-only. CDP infrastructure is created only by explicit installation.
+        bool port8080Busy = settings.IsExecutableWorkflowEnabled("LuaToolsPlugin") && await IsPort8080BusyAsync();
         var manifest = ReadManifest();
         var latest = await FetchLatestAsync(force, ct);
 
@@ -296,9 +286,13 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
     }
 
     // ── Install / update ──
-    public async Task<(bool ok, string? error)> InstallAsync(IProgress<double?>? progress, CancellationToken ct = default)
+    public async Task<(bool ok, string? error)> InstallAsync(IProgress<double?>? progress, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
+        if (!settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"))
+            return (false, "Enable the Steam plugin in Settings before installing it.");
         if (SteamDir is not { } steamDir) return (false, Resources.Strings.Plugin_Err_SteamNotFound);
+        if (DllUpdateDisabled) return (false, "Remove the loader update disabled marker before installing the plugin.");
+        ManifestContentPolicy.EnsureNoReparsePoints(steamDir);
 
         var latest = await FetchLatestAsync(force: true, ct);
         if (latest is null) return (false, Resources.Strings.Plugin_Err_GithubUnreachable);
@@ -319,17 +313,17 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
         Dictionary<string, List<string>>? disabledMillenniumEntries = null;
         try
         {
-            string zipPath = Path.Combine(tmp, PluginZipAsset);
-            await gh.DownloadAsync(zipAsset.DownloadUrl, zipPath, progress, ct);
+            string zipPath = await DependencyQuarantine.AcquireAssetAsync(gh, "LuaToolsPlugin",
+                AppConfig.PluginReleasesOwner + "/" + AppConfig.PluginReleasesRepo, zipAsset, progress, ct);
             var slotDlPaths = new Dictionary<LoaderSlot, string>();
             foreach (var (slot, asset) in slotAssets)
             {
-                string p = Path.Combine(tmp, slot.DllAsset);
-                await gh.DownloadAsync(asset.DownloadUrl, p, progress, ct);
-                slotDlPaths[slot] = p;
+                slotDlPaths[slot] = await DependencyQuarantine.AcquireAssetAsync(gh, "LuaToolsPlugin",
+                    AppConfig.PluginReleasesOwner + "/" + AppConfig.PluginReleasesRepo, asset, progress, ct);
             }
 
-            // Verify each against its release asset digest before touching anything on disk.
+            // Acquisition is not approval: stop before extraction or Steam writes for unreviewed builds.
+            UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
             string zipSha = AssetHash.OfFile(zipPath);
             if (AssetDigest(latest, PluginZipAsset) is { } zd && zipSha != zd)
                 return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, PluginZipAsset));
@@ -342,19 +336,45 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
                     return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, slot.DllAsset));
             }
 
-            // 1) Frontend → %AppData%\LuaToolsGui\plugin (fresh).
-            if (Directory.Exists(FrontendDir)) Directory.Delete(FrontendDir, recursive: true);
-            Directory.CreateDirectory(FrontendDir);
-            ZipFile.ExtractToDirectory(zipPath, FrontendDir);
-            NormalizeFrontendLayout();
-            if (!File.Exists(LuatoolsJsPath))
+            // Verify the complete extracted frontend before touching the installed plugin.
+            string extracted = Path.Combine(tmp, "frontend");
+            UserAuthorizedDependencies.ValidateArchiveAndExtract("LuaToolsPluginFrontend", zipPath, extracted,
+                settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
+            NormalizeFrontendLayout(extracted);
+            if (!File.Exists(Path.Combine(extracted, "public", "luatools.js")))
                 return (false, Resources.Strings.Plugin_Err_NoLuatoolsJs);
+            UserAuthorizedDependencies.RecordDirectory("LuaToolsPluginFrontend", extracted,
+                settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
+            UserAuthorizedDependencies.RequireDirectory("LuaToolsPluginFrontend", extracted, settings.IsExecutableWorkflowEnabled);
+
+            string loaderStage = Path.Combine(tmp, "loader");
+            Directory.CreateDirectory(loaderStage);
+            foreach (var slot in Slots)
+            {
+                ManifestContentPolicy.EnsureNoReparsePoints(slotDlPaths[slot]);
+                using var input = File.OpenRead(slotDlPaths[slot]);
+                byte[] bytes = ManifestContentPolicy.ReadBounded(input, 512 * 1024 * 1024);
+                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant() != slotShas[slot])
+                    throw new InvalidDataException("Loader changed during installation.");
+                File.WriteAllBytes(Path.Combine(loaderStage, slot.DllAsset), bytes);
+                ManifestContentPolicy.EnsureNoReparsePoints(slot.SystemSourcePath);
+                using var systemInput = File.OpenRead(slot.SystemSourcePath);
+                File.WriteAllBytes(Path.Combine(loaderStage, slot.RealName), ManifestContentPolicy.ReadBounded(systemInput, 64 * 1024 * 1024));
+            }
+            UserAuthorizedDependencies.RecordDirectory("LuaToolsPlugin", loaderStage, settings.IsExecutableWorkflowEnabled,
+                explicitUserAction: true);
+            var loaderBytes = Slots.SelectMany(slot => new[] { slot.DllAsset, slot.RealName }).ToDictionary(name => name,
+                name => UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPlugin", Path.Combine(loaderStage, name),
+                    settings.IsExecutableWorkflowEnabled));
+            UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
+            UserAuthorizedDependencies.PromoteDirectory("LuaToolsPluginFrontend", extracted, FrontendDir,
+                settings.IsExecutableWorkflowEnabled, action: true);
 
             // Get the frontend live in THIS running process immediately. Don't wait on the Steam restart
             // below. A relaunched LuaTools.exe would hit the single-instance mutex against this very
             // process (the one the user is using right now to click Install) and exit quietly without ever
             // taking over, so nothing would otherwise pick up the new file until a manual app restart.
-            await injector.ReloadPluginFilesAsync();
+            // Activation happens only after the complete frontend and native loader install succeed.
 
             // 2) Loader DLLs → Steam root, but ONLY when at least one slot actually changed, OR a legacy
             //    slot is still present and must be removed. Both slots are always installed/updated
@@ -365,7 +385,9 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
             // (so hand-placed test builds aren't clobbered), and thus never stop/restart Steam for it either.
             bool legacyPresent = LegacyDllPaths.Any(File.Exists);
             bool anySlotNeedsUpdate = Slots.Any(slot =>
-                SlotPath(slot) is not { } cur || !File.Exists(cur) || AssetHash.OfFile(cur) != slotShas[slot]);
+                SlotPath(slot) is not { } cur || !File.Exists(cur) || AssetHash.OfFile(cur) != slotShas[slot]
+                || SlotRealPath(slot) is not { } real || !File.Exists(real)
+                || AssetHash.OfFile(real) != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(loaderBytes[slot.RealName])).ToLowerInvariant());
             bool dllNeedsUpdate = !DllUpdateDisabled && (anySlotNeedsUpdate || legacyPresent);
             if (dllNeedsUpdate)
             {
@@ -375,11 +397,17 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
 
                 foreach (var slot in Slots)
                 {
-                    File.Copy(slotDlPaths[slot], Path.Combine(steamDir, slot.DllAsset), overwrite: true);
+                    UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
+                    string dllTarget = Path.Combine(steamDir, slot.DllAsset);
+                    ManifestContentPolicy.EnsureNoReparsePoints(dllTarget);
+                    File.WriteAllBytes(dllTarget, loaderBytes[slot.DllAsset]);
                     // Each proxy forwards to <name>_real.dll. A copy of the machine's own matching
                     // System32 file. Refresh it on every DLL update so it always matches the current OS build.
-                    if (SlotRealPath(slot) is { } real && File.Exists(slot.SystemSourcePath))
-                        File.Copy(slot.SystemSourcePath, real, overwrite: true);
+                    if (SlotRealPath(slot) is { } real)
+                    {
+                        ManifestContentPolicy.EnsureNoReparsePoints(real);
+                        File.WriteAllBytes(real, loaderBytes[slot.RealName]);
+                    }
                 }
                 // Remove any legacy slot (psapi/dbghelp + their _real). Leaving one would run the loader
                 // payload an extra time (double LuaTools launch / CDP hook).
@@ -396,6 +424,7 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
                     disabledMillenniumEntries = SetMillenniumLuatoolsEnabled(enable: false);
                 }
 
+                UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
                 if (wasRunning) steam.StartSteam();
             }
 
@@ -404,8 +433,8 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
             // any GetStatusAsync call would see `loader` true); GetStatusAsync's own check is what keeps this
             // self-healing on every subsequent Steam-open, not just at install/update time. See its
             // declaration above for why this MUST be a junction, not a file.
-            if (CdpMarkerPath is { } markerPath)
-                CreateCdpMarkerJunction(markerPath);
+            UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
+            if (CdpMarkerPath is { } markerPath) CreateCdpMarkerJunction(markerPath);
 
             WriteManifest(new Manifest
             {
@@ -414,6 +443,19 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
                 ZipSha = zipSha,
                 DisabledMillenniumEntries = disabledMillenniumEntries,
             });
+            UserAuthorizedDependencies.RecordDirectory("LuaToolsPluginFrontend", FrontendDir, settings.IsExecutableWorkflowEnabled,
+                explicitUserAction: true);
+            var installedLoaders = Slots.SelectMany(slot => new[] { slot.DllAsset, slot.RealName })
+                .ToDictionary(name => name, name => Path.Combine(steamDir, name));
+            foreach (var (name, path) in installedLoaders)
+                if (!File.ReadAllBytes(path).AsSpan().SequenceEqual(loaderBytes[name]))
+                    throw new InvalidDataException("Installed loader differs from the authorized bytes.");
+            UserAuthorizedDependencies.RecordFiles("LuaToolsPlugin", UnlockerService.ConsentReceiptPath("LuaToolsPlugin"),
+                installedLoaders, settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
+            UserAuthorizedDependencies.RequireFiles("LuaToolsPlugin", UnlockerService.ConsentReceiptPath("LuaToolsPlugin"),
+                installedLoaders, settings.IsExecutableWorkflowEnabled);
+            await injector.ReloadPluginFilesAsync();
+            if (ActivatePlugin is { } activate) await activate();
             return (true, null);
         }
         catch (Exception ex) { return (false, ex.Message); }
@@ -425,14 +467,9 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
     /// Fire-and-forget safe: swallows offline/errors. Called from the app's Steam-open update flow.</summary>
     public async Task<bool> AutoUpdateAsync(CancellationToken ct = default)
     {
-        try
-        {
-            var st = await GetStatusAsync(force: true, ct);
-            if (!st.UpdateAvailable) return false; // not installed, offline, or already current
-            var (ok, _) = await InstallAsync(progress: null, ct);
-            return ok;
-        }
-        catch { return false; }
+        ct.ThrowIfCancellationRequested();
+        await Task.CompletedTask;
+        return false; // Executable/JavaScript installations require explicit approval.
     }
 
     // ── Uninstall ──
@@ -603,15 +640,15 @@ public class PluginInstallerService(SteamService steam, GithubProxy gh, CefInjec
 
     /// <summary>If plugin.zip wrapped everything in a single top-level folder, hoist that folder's contents
     /// up so <c>public/luatools.js</c> sits directly under FrontendDir.</summary>
-    private static void NormalizeFrontendLayout()
+    private static void NormalizeFrontendLayout(string frontendDir)
     {
-        if (Directory.Exists(Path.Combine(FrontendDir, "public"))) return;
-        foreach (var sub in Directory.GetDirectories(FrontendDir))
+        if (Directory.Exists(Path.Combine(frontendDir, "public"))) return;
+        foreach (var sub in Directory.GetDirectories(frontendDir))
         {
             if (!Directory.Exists(Path.Combine(sub, "public"))) continue;
             foreach (var entry in Directory.GetFileSystemEntries(sub))
             {
-                string dest = Path.Combine(FrontendDir, Path.GetFileName(entry));
+                string dest = Path.Combine(frontendDir, Path.GetFileName(entry));
                 if (Directory.Exists(entry)) Directory.Move(entry, dest);
                 else File.Move(entry, dest, overwrite: true);
             }

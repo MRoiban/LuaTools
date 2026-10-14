@@ -75,15 +75,14 @@ public partial class DownloadsViewModel : ObservableObject
         _queue.Enqueue(_jobs.CreateSteamAutoCrackJob());
     }
 
-    /// <summary>Throttled background update probe. Only queues anything if a newer build actually exists.</summary>
+    /// <summary>Throttled metadata-only update probe; never queues executable acquisition or installation.</summary>
     private async Task CheckSteamAutoCrackUpdateAsync()
     {
         // Fire-and-forget off a UI command: an unobserved fault here must never reach the user.
         try
         {
             if (_queue.FindActive("tool:steamautocrack") is not null) return; // one already in flight
-            if (await _sac.IsUpdateAvailableAsync())
-                _queue.Enqueue(_jobs.CreateSteamAutoCrackJob(launchWhenDone: false));
+            _ = await _sac.IsUpdateAvailableAsync();
         }
         catch { /* background nicety; never surfaces */ }
     }

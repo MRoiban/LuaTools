@@ -1,9 +1,10 @@
-﻿<UserControl
+<UserControl
     x:Class="LuaToolsGui.Views.SettingsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:services="clr-namespace:LuaToolsGui.Services"
     xmlns:res="clr-namespace:LuaToolsGui.Resources"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:vm="clr-namespace:LuaToolsGui.ViewModels"
@@ -64,7 +65,7 @@
                         Height="40"
                         CornerRadius="20">
                         <Border.Background>
-                            <ImageBrush ImageSource="{Binding AvatarUrl}" Stretch="UniformToFill" />
+                            <ImageBrush services:SafeImageLoader.Source="{Binding AvatarUrl}" Stretch="UniformToFill" />
                         </Border.Background>
                     </Border>
                     <StackPanel
@@ -393,6 +394,100 @@
                 </StackPanel>
             </Border>
 
+            <!-- Executable workflows -->
+            <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Settings_Section_ExecutableWorkflows}" />
+            <Border Style="{StaticResource SettingsCard}">
+                <StackPanel>
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_ExecutableGameFixes}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding ExecutableGameFixesEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_BetterSteamTools}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding BetterSteamToolsEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_OpenSteamTools}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding OpenSteamToolsEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_SteamPlugin}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding SteamPluginEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_DepotDownloader}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding DepotDownloaderEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_Steamless}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding SteamlessEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_SteamAutoCrack}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding SteamAutoCrackEnabled, Mode=TwoWay}" />
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Settings_CloudRedirect}" />
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center"
+                                         IsChecked="{Binding CloudRedirectEnabled, Mode=TwoWay}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- General (language) -->
             <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Settings_Section_General}" />
             <Border Style="{StaticResource SettingsCard}">
@@ -418,7 +513,7 @@
                             TextWrapping="Wrap" />
                     </StackPanel>
                     <Border Style="{StaticResource RowDivider}" />
-                    <!-- DNS resolution. Defaults to Automatic; see AppHttp for what each mode does. -->
+                    <!-- DNS resolution. Defaults to system DNS; see AppHttp for what each mode does. -->
                     <StackPanel Margin="14,12">
                         <TextBlock
                             FontSize="13"
@@ -496,31 +591,6 @@
             <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Settings_Section_Startup}" />
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel>
-                    <!-- Start with Windows -->
-                    <Grid Margin="14,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock
-                                FontSize="13"
-                                FontWeight="Medium"
-                                Text="{x:Static res:Strings.Settings_StartWithWindows}" />
-                            <TextBlock
-                                Margin="0,4,0,0"
-                                FontSize="12"
-                                Foreground="#6b7280"
-                                Text="{x:Static res:Strings.Settings_StartWithWindows_Hint}"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
-                        <ui:ToggleSwitch
-                            Grid.Column="1"
-                            Margin="12,0,0,0"
-                            VerticalAlignment="Center"
-                            IsChecked="{Binding StartWithWindows, Mode=TwoWay}" />
-                    </Grid>
-                    <Border Style="{StaticResource RowDivider}" />
                     <!-- Minimize to System Tray -->
                     <Grid Margin="14,12">
                         <Grid.ColumnDefinitions>
@@ -548,33 +618,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Community -->
-            <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Settings_Section_Community}" />
-            <Border Style="{StaticResource SettingsCard}">
-                <Grid Margin="14,12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock
-                            FontSize="13"
-                            FontWeight="Medium"
-                            Text="{x:Static res:Strings.Settings_DonateKeys}" />
-                        <TextBlock
-                            Margin="0,4,0,0"
-                            FontSize="12"
-                            Foreground="#6b7280"
-                            Text="{x:Static res:Strings.Settings_DonateKeys_Hint}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ui:ToggleSwitch
-                        Grid.Column="1"
-                        Margin="12,0,0,0"
-                        VerticalAlignment="Center"
-                        IsChecked="{Binding DonateKeys, Mode=TwoWay}" />
-                </Grid>
-            </Border>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

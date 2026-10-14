@@ -84,7 +84,7 @@ internal class VaultIndex
 public class LuaVault
 {
     private static readonly string DefaultRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LuaToolsGui", "luavault");
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "luavault");
 
     private readonly string _root;
     private readonly Func<string?> _stPlugInDir;
@@ -118,7 +118,12 @@ public class LuaVault
 
     private string AppDir(long appId) => Path.Combine(_root, appId.ToString());
     private string IndexPath(long appId) => Path.Combine(AppDir(appId), "index.json");
-    private string VariantPath(long appId, string hash) => Path.Combine(AppDir(appId), hash + ".lua");
+    private string VariantPath(long appId, string hash)
+    {
+        if (hash.Length != 64 || !hash.All(Uri.IsHexDigit))
+            throw new InvalidDataException("Invalid Lua variant identity.");
+        return Path.Combine(AppDir(appId), hash + ".lua");
+    }
 
     /// <summary>Steam's live copy for this game (config\stplug-in\&lt;appid&gt;.lua), or null if Steam
     /// isn't located.</summary>
@@ -269,6 +274,8 @@ public class LuaVault
         try
         {
             if (!File.Exists(luaPath)) return null;
+            ManifestContentPolicy.ValidateLuaFile(luaPath, appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(AppDir(appId));
             string hash = HashFile(luaPath);
 
             LuaVariant result;
@@ -298,6 +305,7 @@ public class LuaVault
                 else
                 {
                     Directory.CreateDirectory(AppDir(appId));
+                    ManifestContentPolicy.EnsureNoReparsePoints(VariantPath(appId, hash));
                     File.Copy(luaPath, VariantPath(appId, hash), overwrite: true);
                     result = Describe(appId, luaPath, hash, kind, buildId, source);
                     index.Variants.Add(result);
@@ -357,6 +365,8 @@ public class LuaVault
         {
             string? live = LivePath(appId);
             if (live is null || !File.Exists(live)) return false;
+            ManifestContentPolicy.ValidateLuaFile(live, appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(AppDir(appId));
             string liveHash = HashFile(live);
 
             lock (_gate)
@@ -378,6 +388,8 @@ public class LuaVault
                     }
 
                     Directory.CreateDirectory(AppDir(appId));
+                    ManifestContentPolicy.ValidateLuaFile(live, appId);
+                    ManifestContentPolicy.EnsureNoReparsePoints(VariantPath(appId, liveHash));
                     File.Copy(live, VariantPath(appId, liveHash), overwrite: true);
                     // Steam's copy is always <appid>.lua, so its name can't carry a build id. This is
                     // only ever "default", even when the bytes happen to be pinned.
@@ -429,6 +441,7 @@ public class LuaVault
     /// </summary>
     public bool Apply(long appId, LuaVariant variant)
     {
+        if (variant.Hash.Length != 64 || !variant.Hash.All(Uri.IsHexDigit)) return false;
         string? live = LivePath(appId);
         string source = VariantPath(appId, variant.Hash);
         if (live is null || !File.Exists(source)) return false;
@@ -439,10 +452,16 @@ public class LuaVault
             // sitting there was an unsaved working copy this is its only chance to be kept. "the Builds
             // page probably refreshed and synced already" is not a guarantee to hang a destructive
             // overwrite on. Core variant so the whole swap raises one VaultChanged, not two.
+            ManifestContentPolicy.EnsureNoReparsePoints(source);
+            using var sourceStream = File.OpenRead(source);
+            byte[] validatedBytes = ManifestContentPolicy.ReadBounded(sourceStream, ManifestContentPolicy.MaxLuaBytes);
+            ManifestContentPolicy.ValidateLua(validatedBytes, appId);
+            if (!Convert.ToHexString(SHA256.HashData(validatedBytes)).Equals(variant.Hash, StringComparison.OrdinalIgnoreCase)) return false;
+            ManifestContentPolicy.EnsureNoReparsePoints(live);
             SyncDefaultFromLiveCore(appId);
 
             Directory.CreateDirectory(Path.GetDirectoryName(live)!);
-            File.Copy(source, live, overwrite: true);
+            File.WriteAllBytes(live, validatedBytes);
             StampNow(live);
             SetEditBase(appId, null); // live matches a stored variant again, no pending edit
             VaultChanged?.Invoke(appId);
@@ -458,6 +477,8 @@ public class LuaVault
         if (live is null) return false;
         try
         {
+            ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(live);
             Directory.CreateDirectory(Path.GetDirectoryName(live)!);
             File.WriteAllText(live, text);
             StampNow(live);
@@ -476,6 +497,8 @@ public class LuaVault
         string tmp = Path.Combine(Path.GetTempPath(), $"luavault_{Guid.NewGuid():N}.lua");
         try
         {
+            ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(AppDir(appId));
             File.WriteAllText(tmp, text);
             var variant = Capture(appId, tmp, LuaVariantKind.Preset);
             if (variant is null) return null;
@@ -527,6 +550,8 @@ public class LuaVault
         string tmp = Path.Combine(Path.GetTempPath(), $"luavault_{Guid.NewGuid():N}.lua");
         try
         {
+            ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), appId);
+            ManifestContentPolicy.EnsureNoReparsePoints(AppDir(appId));
             File.WriteAllText(tmp, text);
             string newHash = HashFile(tmp);
 
@@ -550,6 +575,7 @@ public class LuaVault
                 else
                 {
                     Directory.CreateDirectory(AppDir(appId));
+                    ManifestContentPolicy.EnsureNoReparsePoints(VariantPath(appId, newHash));
                     File.Copy(tmp, VariantPath(appId, newHash), overwrite: true);
 
                     // Re-describe from the new bytes (depot/DLC counts and pins change with an edit), then
@@ -680,6 +706,9 @@ public class LuaVault
         index.AppId = appId;
         string path = IndexPath(appId);
         string tmp = path + ".tmp";
+        ManifestContentPolicy.EnsureNoReparsePoints(path);
+        ManifestContentPolicy.EnsureNoReparsePoints(tmp);
+        ManifestContentPolicy.EnsureNoReparsePoints(path + ".bak");
 
         Directory.CreateDirectory(AppDir(appId));
         File.WriteAllText(tmp, JsonSerializer.Serialize(index, JsonOpts));

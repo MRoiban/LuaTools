@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -33,7 +33,7 @@ public static class AppHttp
     /// </remarks>
     public static Func<string>? ModeProvider { get; set; }
 
-    private static readonly DohResolver Resolver = new();
+    private static readonly Lazy<DohResolver> Resolver = new(() => new DohResolver());
 
     /// <summary>
     /// Auto mode's latch: set only once DoH has actually succeeded where the system resolver failed.
@@ -51,24 +51,68 @@ public static class AppHttp
         // Bounds how long a mode change takes to matter: pooled connections outlive the setting, so
         // without this a user who switches to Always keeps using system-resolved sockets until the
         // server closes them.
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        UseProxy = false,
         PooledConnectionLifetime = TimeSpan.FromMinutes(2),
         ConnectCallback = ConnectAsync,
     };
 
-    /// <summary>A client on the shared handler. The handler is never disposed with the client.</summary>
-    public static HttpClient Create(TimeSpan timeout, Uri? baseAddress = null) =>
-        new(Handler, disposeHandler: false) { Timeout = timeout, BaseAddress = baseAddress };
+    /// <summary>Every client validates its initial destination and each redirect before transport.</summary>
+    public static HttpClient Create(TimeSpan timeout, Uri? baseAddress = null, HttpResponseBudget? responseBudget = null, HttpCredentialPurpose? credentialPurpose = null)
+    {
+        var policy = new OutboundNetworkPolicy();
+        if (baseAddress is not null) policy.Validate(baseAddress);
+        return new(new OutboundPolicyHandler(policy, Handler, responseBudget, credentialPurpose), disposeHandler: false)
+            { Timeout = timeout, BaseAddress = baseAddress };
+    }
 
-    /// <summary>The shared handler, for the few callers that need a handler rather than a client.</summary>
-    public static HttpMessageHandler SharedHandler => Handler;
+    /// <summary>Dedicated local client: HTTP only to the literal loopback address and specified ports.</summary>
+    public static HttpClient CreateLoopback(TimeSpan timeout, params int[] ports) =>
+        new(new OutboundPolicyHandler(new OutboundNetworkPolicy(ports), Handler), disposeHandler: false)
+            { Timeout = timeout };
 
-    /// <summary>Current mode: "Auto" (default), "Always" or "Never".</summary>
+    internal static HttpClient CreateForTesting(TimeSpan timeout, HttpMessageHandler handler, HttpResponseBudget? responseBudget = null) =>
+        new(new OutboundPolicyHandler(new OutboundNetworkPolicy(), handler, responseBudget)) { Timeout = timeout };
+
+    internal static HttpClient CreateDns(HttpMessageHandler? handler = null) =>
+        new(new OutboundPolicyHandler(new OutboundNetworkPolicy(dns: true), handler ??
+            new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false }, HttpResponseBudget.Dns))
+            { Timeout = TimeSpan.FromSeconds(5) };
+
+    /// <summary>
+    /// Inert externally supplied data only: one HTTPS DNS origin, public addresses pinned at connection,
+    /// no redirects or account headers. Consumers must validate or quarantine downloaded data.
+    /// </summary>
+    public static HttpClient CreateExternalDataClient(TimeSpan timeout, Uri destination, HttpResponseBudget? responseBudget = null)
+    {
+        var policy = new OutboundNetworkPolicy(externalDestination: destination);
+        var transport = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false, UseCookies = false, UseProxy = false,
+            ConnectCallback = ExternalDataTransport.ConnectAsync,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        };
+        return new(new OutboundPolicyHandler(policy, transport, responseBudget ?? HttpResponseBudget.Download))
+            { Timeout = timeout };
+    }
+
+    internal static HttpClient CreateExternalDataForTesting(TimeSpan timeout, Uri destination,
+        HttpMessageHandler handler, HttpResponseBudget? responseBudget = null) =>
+        new(new OutboundPolicyHandler(new OutboundNetworkPolicy(externalDestination: destination), handler,
+            responseBudget ?? HttpResponseBudget.Download)) { Timeout = timeout };
+
+    /// <summary>Current mode: "Never" (default), "Auto" or "Always". DoH requires an explicit choice.</summary>
     private static string Mode
     {
         get
         {
-            try { return ModeProvider?.Invoke() ?? "Auto"; }
-            catch { return "Auto"; } // a broken provider must not take down every request
+            try
+            {
+                string? selected = ModeProvider?.Invoke();
+                return selected is "Auto" or "Always" ? selected : "Never";
+            }
+            catch { return "Never"; } // a broken provider must not take down every request
         }
     }
 
@@ -92,7 +136,7 @@ public static class AppHttp
 
         if (mode == "Always")
         {
-            var addresses = await Resolver.ResolveAsync(host, ct);
+            var addresses = await Resolver.Value.ResolveAsync(host, ct);
             if (addresses.Length > 0)
             {
                 try { return await ConnectTo(addresses, port, ct); }
@@ -106,7 +150,7 @@ public static class AppHttp
         // Once DoH has proven itself this session, skip the attempt we already know will fail.
         if (_systemDnsSuspect)
         {
-            var addresses = await Resolver.ResolveAsync(host, ct);
+            var addresses = await Resolver.Value.ResolveAsync(host, ct);
             if (addresses.Length > 0) return await ConnectTo(addresses, port, ct);
             return await ConnectBySystem(host, port, ct);
         }
@@ -122,7 +166,7 @@ public static class AppHttp
             // SINKHOLE address rather than NXDOMAIN, so the lookup "succeeds" and it is the connect
             // that fails. Escalating on connect failure — not just on resolution failure — is what
             // makes Auto work against real-world blocking.
-            var addresses = await Resolver.ResolveAsync(host, ct);
+            var addresses = await Resolver.Value.ResolveAsync(host, ct);
             if (addresses.Length == 0) throw;
 
             Stream stream;

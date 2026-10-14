@@ -9,7 +9,7 @@ public static class ProtocolService
 
     private static readonly string PendingFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "LuaToolsGui", "protocol_url.tmp");
+        AppConfig.DataDirectoryName, "protocol_url.tmp");
 
     public static void Register()
     {

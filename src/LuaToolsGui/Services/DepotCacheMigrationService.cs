@@ -108,6 +108,8 @@ public class DepotCacheMigrationService(SteamService steam, ILogger<DepotCacheMi
 
             try
             {
+                ManifestContentPolicy.EnsureNoReparsePoints(src);
+                ManifestContentPolicy.EnsureNoReparsePoints(dest);
                 Directory.CreateDirectory(realDir); // only once there is something to put in it
                 File.Move(src, dest);
                 moved++;

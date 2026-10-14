@@ -24,6 +24,8 @@ public partial class FixesView : UserControl
         // system browser. (It also sets NavigateUri; RequestNavigate is suppressed below so WPF doesn't
         // try to navigate the in-app content to the URL.)
         CommandBindings.Add(new CommandBinding(Markdig.Wpf.Commands.Hyperlink, OpenHyperlink));
+        CommandBindings.Add(new CommandBinding(Markdig.Wpf.Commands.Image, (_, e) => e.Handled = true,
+            (_, e) => { e.CanExecute = false; e.Handled = true; }));
         AddHandler(Hyperlink.RequestNavigateEvent, new RequestNavigateEventHandler((_, e) => e.Handled = true));
     }
 
@@ -35,8 +37,8 @@ public partial class FixesView : UserControl
 
     private static void Open(string? url)
     {
-        if (string.IsNullOrWhiteSpace(url)) return;
-        try { SteamService.OpenUrl(url); } catch { /* bad/blocked URL. Ignore */ }
+        if (!SafeMarkdown.IsSafeBrowserLink(url)) return;
+        try { SteamService.OpenUrl(new Uri(url!, UriKind.Absolute).AbsoluteUri); } catch { /* bad/blocked URL. Ignore */ }
     }
 
     // MarkdownViewer hosts its own (non-scrolling) FlowDocumentScrollViewer that swallows the mouse

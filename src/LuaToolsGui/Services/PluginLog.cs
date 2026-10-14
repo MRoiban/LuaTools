@@ -10,7 +10,7 @@ public static class PluginLog
 
     public static readonly string FilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "LuaToolsGui", "plugin-backend.log");
+        AppConfig.DataDirectoryName, "plugin-backend.log");
 
     public static void Log(string msg)
     {

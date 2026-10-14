@@ -28,10 +28,19 @@ PLACEHOLDER_RE = re.compile(r'\{(\d+)\}')
 # This list IS the handoff to the translation pass. When a feature's UI is final: translate its keys
 # across every Strings.<tag>.resx, clear them from here, and this check goes back to demanding full
 # parity. Anything left here is untranslated in all 29 languages.
-PENDING_TRANSLATION: set[str] = set()
-# Empty on purpose: every key is translated in all 29 languages, so the parity check above is
-# unconditional. Add a key here ONLY while its feature's UI is still moving, and clear it again
-# as soon as the translations land. Anything listed is English-only for every user.
+# The eight explicit-consent settings and their section title use neutral English fallback
+# until reviewed translations land. Only these exact keys are exempt; other parity rules stay intact.
+PENDING_TRANSLATION: set[str] = {
+    "Settings_Section_ExecutableWorkflows",
+    "Settings_ExecutableGameFixes",
+    "Settings_BetterSteamTools",
+    "Settings_OpenSteamTools",
+    "Settings_SteamPlugin",
+    "Settings_DepotDownloader",
+    "Settings_Steamless",
+    "Settings_SteamAutoCrack",
+    "Settings_CloudRedirect",
+}
 
 
 

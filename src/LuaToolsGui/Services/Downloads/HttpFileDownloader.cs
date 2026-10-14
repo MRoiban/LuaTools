@@ -20,37 +20,59 @@ internal static class HttpFileDownloader
 {
     /// <summary>Interim staging destination. Downloads land here, then are deleted once installed.</summary>
     public static readonly string StagingFolder =
-        Path.Combine(Path.GetTempPath(), "LuaToolsGui", "downloads");
+        Path.Combine(Path.GetTempPath(), AppConfig.DataDirectoryName, "downloads");
 
     /// <summary>Stream the response body to a staged file, reporting byte counts as it goes.</summary>
     public static async Task<DownloadedFile> SaveResponseAsync(
         HttpResponseMessage res, string fallbackName,
         IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
-        string fileName = res.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? fallbackName;
-        foreach (char c in Path.GetInvalidFileNameChars()) fileName = fileName.Replace(c, '_');
+        const long maxBytes = 512L * 1024 * 1024;
+        string fileName = res.Content.Headers.ContentDisposition?.FileNameStar
+            ?? res.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? fallbackName;
+        if (string.IsNullOrWhiteSpace(fileName) || fileName is "." or ".."
+            || fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || fileName.Contains('/') || fileName.Contains('\\') || Path.IsPathRooted(fileName)
+            || fileName.EndsWith('.') || fileName.EndsWith(' '))
+            throw new InvalidDataException("Invalid download filename.");
 
+        ManifestContentPolicy.ValidateRelativePath(fileName);
+        ManifestContentPolicy.EnsureNoReparsePoints(StagingFolder);
         Directory.CreateDirectory(StagingFolder);
-        string filePath = Path.Combine(StagingFolder, fileName);
-
-        long? total = res.Content.Headers.ContentLength;
-        await using var src = await res.Content.ReadAsStreamAsync(ct);
-        await using var dst = File.Create(filePath);
-
-        var buffer = new byte[81920];
-        long written = 0;
-        int read;
-        while ((read = await src.ReadAsync(buffer, ct)) > 0)
+        // Per-download directory prevents one response from overwriting another staged file.
+        string directory = Path.Combine(StagingFolder, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string filePath = Path.Combine(directory, fileName);
+        ManifestContentPolicy.EnsureNoReparsePoints(filePath);
+        using var bodyTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bodyTimeout.CancelAfter(TimeSpan.FromMinutes(5));
+        ct = bodyTimeout.Token;
+        try
         {
-            await dst.WriteAsync(buffer.AsMemory(0, read), ct);
-            written += read;
-            progress?.Report(new DownloadProgress(written, total));
+            long? total = res.Content.Headers.ContentLength;
+            if (total > maxBytes) throw new InvalidDataException("Download exceeds the size limit.");
+            await using var src = await res.Content.ReadAsStreamAsync(ct);
+            await using var dst = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write);
+            var buffer = new byte[81920];
+            long written = 0;
+            int read;
+            while ((read = await src.ReadAsync(buffer, ct)) > 0)
+            {
+                written += read;
+                if (written > maxBytes) throw new InvalidDataException("Download exceeds the size limit.");
+                await dst.WriteAsync(buffer.AsMemory(0, read), ct);
+                progress?.Report(new DownloadProgress(written, total));
+            }
+            if (total.HasValue && total.Value != written) throw new InvalidDataException("Incomplete download.");
+            progress?.Report(new DownloadProgress(written, total ?? written));
+            return new DownloadedFile(filePath, fileName);
         }
-
-        // One final report so a zero-length or single-chunk body still settles the bar at 100%.
-        progress?.Report(new DownloadProgress(written, total ?? written));
-
-        return new DownloadedFile(filePath, fileName);
+        catch
+        {
+            try { File.Delete(filePath); Directory.Delete(directory); } catch { }
+            throw;
+        }
+        finally { res.Dispose(); }
     }
 
     /// <summary>
@@ -63,7 +85,7 @@ internal static class HttpFileDownloader
         {
             if (!Directory.Exists(StagingFolder)) return;
             var cutoff = DateTime.UtcNow.AddDays(-1);
-            foreach (string path in Directory.EnumerateFiles(StagingFolder))
+            foreach (string path in Directory.EnumerateFiles(StagingFolder, "*", SearchOption.AllDirectories))
             {
                 try
                 {

@@ -66,6 +66,7 @@ public static class ManifestFile
         try
         {
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (fs.Length > ManifestContentPolicy.MaxManifestBytes) return null;
 
             // A zipped manifest has to be inflated whole; it cannot be seeked through.
             Span<byte> peek = stackalloc byte[2];
@@ -94,6 +95,8 @@ public static class ManifestFile
         }
         catch { return null; } // unreadable, truncated, or not a manifest at all
     }
+
+    internal static ManifestInfo? ReadMetadata(byte[] data) => ParseMetadata(FindSection(data, MetadataMagic));
 
     private static ManifestInfo? ParseMetadata(byte[]? meta)
     {
@@ -128,11 +131,17 @@ public static class ManifestFile
     /// True when this file really is the manifest its name claims — it parses, and its own depot id and
     /// gid match. Guards against a truncated or half-written cache entry being trusted because it exists.
     /// </summary>
-    public static bool Matches(string? path, long depotId, string manifestId) =>
-        TryRead(path) is { } info
-        && info.DepotId == depotId
-        && ulong.TryParse(manifestId, out ulong gid)
-        && info.GidManifest == gid;
+    public static bool Matches(string? path, long depotId, string manifestId)
+    {
+        try
+        {
+            if (path is null) return false;
+            ManifestContentPolicy.ValidateManifestFile(path);
+            return TryRead(path) is { } info && info.DepotId == depotId
+                && ulong.TryParse(manifestId, out ulong gid) && info.GidManifest == gid;
+        }
+        catch { return false; }
+    }
 
     /// <summary>
     /// Prove a depot key is the right one, when the manifest allows it.
@@ -157,6 +166,7 @@ public static class ManifestFile
 
         try
         {
+            if (new FileInfo(path).Length > ManifestContentPolicy.MaxManifestBytes) return false;
             byte[] data = Unwrap(File.ReadAllBytes(path));
             if (FindSection(data, PayloadMagic) is not { } payload) return true;
             if (FirstFilename(payload) is not { } name) return true;
@@ -204,16 +214,7 @@ public static class ManifestFile
     /// <summary>A manifest may be zipped; if so the single entry inside is the real thing.</summary>
     private static byte[] Unwrap(byte[] data)
     {
-        if (data.Length < 2 || data[0] != 'P' || data[1] != 'K') return data;
-
-        using var zip = new ZipArchive(new MemoryStream(data), ZipArchiveMode.Read);
-        var entry = zip.Entries.FirstOrDefault();
-        if (entry is null) return data;
-
-        using var s = entry.Open();
-        using var buf = new MemoryStream();
-        s.CopyTo(buf);
-        return buf.ToArray();
+        return ManifestContentPolicy.ReadManifestData(data);
     }
 
     /// <summary>Walk the section table and return the first section with this magic.</summary>

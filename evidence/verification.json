@@ -1,0 +1,36 @@
+{
+  "observedAtUtc": "2026-10-14T22:18:29.846797+00:00",
+  "upstreamCommit": "946125981a7addb6150e83886443cc8ddb68931b",
+  "branch": "security-hardened",
+  "sdk": "10.0.103",
+  "testCommand": "dotnet test LuaToolsGui.sln --configuration Release --no-restore --nologo --logger \"trx;LogFileName=security-contracts.trx\"",
+  "tests": {
+    "total": 657,
+    "passed": 657,
+    "failed": 0,
+    "skipped": 0
+  },
+  "testReport": "tests/LuaToolsGui.Tests/TestResults/security-contracts.trx",
+  "publishCommand": "dotnet publish src/LuaToolsGui/LuaToolsGui.csproj --configuration Release --no-restore --self-contained false -p:Version=1.4.1 --output artifacts/bootstrap --nologo",
+  "publishHashes": [
+    {
+      "file": "LuaTools.exe",
+      "sha256": "cbc08f288c138989917a34c4ec122fbbf3ebc0d8644efeb3d8c4b8bcafb70ed9"
+    },
+    {
+      "file": "LuaTools.dll",
+      "sha256": "3107f7b79535cf6213170710bc869ba6161f0b00a31c1e4018220ed61f9b8e69"
+    }
+  ],
+  "limitations": [
+    "No live authenticated LuaTools/Hubcap or signed transfer tests",
+    "No real third-party executable execution or live Steam installation tests",
+    "Steam manifest signatures not independently verified",
+    "Independent executable approvals remain empty; explicit per-workflow opt-ins authorize unreviewed code",
+    "Hosted signed release and real update restart not exercised at local verification time"
+  ],
+  "settingsUiVerification": "Rebuilt app Settings page inspected through UI Automation and window-only capture: eight workflow switches present and off; no switch enabled and no third-party code run.",
+  "settingsScreenshot": "evidence/executable-settings.png",
+  "buildScope": "Published binary includes the executable-workflow settings changes verified by 631 tests. Concurrent subsequent release/startup edits to UpdateService.cs, App.xaml.cs and Program.cs are newer than this published binary and were not included in this test/build run.",
+  "publishDirectory": "artifacts/bootstrap"
+}
