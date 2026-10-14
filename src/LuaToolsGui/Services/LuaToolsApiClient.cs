@@ -101,11 +101,8 @@ public class LuaToolsApiClient
     }
 
     /// <summary>Source name → "available" | "unavailable" | other status.</summary>
-    public Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default)
-    {
-        ApiContract.RequireAppId(appid);
-        throw new ApiException("Source availability is unavailable: the legacy server uses insecure HTTP.");
-    }
+    public Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default) =>
+        SourceAvailabilityClient.CheckAsync(appid, ct);
 
     /// <summary>
     /// The standard lua.tools daily download usage (25/day), counted live from the user_downloads

@@ -75,6 +75,14 @@ public static class AppHttp
     internal static HttpClient CreateForTesting(TimeSpan timeout, HttpMessageHandler handler, HttpResponseBudget? responseBudget = null) =>
         new(new OutboundPolicyHandler(new OutboundNetworkPolicy(), handler, responseBudget)) { Timeout = timeout };
 
+    // Explicit metadata-only legacy exception. Never share the authenticated API client with it.
+    internal static HttpClient CreateSourceAvailability(HttpMessageHandler? transport = null) =>
+        new(new SourceAvailabilityHandler(transport ?? new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false, UseCookies = false, UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(5)
+        })) { Timeout = TimeSpan.FromSeconds(20) };
+
     internal static HttpClient CreateDns(HttpMessageHandler? handler = null) =>
         new(new OutboundPolicyHandler(new OutboundNetworkPolicy(dns: true), handler ??
             new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false }, HttpResponseBudget.Dns))

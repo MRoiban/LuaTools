@@ -46,7 +46,12 @@ TLS uses normal certificate verification and approved HTTPS destinations. DNS us
 the system resolver by default or explicitly selected Cloudflare DNS-over-HTTPS. The
 original capability-matched GitHub mirrors remain available through exact approved
 HTTPS origins, bounded responses and validated download inputs. They remain external
-trust dependencies. The plaintext manifest backend is disabled.
+trust dependencies. The original `http://167.235.229.108/check_apis?appid=...` availability lookup
+is an explicit metadata-only exception: GET, fixed IP/path and canonical app ID, no
+credentials/cookies/proxy/redirects, 64 KiB response limit and bounded time. Returned
+source names/statuses are validated before display; downloads still use HTTPS. An
+on-path attacker can observe the queried app ID or falsify availability. This is not
+an authenticated availability guarantee, and no other remote HTTP route is enabled.
 A checksum supplied by the same server as a binary detects transfer corruption; it
 does not establish independent authenticity. Targeted source reviews are recorded in [audits/README.md](audits/README.md);
 these are not exhaustive audits or source-to-binary equivalence proofs.
@@ -55,7 +60,7 @@ handles bounded tool/plugin staging and complete-bundle integrity receipts for e
 enabled workflows; these user-writable receipts are neither authenticity proofs nor independent
 approvals. HTTPS destination/redirect/credential controls, response limits and filesystem
 path checks still apply after opt-in. ZIP declared-size and CRC checks establish format
-integrity only, not trust in downloaded code. Plaintext remains blocked.
+integrity only, not trust in downloaded code. Other remote plaintext requests remain blocked.
 
 The Steam plugin runtime starts only after a successful explicit authorized install,
 and stops when its switch is turned off. It is not activated at application startup.
