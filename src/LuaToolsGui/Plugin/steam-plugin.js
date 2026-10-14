@@ -281,9 +281,23 @@
       }
     }
     const id = appId(location.pathname);
+    const purchase = id && document.querySelector('#game_area_purchase');
+    // Steam can render the header before the purchase area, or replace that area
+    // without navigating. Move our existing host so state and in-flight work survive.
+    if (context && purchase && (context.fallback || context.host.parentElement !== purchase)) {
+      if (context.host.parentElement !== purchase) purchase.prepend(context.host);
+      // Leave an open fallback dialog alone until the user closes it.
+      if (!context.expanded) {
+        const wasFallback = context.fallback;
+        context.fallback = false;
+        render(context);
+        if (wasFallback && !context.reading && !context.busy && !context.timer
+            && ['checking', 'pick', 'downloading'].includes(context.state)) poll(context, context.generation);
+      }
+    }
     if (context && !context.host.isConnected) { stop(context); context = null; }
     if (id && !context) {
-      const purchase = document.querySelector('#game_area_purchase'), fallback = document.querySelector('.apphub_OtherSiteInfo') || document.querySelector('#queueBtnFollow')?.parentElement;
+      const fallback = document.querySelector('.apphub_OtherSiteInfo') || document.querySelector('#queueBtnFollow')?.parentElement;
       if (purchase || fallback) {
         const target = purchase || fallback, r = root(target, 'panel'); if (purchase) target.prepend(r.host);
         context = { ...r, id, name: clean(document.querySelector('.apphub_AppName')?.textContent || document.title.replace(/\s+on Steam\s*$/i, '').trim() || `App ${id}`), state: 'checking', generation: 0, timer: null, exists: false, data: {}, error: '', busy: false, fallback: !purchase, expanded: false };
@@ -304,6 +318,6 @@
   window.addEventListener('pagehide', () => { if (context) stop(context); closeMenu(false); closeModal(); });
   document.addEventListener('pointerdown', e => { if (e.isTrusted && menu && !e.composedPath().includes(overlay.host) && !e.composedPath().includes(nav.host)) closeMenu(false); }, true);
   document.addEventListener('focusin', e => { if (modal && !e.composedPath().includes(overlay.host)) focusables(modal.card)[0]?.focus(); }, true);
-  setInterval(() => { if (url !== location.href || (context && !context.host.isConnected) || (nav && !nav.host.isConnected)) scheduleScan(); }, 750);
+  setInterval(() => { if (url !== location.href || !context || !nav || (context && (!context.host.isConnected || context.fallback)) || (nav && !nav.host.isConnected)) scheduleScan(); }, 750);
   scan();
 })();

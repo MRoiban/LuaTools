@@ -61,16 +61,16 @@ function harness(respond, fallback = false) {
   const document = { shadows: [], createElement(tag) { return new Element(tag, this); }, createTextNode(text) { const n = new Element('text', this); n.textContent = text; return n; }, addEventListener() {} };
   document.createElementNS = (_, tag) => document.createElement(tag);
   document.body = new Element('body', document); document.documentElement = document.body;
-  const purchase = new Element('main', document), anchor = new Element('nav', document), name = new Element('h1', document); name.textContent = '<Unsafe> Game'; document.body.append(purchase, anchor, name);
+  let purchase = new Element('main', document), anchor = new Element('nav', document), name = new Element('h1', document); name.textContent = '<Unsafe> Game'; document.body.append(purchase, anchor, name);
   document.querySelector = s => s === '#game_area_purchase' ? fallback ? null : purchase : s === '.apphub_OtherSiteInfo' ? fallback ? purchase : null : s === '._1wn1lBlAzl3HMRqS1llwie' ? anchor : s === '.apphub_AppName' ? name : null;
   document.querySelectorAll = () => [];
-  const calls = [], timers = new Map(); let nextTimer = 1, interval;
-  const world = { document, location: { hostname: 'store.steampowered.com', href: 'https://store.steampowered.com/app/123/', pathname: '/app/123/' }, innerWidth: 1000, innerHeight: 800, sessionStorage: { getItem: () => '1' }, MutationObserver: class { observe() {} }, queueMicrotask, console,
+  const calls = [], timers = new Map(); let nextTimer = 1, interval, mutation;
+  const world = { document, location: { hostname: 'store.steampowered.com', href: 'https://store.steampowered.com/app/123/', pathname: '/app/123/' }, innerWidth: 1000, innerHeight: 800, sessionStorage: { getItem: () => '1' }, MutationObserver: class { constructor(callback) { mutation = callback; } observe() {} }, queueMicrotask, console,
     setTimeout(fn) { const id = nextTimer++; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); }, setInterval(fn) { interval = fn; }, addEventListener() {},
     LuaToolsBridge: { async call(method, args) { if ('appid' in args) assert.ok(Number.isInteger(args.appid) && args.appid > 0 && args.appid <= 4294967295, 'bridge appid is a positive uint'); calls.push({ method, args }); return respond(method, args); } }, __LuaToolsCss: '' };
   world.window = world; vm.runInNewContext(fs.readFileSync(require.resolve('./steam-plugin.js'), 'utf8'), world);
   const buttons = () => document.shadows.flatMap(s => s.querySelectorAll('button'));
-  return { world, calls, timers, purchase, buttons, async click(text, trusted = true) { const b = buttons().find(b => b.isConnected && b.textContent === text); assert.ok(b, `button ${text} exists`); for (const fn of b.events.click || []) fn({ isTrusted: trusted, currentTarget: b, target: b }); await tick(); }, async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); fn(); await tick(); }, navigate() { world.location.href = 'https://store.steampowered.com/'; world.location.pathname = '/'; interval(); } };
+  return { world, calls, timers, get purchase() { return purchase; }, buttons, async showPurchase(notify = true) { purchase = new Element('main', document); document.body.append(purchase); fallback = false; if (notify) mutation(); else interval(); await tick(); }, async replacePurchase() { purchase.remove(); purchase = new Element('main', document); document.body.append(purchase); mutation(); await tick(); }, async rescan() { mutation(); await tick(); }, async click(text, trusted = true) { const b = buttons().find(b => b.isConnected && b.textContent === text); assert.ok(b, `button ${text} exists`); for (const fn of b.events.click || []) fn({ isTrusted: trusted, currentTarget: b, target: b }); await tick(); }, async poll() { const [id, fn] = timers.entries().next().value; timers.delete(id); fn(); await tick(); }, navigate() { world.location.href = 'https://store.steampowered.com/'; world.location.pathname = '/'; interval(); } };
 }
 test('actual script rejects synthetic actions, downloads manually and cancels without stale poll', async () => {
   let pending; let status = { sourcesLoaded: true, sources: [{ name: 'source', displayName: 'Source', canDownload: true, status: 'available' }] };
@@ -110,4 +110,36 @@ test('fallback modal close stops polling and reopening resumes existing operatio
   assert.equal(h.timers.size, 1); await h.click('×'); assert.equal(h.timers.size, 0);
   await h.click('Add via LuaTools'); assert.equal(h.timers.size, 1);
   assert.equal(h.calls.filter(c => c.method === 'StartLuaToolsAdd').length, 1);
+});
+
+
+test('late purchase section upgrades fallback without resetting state or duplicating hosts', async () => {
+  const h = harness(method => method === 'HasLuaToolsForApp' ? { exists: true } : { success: true }, true);
+  await tick();
+  const host = h.purchase.children.find(n => n.dataset.luatools === 'panel');
+  assert.ok(host); assert.equal(h.buttons().some(b => b.isConnected && b.textContent === 'Remove'), false);
+  await h.showPurchase();
+  assert.equal(h.purchase.children[0], host);
+  assert.ok(h.buttons().some(b => b.isConnected && b.textContent === 'Remove'));
+  await h.rescan(); await h.rescan();
+  assert.equal(h.purchase.children.filter(n => n.dataset.luatools === 'panel').length, 1);
+  assert.equal(h.calls.filter(c => c.method === 'HasLuaToolsForApp').length, 1);
+});
+
+test('periodic reconciliation upgrades late purchase even without a mutation notification', async () => {
+  const h = harness(method => method === 'HasLuaToolsForApp' ? { exists: false } : { success: true }, true);
+  await tick(); const host = h.purchase.children.find(n => n.dataset.luatools === 'panel');
+  await h.showPurchase(false); assert.equal(h.purchase.children[0], host);
+  assert.ok(h.world.document.shadows.some(s => s.host === host && s.children.some(n => n.className === 'lt-panel')));
+});
+
+test('purchase redraw preserves an active operation instead of resetting to idle', async () => {
+  const h = harness(method => method === 'HasLuaToolsForApp' ? { exists: false } : { success: true });
+  await tick(); await h.click('Add via LuaTools');
+  const host = h.purchase.children.find(n => n.dataset.luatools === 'panel');
+  await h.replacePurchase(); assert.equal(h.purchase.children[0], host);
+  assert.ok(h.buttons().some(b => b.isConnected && b.textContent === 'Cancel'));
+  assert.equal(h.calls.filter(c => c.method === 'HasLuaToolsForApp').length, 1);
+  assert.equal(h.calls.filter(c => c.method === 'StartLuaToolsAdd').length, 1);
+  assert.equal(h.timers.size, 1);
 });
