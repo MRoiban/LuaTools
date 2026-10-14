@@ -2,6 +2,15 @@
 
 Only `MRoiban/LuaTools` releases are used. Upstream feeds, mirrors and Velopack feeds cannot supply application updates.
 
+The source-owned Steam frontend and WinMM wrapper ship inside the same application
+assembly and signed release ZIP. CI compiles the wrapper from `native/steam-plugin-loader`,
+checks all 180 exports, runs its native harness and the frontend behavior tests, then
+builds/tests the app. No LTSP binaries or frontend assets are downloaded during this process.
+The frontend changes with the app release. Replacing a changed native DLL in Steam
+uses the plugin's existing explicit Install/Update action because Steam must restart.
+The loader's configured app directory is retained by update cleanup so it remains a
+working bootstrap into approved future app releases.
+
 On a push to `security-hardened`, the build job restores the locked package graph, builds, and runs the complete test suite. Only after success may a separate guarded release job publish. Versions are `1.4.N`, where N is the number of commits since baseline `946125981a7addb6150e83886443cc8ddb68931b`. Preserve this ancestry; do not reset/rewrite release history. The release job publishes the exact tested commit, rechecks branch tip before publication, and skips existing version tags. Ordinary developer builds remain `1.4.0` and do not make update requests.
 
 Each portable Windows x64 ZIP is accompanied by `release.json` and binary `release.sig`. The signature is ECDSA P-256 / SHA-256, IEEE P1363 fixed-width 64 bytes, over the exact UTF-8 manifest bytes. The signed manifest binds the fork repository, source commit, version, fixed asset filename, byte length and SHA-256. The updater pins the embedded SPKI public PEM (`Resources/release-signing-public.pem`). SHA-256 alone and HTTPS hosting do not authorize execution.

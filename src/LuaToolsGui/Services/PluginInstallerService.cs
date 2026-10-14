@@ -1,7 +1,6 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
-using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
@@ -9,510 +8,250 @@ using LuaToolsGui.Models;
 
 namespace LuaToolsGui.Services;
 
-/// <summary>Queried state of the installed plugin vs. the latest GitHub release.</summary>
-public sealed record PluginStatus(
-    bool FrontendInstalled,
-    bool DllInstalled,
-    bool DllMatches,       // every loader slot's sha256 == its latest release asset digest
-    string? InstalledTag,  // from the on-disk manifest (null if never installed / no manifest)
-    string? LatestTag,
-    bool UpdateAvailable,
-    bool MillenniumPresent,
-    bool Offline,          // couldn't reach GitHub
-    bool Port8080Busy);    // something other than Steam's own CDP server is listening on CDP's fixed port. Warn only, see IsPort8080BusyAsync
+public sealed record PluginStatus(bool FrontendInstalled, bool DllInstalled, bool DllMatches,
+    string? InstalledTag, string? LatestTag, bool UpdateAvailable, bool MillenniumPresent, bool Offline, bool Port8080Busy);
 
-/// <summary>
-/// Installs / updates / removes the LuaTools store-page plugin from GitHub releases (the app is the plugin
-/// MANAGER: it doesn't bundle the frontend). Each release of <c>madoiscool/LTSP</c> carries
-/// <c>plugin.zip</c> (the frontend, extracted to %AppData%\LuaToolsGui\plugin, where CefInjectorService
-/// reads it) plus one loader DLL per <see cref="Slots"/> entry, dropped into the Steam install root
-/// (steam.exe loads it). Modeled on <see cref="UnlockerService"/>: fetch release JSON, download assets
-/// via <see cref="GithubProxy"/> (mirror fallback), verify each by its sha256 digest, then place. The DLL
-/// is locked while Steam runs, so DLL install/uninstall stops Steam first (via <see cref="SteamService"/>)
-/// and relaunches it if it was up.
-///
-/// CDP itself (the debug bridge <see cref="CefInjectorService"/> connects through) is NOT opened by the
-/// DLL anymore: install/uninstall also manages a `.cef-enable-remote-debugging` NTFS junction next to
-/// Steam's exe, which makes Steam self-enable CDP on its own (fixed port 8080, confirmed not
-/// configurable; verified on both Windows 10 and 11). That leaves the DLL with one remaining job:
-/// "launch LuaTools.exe when Steam opens", with no CDP hook, no load-timing race, and no dual-slot
-/// redundancy needed anymore.
-/// </summary>
+/// <summary>Explicit installation of the source-owned plugin shipped in this application.</summary>
 public class PluginInstallerService(SteamService steam, SettingsService settings, GithubProxy gh, CefInjectorService injector)
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
-
-    private const string PluginZipAsset = "plugin.zip";
-    public Func<Task>? ActivatePlugin { get; set; }
-
-    /// <summary>The one DLL-proxy slot the loader ships as. <c>winmm.dll</c> is loaded dynamically (audio)
-    /// by steam.exe, is never a KnownDLL on Win10 or Win11, and isn't claimed by Millennium (wsock32/
-    /// version), or OpenSteamTool (dwmapi/xinput). Its old weakness (load timing isn't guaranteed relative
-    /// to steamwebhelper's launch) no longer matters now that CDP is opened by the junction instead of a
-    /// hook this DLL installs: there's no launch to catch a deadline for anymore, just "eventually load
-    /// while Steam is running." Other slots were each dead ends: bcrypt is KnownDLLs-forced on Win10,
-    /// and psapi and dbghelp don't load reliably enough.</summary>
-    private sealed record LoaderSlot(string DllAsset, string RealName, string SystemSourceName)
-    {
-        public string SystemSourcePath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.System), SystemSourceName);
-    }
-
-    private static readonly LoaderSlot[] Slots =
-    {
-        new("winmm.dll", "winmm_real.dll", "winmm.dll"),
-    };
-
-    // Old slots to clean up on install/update: if left in the Steam root they'd load and run the loader
-    // payload an extra time (double LuaTools launch), and bcrypt/dbghelp specifically would still install
-    // their own now-obsolete CreateProcessInternalW hook from the old shipped binary. Covers the shipped
-    // bcrypt dual-slot build and the psapi/dbghelp test builds some users received during this
-    // investigation. *_real are their forwarding companions.
-    private static readonly string[] LegacyDllNames =
-        { "bcrypt.dll", "bcrypt_real.dll", "psapi.dll", "dbghelp.dll", "dbghelp_real.dll" };
-
-    // ── CDP marker junction ──────────────────────────────────────────────────
-    // `.cef-enable-remote-debugging` next to Steam's exe, created as an NTFS JUNCTION (not a plain file)
-    // pointing at a target that's deliberately chosen to never exist. Steam's own internal logic treats
-    // its mere presence as "self-enable CDP debugging" (fixed port 8080) without needing to resolve the
-    // target, but Millennium's cleanup code (health_check.cc) calls `std::filesystem::exists()` first,
-    // which DOES try to resolve the junction, fails since the target is nonexistent, and reports false,
-    // so Millennium's removal code never even runs. A plain file does not survive that cleanup; the
-    // junction does. Verified live this session on both Windows 10 and 11, including with a real
-    // Millennium instance loaded. `mklink /j` is shelled out to because directory junctions (unlike
-    // symlinks) have no native .NET creation API; `rmdir` (not Directory.Delete) is used to remove it,
-    // avoiding historical .NET/junction-deletion quirks that can recurse into a junction's target instead
-    // of just severing the link.
+    private const string LoaderName = "winmm.dll";
+    private const string RealName = "winmm_real.dll";
+    private const string ConfigurationName = "luatools-fork-loader.path";
     private const string CdpMarkerName = ".cef-enable-remote-debugging";
-    private const string CdpMarkerJunctionTarget = @"C:\fuckass\folder\that\shall\never\exist\die\millennium";
-    private const int CdpPort = 8080; // Steam's own fixed default: confirmed not configurable via the marker's content.
-    private string? CdpMarkerPath => SteamDir is { } s ? Path.Combine(s, CdpMarkerName) : null;
-
-    /// <summary>True only if <paramref name="path"/> is already a real reparse point (junction/symlink).
-    /// NOT just "something exists there". A bare Exists check used to treat a stale plain file (from before
-    /// this session's junction fix) or a leftover plain directory (e.g. a partially-failed rmdir) as
-    /// "already present" and permanently skip creating a real junction, silently leaving CDP broken for
-    /// that install forever (nothing else ever re-touches the marker once the plugin's up to date; see
-    /// CreateCdpMarkerJunction's own doc comment).</summary>
-    private static bool IsReparsePoint(string path)
-    {
-        try
-        {
-            return (Directory.Exists(path) || File.Exists(path))
-                && File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint);
-        }
-        catch { return false; }
-    }
-
-    /// <summary>Idempotent, self-healing: safe to call on every status check, not just on install. If a
-    /// REAL junction is already there, no-op. If something else is there (a stale plain marker file from
-    /// before this session's junction fix, or any other leftover cruft that isn't actually a reparse
-    /// point), it's cleared first, since a plain file at this path doesn't survive Millennium's cleanup and
-    /// silently breaks CDP forever otherwise.</summary>
-    private static void CreateCdpMarkerJunction(string path)
-    {
-        if (IsReparsePoint(path)) return;
-        try
-        {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
-            else if (File.Exists(path)) File.Delete(path);
-        }
-        catch { /* best effort; mklink below just no-ops/fails harmlessly if this didn't clear it */ }
-
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /j \"{path}\" \"{CdpMarkerJunctionTarget}\"")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var p = System.Diagnostics.Process.Start(psi);
-        p?.WaitForExit(5000);
-    }
-
-    private static void RemoveCdpMarkerJunction(string path)
-    {
-        if (!Directory.Exists(path)) return;
-        var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c rmdir \"{path}\"")
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        };
-        using var p = System.Diagnostics.Process.Start(psi);
-        p?.WaitForExit(5000);
-    }
-
-    private static readonly HttpClient PortProbeHttp = AppHttp.CreateLoopback(TimeSpan.FromMilliseconds(800), 8080);
-
-    /// <summary>Best-effort check for whether CDP's fixed port is occupied by something OTHER than Steam's
-    /// own CDP server. A bare bind-test can't make that distinction: once the junction is doing its job and
-    /// CDP is actually up, Steam itself is the one holding the port, so a bind fails for the exact same
-    /// reason a hostile squatter would cause it to fail. The two are indistinguishable to
-    /// <see cref="System.Net.Sockets.TcpListener"/>. This produced a live false positive (warning fired
-    /// against Steam's own working CDP server). Fixed by, on a bind failure, asking whatever's on the port
-    /// for <c>/json</c>. CDP answers with a JSON array of debug targets; only treat it as "busy" in the
-    /// user-facing sense if that probe does NOT look like CDP. The port can't be changed regardless
-    /// (confirmed: file content has no effect on it), so this stays detection-only. A false
-    /// positive/negative here never blocks install/uninstall.</summary>
-    private static async Task<bool> IsPort8080BusyAsync()
-    {
-        try
-        {
-            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, CdpPort);
-            listener.Start();
-            listener.Stop();
-            return false; // nothing bound there
-        }
-        catch (System.Net.Sockets.SocketException)
-        {
-            try
-            {
-                var body = await PortProbeHttp.GetStringAsync($"http://127.0.0.1:{CdpPort}/json");
-                return !body.TrimStart().StartsWith('['); // CDP's /json answers with a JSON array of targets
-            }
-            catch { return true; } // bound, but not answering like CDP -> genuinely something else
-        }
-        catch { return false; }
-    }
-
-    private static string FrontendDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "plugin");
-    private static string LuatoolsJsPath => Path.Combine(FrontendDir, "public", "luatools.js");
-    private static string ManifestPath => Path.Combine(FrontendDir, "installed.json");
-
+    private const string CdpMarkerJunctionTarget = @"C:\LuaToolsGui-CdpMarker-Target-Does-Not-Exist";
+    private const string LegacyCdpMarkerTarget = @"C:\fuckass\folder\that\shall\never\exist\die\millennium";
     private string? SteamDir => steam.EffectivePath;
-    private string? SlotPath(LoaderSlot slot) => SteamDir is { } s ? Path.Combine(s, slot.DllAsset) : null;
-    private string? SlotRealPath(LoaderSlot slot) => SteamDir is { } s ? Path.Combine(s, slot.RealName) : null;
-    private IEnumerable<string> LegacyDllPaths =>
-        SteamDir is { } s ? LegacyDllNames.Select(n => Path.Combine(s, n)) : Enumerable.Empty<string>();
+    public Func<Task>? ActivatePlugin { get; set; }
+    public bool MillenniumPresent => SteamDir is { } s && File.Exists(Path.Combine(s, "millennium", "lib", "millennium.dll"));
 
-    // ── DLL-update testing switch ──
-    // Drop `.luatools-dll-update-disabled` in the Steam root to stop the app from replacing any installed
-    // loader slot (auto OR manual), so hand-placed test builds survive updates. Delete the file to resume
-    // normal DLL updates. Frontend updates are unaffected. Re-read on every update, so toggling needs no
-    // restart. Mirrors the DLL's own `.luatools-cdp-hook-disabled` marker idiom.
-    private const string DllUpdateDisabledMarker = ".luatools-dll-update-disabled";
-    private bool DllUpdateDisabled =>
-        SteamDir is { } s && File.Exists(Path.Combine(s, DllUpdateDisabledMarker));
-
-    private GithubRelease? _cachedLatest;
-
-    public bool MillenniumPresent =>
-        SteamDir is { } s && File.Exists(Path.Combine(s, "millennium", "lib", "millennium.dll"));
-
-    // ── manifest (records the installed tag + asset hashes, for status/update detection) ──
-    private sealed class Manifest
+    // Kept for callers using the previous API shape. No release request is made.
+    public Task<GithubRelease?> FetchLatestAsync(bool force, CancellationToken ct = default)
     {
-        public string? Tag { get; set; }
-        public Dictionary<string, string>? DllShas { get; set; } // DllAsset name -> sha256, one per slot
-        public string? ZipSha { get; set; }
-        /// <summary>Millennium config path → the exact enabledPlugins entries we removed there on install,
-        /// so uninstall can restore Millennium's luatools plugin verbatim.</summary>
-        public Dictionary<string, List<string>>? DisabledMillenniumEntries { get; set; }
+        _ = gh; // Compatibility for existing DI and callers; plugin acquisition has no network path.
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult<GithubRelease?>(new GithubRelease { TagName = BundledPlugin.Version });
     }
 
-    private static Manifest? ReadManifest()
+    public bool IsInstalledLocally() => BundledPlugin.IsActivated;
+
+    public Task<PluginStatus> GetStatusAsync(bool force = false, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
+        var receipt = BundledPlugin.ReadReceipt(BundledPlugin.ReceiptPath);
+        bool active = receipt?.ActivationEnabled == true;
+        bool installed = active && SteamDir is { } s && File.Exists(Path.Combine(s, LoaderName));
+        bool matches = false;
         try
         {
-            return File.Exists(ManifestPath)
-                ? JsonSerializer.Deserialize<Manifest>(File.ReadAllText(ManifestPath), JsonOpts)
-                : null;
+            matches = installed && receipt?.SteamDirectory == SteamDir && SteamDir is { } dir
+                && HashMatches(Path.Combine(dir, LoaderName), BundledPlugin.LoaderSha256)
+                && receipt?.DllShas is { } hashes && hashes.TryGetValue(RealName, out string? realHash)
+                && HashMatches(Path.Combine(dir, RealName), realHash)
+                && HashMatches(Path.Combine(dir, ConfigurationName), receipt.LoaderConfigurationSha)
+                && receipt.LoaderConfigurationSha == BundledPlugin.Hash(BundledPlugin.LoaderConfiguration(Environment.ProcessPath ?? ""));
         }
-        catch { return null; }
+        catch { /* A missing build resource or unsafe installed path is an unavailable component. */ }
+        return Task.FromResult(new PluginStatus(active, installed, matches, receipt?.Tag, BundledPlugin.Version,
+            active && !matches, MillenniumPresent, false, false));
     }
 
-    private static void WriteManifest(Manifest m)
+    private static bool HashMatches(string path, string? hash)
     {
-        Directory.CreateDirectory(FrontendDir);
-        File.WriteAllText(ManifestPath, JsonSerializer.Serialize(m));
+        BundledPlugin.EnsureSafePath(path);
+        return hash is not null && File.Exists(path) && AssetHash.OfFile(path) == hash;
     }
 
-    // ── GitHub ──
-    public async Task<GithubRelease?> FetchLatestAsync(bool force, CancellationToken ct = default)
-    {
-        if (!force && _cachedLatest is not null) return _cachedLatest;
-        string url = $"https://api.github.com/repos/{AppConfig.PluginReleasesOwner}/{AppConfig.PluginReleasesRepo}/releases/latest";
-        try
-        {
-            using var res = await gh.SendAsync(url, ct);
-            if (res is null || !res.IsSuccessStatusCode) return null;
-            var rel = JsonSerializer.Deserialize<GithubRelease>(await res.Content.ReadAsStringAsync(ct), JsonOpts);
-            if (rel is not null) _cachedLatest = rel;
-            return rel;
-        }
-        catch { return null; }
-    }
-
-    /// <summary>Fast, network-free check: the plugin frontend + a loader slot are both present. Used by the
-    /// first-run onboarding gate (no GitHub round-trip, unlike <see cref="GetStatusAsync"/>).</summary>
-    public bool IsInstalledLocally() =>
-        File.Exists(LuatoolsJsPath)
-        && (Slots.Any(s => SlotPath(s) is { } p && File.Exists(p)) || LegacyDllPaths.Any(File.Exists));
-
-    public async Task<PluginStatus> GetStatusAsync(bool force = false, CancellationToken ct = default)
-    {
-        bool frontend = File.Exists(LuatoolsJsPath);
-        // "installed" if AT LEAST ONE slot's proxy is present. A partial/mid-migration state still counts
-        // as installed and eligible for auto-update, rather than showing "not installed". An OLD loader
-        // (psapi/dbghelp) also still counts. Otherwise a user who hasn't migrated shows "not installed"
-        // and the auto-update gate (UpdateAvailable) never fires, stranding them on the dead loader.
-        bool anySlotPresent = Slots.Any(slot => SlotPath(slot) is { } p && File.Exists(p));
-        bool legacy = LegacyDllPaths.Any(File.Exists);
-        bool loader = anySlotPresent || legacy;
-
-        // Status is read-only. CDP infrastructure is created only by explicit installation.
-        bool port8080Busy = settings.IsExecutableWorkflowEnabled("LuaToolsPlugin") && await IsPort8080BusyAsync();
-        var manifest = ReadManifest();
-        var latest = await FetchLatestAsync(force, ct);
-
-        if (latest is null)
-            return new PluginStatus(frontend, loader, false, manifest?.Tag, null, UpdateAvailable: false,
-                MillenniumPresent, Offline: true, port8080Busy);
-
-        // dllMatches = true only when EVERY slot's proxy is present and matches its release asset digest.
-        bool dllMatches = Slots.All(slot =>
-            SlotPath(slot) is { } p && File.Exists(p) &&
-            AssetDigest(latest, slot.DllAsset) is { } digest &&
-            AssetHash.OfFile(p) == digest);
-        bool installed = frontend && loader;
-        // `|| legacy` keeps a leftover/locked legacy dll getting swept on subsequent auto-updates until gone.
-        bool updateAvailable = installed && (manifest?.Tag != latest.TagName || !dllMatches || legacy);
-
-        return new PluginStatus(frontend, loader, dllMatches, manifest?.Tag, latest.TagName, updateAvailable,
-            MillenniumPresent, Offline: false, port8080Busy);
-    }
-
-    // ── Install / update ──
     public async Task<(bool ok, string? error)> InstallAsync(IProgress<double?>? progress, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
-        if (!settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"))
-            return (false, "Enable the Steam plugin in Settings before installing it.");
+        if (!settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")) return (false, "Enable the Steam plugin in Settings before installing it.");
         if (SteamDir is not { } steamDir) return (false, Resources.Strings.Plugin_Err_SteamNotFound);
-        if (DllUpdateDisabled) return (false, "Remove the loader update disabled marker before installing the plugin.");
-        ManifestContentPolicy.EnsureNoReparsePoints(steamDir);
-
-        var latest = await FetchLatestAsync(force: true, ct);
-        if (latest is null) return (false, Resources.Strings.Plugin_Err_GithubUnreachable);
-
-        var zipAsset = FindAsset(latest, PluginZipAsset);
-        if (zipAsset is null)
-            return (false, string.Format(Resources.Strings.Plugin_Err_MissingAssets, latest.TagName, PluginZipAsset, Slots[0].DllAsset));
-        var slotAssets = new Dictionary<LoaderSlot, GithubAsset>();
-        foreach (var slot in Slots)
-        {
-            if (FindAsset(latest, slot.DllAsset) is not { } asset)
-                return (false, string.Format(Resources.Strings.Plugin_Err_MissingAssets, latest.TagName, PluginZipAsset, slot.DllAsset));
-            slotAssets[slot] = asset;
-        }
-
-        string tmp = Path.Combine(Path.GetTempPath(), "luatools-plugin-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tmp);
-        Dictionary<string, List<string>>? disabledMillenniumEntries = null;
+        bool wasRunning = false;
+        bool stopped = false;
+        bool mutationStarted = false;
+        var backups = new Dictionary<string, byte[]?>(StringComparer.OrdinalIgnoreCase);
+        bool createdMarker = false;
+        bool markerInitiallyPresent = true;
+        string marker = Path.Combine(steamDir, CdpMarkerName);
         try
         {
-            string zipPath = await DependencyQuarantine.AcquireAssetAsync(gh, "LuaToolsPlugin",
-                AppConfig.PluginReleasesOwner + "/" + AppConfig.PluginReleasesRepo, zipAsset, progress, ct);
-            var slotDlPaths = new Dictionary<LoaderSlot, string>();
-            foreach (var (slot, asset) in slotAssets)
-            {
-                slotDlPaths[slot] = await DependencyQuarantine.AcquireAssetAsync(gh, "LuaToolsPlugin",
-                    AppConfig.PluginReleasesOwner + "/" + AppConfig.PluginReleasesRepo, asset, progress, ct);
-            }
-
-            // Acquisition is not approval: stop before extraction or Steam writes for unreviewed builds.
+            // Fail a development/incomplete build before changing Steam or stopping any process.
+            byte[] loader = BundledPlugin.ReadBytes(LoaderName);
+            if (loader.Length < 64 || loader[0] != 'M' || loader[1] != 'Z') throw new InvalidDataException("The bundled plugin loader is missing or invalid.");
+            string frontendHash = BundledPlugin.FrontendSha256;
+            string launcherPath = Path.GetFullPath(Environment.ProcessPath ?? "");
+            byte[] configuration = BundledPlugin.LoaderConfiguration(launcherPath);
+            string systemLoader = Path.Combine(Environment.SystemDirectory, LoaderName);
+            BundledPlugin.EnsureSafePath(systemLoader);
+            using var realStream = File.OpenRead(systemLoader);
+            byte[] real = ManifestContentPolicy.ReadBounded(realStream, 16 * 1024 * 1024);
+            BundledPlugin.EnsureSafePath(steamDir);
+            BundledPlugin.EnsureSafePath(BundledPlugin.ReceiptPath);
+            if (File.Exists(Path.Combine(steamDir, ".luatools-dll-update-disabled"))) return (false, "Remove the loader update disabled marker before installing the plugin.");
+            var previous = BundledPlugin.ReadReceipt(BundledPlugin.ReceiptPath);
+            foreach (string path in new[] { Path.Combine(steamDir, LoaderName), Path.Combine(steamDir, RealName), Path.Combine(steamDir, ConfigurationName), BundledPlugin.ReceiptPath }.Concat(MillenniumConfigPaths()))
+                Snapshot(path, backups);
+            ValidateMarker(marker);
+            markerInitiallyPresent = MarkerExists(marker);
+            ct.ThrowIfCancellationRequested();
+            wasRunning = Process.GetProcessesByName("steam").Length > 0;
+            steam.StopSteam();
+            stopped = true;
+            await Task.Delay(1200, ct);
             UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
-            string zipSha = AssetHash.OfFile(zipPath);
-            if (AssetDigest(latest, PluginZipAsset) is { } zd && zipSha != zd)
-                return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, PluginZipAsset));
-            var slotShas = new Dictionary<LoaderSlot, string>();
-            foreach (var (slot, p) in slotDlPaths)
+            mutationStarted = true;
+            SafeWrite(Path.Combine(steamDir, LoaderName), loader);
+            SafeWrite(Path.Combine(steamDir, RealName), real);
+            SafeWrite(Path.Combine(steamDir, ConfigurationName), configuration);
+            var disabled = SetMillenniumLuatoolsEnabled(false);
+            if (previous?.DisabledMillenniumEntries is { } prior)
+                foreach (var (path, entries) in prior)
+                    disabled[path] = entries.Concat(disabled.GetValueOrDefault(path) ?? []).Distinct().ToList();
+            createdMarker = CreateCdpMarkerJunction(marker);
+            var receipt = new PluginInstallationReceipt
             {
-                string sha = AssetHash.OfFile(p);
-                slotShas[slot] = sha;
-                if (AssetDigest(latest, slot.DllAsset) is { } dd && sha != dd)
-                    return (false, string.Format(Resources.Strings.Plugin_Err_VerifyFailed, slot.DllAsset));
-            }
-
-            // Verify the complete extracted frontend before touching the installed plugin.
-            string extracted = Path.Combine(tmp, "frontend");
-            UserAuthorizedDependencies.ValidateArchiveAndExtract("LuaToolsPluginFrontend", zipPath, extracted,
-                settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
-            NormalizeFrontendLayout(extracted);
-            if (!File.Exists(Path.Combine(extracted, "public", "luatools.js")))
-                return (false, Resources.Strings.Plugin_Err_NoLuatoolsJs);
-            UserAuthorizedDependencies.RecordDirectory("LuaToolsPluginFrontend", extracted,
-                settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
-            UserAuthorizedDependencies.RequireDirectory("LuaToolsPluginFrontend", extracted, settings.IsExecutableWorkflowEnabled);
-
-            string loaderStage = Path.Combine(tmp, "loader");
-            Directory.CreateDirectory(loaderStage);
-            foreach (var slot in Slots)
-            {
-                ManifestContentPolicy.EnsureNoReparsePoints(slotDlPaths[slot]);
-                using var input = File.OpenRead(slotDlPaths[slot]);
-                byte[] bytes = ManifestContentPolicy.ReadBounded(input, 512 * 1024 * 1024);
-                if (Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant() != slotShas[slot])
-                    throw new InvalidDataException("Loader changed during installation.");
-                File.WriteAllBytes(Path.Combine(loaderStage, slot.DllAsset), bytes);
-                ManifestContentPolicy.EnsureNoReparsePoints(slot.SystemSourcePath);
-                using var systemInput = File.OpenRead(slot.SystemSourcePath);
-                File.WriteAllBytes(Path.Combine(loaderStage, slot.RealName), ManifestContentPolicy.ReadBounded(systemInput, 64 * 1024 * 1024));
-            }
-            UserAuthorizedDependencies.RecordDirectory("LuaToolsPlugin", loaderStage, settings.IsExecutableWorkflowEnabled,
-                explicitUserAction: true);
-            var loaderBytes = Slots.SelectMany(slot => new[] { slot.DllAsset, slot.RealName }).ToDictionary(name => name,
-                name => UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPlugin", Path.Combine(loaderStage, name),
-                    settings.IsExecutableWorkflowEnabled));
+                ActivationEnabled = true, Tag = BundledPlugin.Version, FrontendSha = frontendHash,
+                SteamDirectory = steamDir, LauncherPath = launcherPath,
+                DllShas = new() { [LoaderName] = BundledPlugin.Hash(loader), [RealName] = BundledPlugin.Hash(real) },
+                LoaderConfigurationSha = BundledPlugin.Hash(configuration),
+                OwnsCdpMarker = createdMarker || previous?.OwnsCdpMarker == true,
+                DisabledMillenniumEntries = disabled,
+            };
+            ct.ThrowIfCancellationRequested();
             UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
-            UserAuthorizedDependencies.PromoteDirectory("LuaToolsPluginFrontend", extracted, FrontendDir,
-                settings.IsExecutableWorkflowEnabled, action: true);
-
-            // Get the frontend live in THIS running process immediately. Don't wait on the Steam restart
-            // below. A relaunched LuaTools.exe would hit the single-instance mutex against this very
-            // process (the one the user is using right now to click Install) and exit quietly without ever
-            // taking over, so nothing would otherwise pick up the new file until a manual app restart.
-            // Activation happens only after the complete frontend and native loader install succeed.
-
-            // 2) Loader DLLs → Steam root, but ONLY when at least one slot actually changed, OR a legacy
-            //    slot is still present and must be removed. Both slots are always installed/updated
-            //    together (never partially out of date relative to each other). The DLLs are locked while
-            //    Steam runs, so either condition means stopping+restarting Steam; a frontend-only update
-            //    (the common case) skips all of that and applies with zero Steam disruption.
-            // Testing switch: when `.luatools-dll-update-disabled` is present, never touch any on-disk DLL
-            // (so hand-placed test builds aren't clobbered), and thus never stop/restart Steam for it either.
-            bool legacyPresent = LegacyDllPaths.Any(File.Exists);
-            bool anySlotNeedsUpdate = Slots.Any(slot =>
-                SlotPath(slot) is not { } cur || !File.Exists(cur) || AssetHash.OfFile(cur) != slotShas[slot]
-                || SlotRealPath(slot) is not { } real || !File.Exists(real)
-                || AssetHash.OfFile(real) != Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(loaderBytes[slot.RealName])).ToLowerInvariant());
-            bool dllNeedsUpdate = !DllUpdateDisabled && (anySlotNeedsUpdate || legacyPresent);
-            if (dllNeedsUpdate)
-            {
-                bool wasRunning = Process.GetProcessesByName("steam").Length > 0;
-                steam.StopSteam();
-                await Task.Delay(1200, ct); // let file handles on the loader DLLs release after the kill
-
-                foreach (var slot in Slots)
-                {
-                    UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
-                    string dllTarget = Path.Combine(steamDir, slot.DllAsset);
-                    ManifestContentPolicy.EnsureNoReparsePoints(dllTarget);
-                    File.WriteAllBytes(dllTarget, loaderBytes[slot.DllAsset]);
-                    // Each proxy forwards to <name>_real.dll. A copy of the machine's own matching
-                    // System32 file. Refresh it on every DLL update so it always matches the current OS build.
-                    if (SlotRealPath(slot) is { } real)
-                    {
-                        ManifestContentPolicy.EnsureNoReparsePoints(real);
-                        File.WriteAllBytes(real, loaderBytes[slot.RealName]);
-                    }
-                }
-                // Remove any legacy slot (psapi/dbghelp + their _real). Leaving one would run the loader
-                // payload an extra time (double LuaTools launch / CDP hook).
-                foreach (var legacy in LegacyDllPaths)
-                    if (File.Exists(legacy)) { try { File.Delete(legacy); } catch { /* locked/again next time */ } }
-
-                // 3) A live Millennium luatools plugin would inject the frontend redundantly. Disable it in
-                //    Millennium's config (reversibly) so LuaLoader is the sole injector (leaves the Millennium
-                //    mod itself alone). Steam is stopped here, so the edit can't be clobbered and takes effect
-                //    on the restart below. Also migrate away any leftover folder-rename from older builds.
-                if (MillenniumPresent)
-                {
-                    RestoreMillenniumPluginFolder(steamDir);
-                    disabledMillenniumEntries = SetMillenniumLuatoolsEnabled(enable: false);
-                }
-
-                UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
-                if (wasRunning) steam.StartSteam();
-            }
-
-            // Ensure the CDP marker junction exists: independent of whether the DLL itself changed (a
-            // filesystem-only op, doesn't need Steam stopped). Needed here for the very first install (before
-            // any GetStatusAsync call would see `loader` true); GetStatusAsync's own check is what keeps this
-            // self-healing on every subsequent Steam-open, not just at install/update time. See its
-            // declaration above for why this MUST be a junction, not a file.
-            UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
-            if (CdpMarkerPath is { } markerPath) CreateCdpMarkerJunction(markerPath);
-
-            WriteManifest(new Manifest
-            {
-                Tag = latest.TagName,
-                DllShas = slotShas.ToDictionary(kv => kv.Key.DllAsset, kv => kv.Value),
-                ZipSha = zipSha,
-                DisabledMillenniumEntries = disabledMillenniumEntries,
-            });
-            UserAuthorizedDependencies.RecordDirectory("LuaToolsPluginFrontend", FrontendDir, settings.IsExecutableWorkflowEnabled,
-                explicitUserAction: true);
-            var installedLoaders = Slots.SelectMany(slot => new[] { slot.DllAsset, slot.RealName })
-                .ToDictionary(name => name, name => Path.Combine(steamDir, name));
-            foreach (var (name, path) in installedLoaders)
-                if (!File.ReadAllBytes(path).AsSpan().SequenceEqual(loaderBytes[name]))
-                    throw new InvalidDataException("Installed loader differs from the authorized bytes.");
-            UserAuthorizedDependencies.RecordFiles("LuaToolsPlugin", UnlockerService.ConsentReceiptPath("LuaToolsPlugin"),
-                installedLoaders, settings.IsExecutableWorkflowEnabled, explicitUserAction: true);
-            UserAuthorizedDependencies.RequireFiles("LuaToolsPlugin", UnlockerService.ConsentReceiptPath("LuaToolsPlugin"),
-                installedLoaders, settings.IsExecutableWorkflowEnabled);
+            SafeWrite(BundledPlugin.ReceiptPath, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(receipt)));
             await injector.ReloadPluginFilesAsync();
             if (ActivatePlugin is { } activate) await activate();
+            progress?.Report(1);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            var rollbackErrors = new List<string>();
+            foreach (var (path, bytes) in mutationStarted ? backups.Reverse() : [])
+            {
+                try { if (bytes is not null) SafeWrite(path, bytes); else { BundledPlugin.EnsureSafePath(path); File.Delete(path); } }
+                catch (Exception restoreError) { rollbackErrors.Add(restoreError.Message); }
+            }
+            if (createdMarker || (mutationStarted && !markerInitiallyPresent))
+                try { if (MarkerExists(marker) && IsOwnedMarker(marker)) RemoveOwnedCdpMarker(marker); }
+                catch (Exception restoreError) { rollbackErrors.Add(restoreError.Message); }
+            try { await injector.ReloadPluginFilesAsync(); } catch { }
+            return (false, ex.Message + (rollbackErrors.Count == 0 ? "" : " Rollback incomplete: " + string.Join("; ", rollbackErrors)));
+        }
+        finally { if (stopped && wasRunning) steam.StartSteam(); }
+    }
+
+    public Task<bool> AutoUpdateAsync(CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        return Task.FromResult(false);
+    }
+
+    public async Task<(bool ok, string? error)> UninstallAsync(CancellationToken ct = default)
+    {
+        bool wasRunning = false;
+        bool stopped = false;
+        try
+        {
+            var receipt = BundledPlugin.ReadReceipt(BundledPlugin.ReceiptPath);
+            if (receipt is null) return (true, null);
+            BundledPlugin.EnsureSafePath(BundledPlugin.ReceiptPath);
+            // Disable injection even if an installed path has since become unsafe to remove.
+            receipt.ActivationEnabled = false;
+            SafeWrite(BundledPlugin.ReceiptPath, Encoding.UTF8.GetBytes(JsonSerializer.Serialize(receipt)));
+            await injector.ReloadPluginFilesAsync();
+            string? steamDir = receipt.SteamDirectory;
+            if (steamDir is not null)
+            {
+                BundledPlugin.EnsureSafePath(steamDir);
+                foreach (string name in new[] { LoaderName, RealName, ConfigurationName }) BundledPlugin.EnsureSafePath(Path.Combine(steamDir, name));
+            }
+            ct.ThrowIfCancellationRequested();
+            wasRunning = Process.GetProcessesByName("steam").Length > 0;
+            steam.StopSteam();
+            stopped = true;
+            await Task.Delay(1200, ct);
+            var unfamiliar = new List<string>();
+            if (steamDir is not null)
+            {
+                foreach (string name in new[] { LoaderName, RealName })
+                    if (!BundledPlugin.DeleteOwnedFile(Path.Combine(steamDir, name), receipt.DllShas?.GetValueOrDefault(name))) unfamiliar.Add(name);
+                if (!BundledPlugin.DeleteOwnedFile(Path.Combine(steamDir, ConfigurationName), receipt.LoaderConfigurationSha)) unfamiliar.Add(ConfigurationName);
+                if (receipt.OwnsCdpMarker) RemoveOwnedCdpMarker(Path.Combine(steamDir, CdpMarkerName));
+            }
+            SetMillenniumLuatoolsEnabled(true, receipt.DisabledMillenniumEntries);
+            // Keep the disabled ownership receipt if unfamiliar files need manual review.
+            if (unfamiliar.Count > 0) return (false, "Plugin deactivated. Preserved changed or unowned files: " + string.Join(", ", unfamiliar));
+            BundledPlugin.EnsureSafePath(BundledPlugin.ReceiptPath);
+            File.Delete(BundledPlugin.ReceiptPath);
             return (true, null);
         }
         catch (Exception ex) { return (false, ex.Message); }
-        finally { try { Directory.Delete(tmp, recursive: true); } catch { /* temp cleanup */ } }
+        finally { if (stopped && wasRunning) steam.StartSteam(); }
     }
 
-    /// <summary>Silent auto-update: if an update is available for an already-installed plugin, apply it
-    /// (frontend silently; DLL change stops/swaps/restarts Steam). Returns true if an update was applied.
-    /// Fire-and-forget safe: swallows offline/errors. Called from the app's Steam-open update flow.</summary>
-    public async Task<bool> AutoUpdateAsync(CancellationToken ct = default)
+    private static void Snapshot(string path, Dictionary<string, byte[]?> backups)
     {
-        ct.ThrowIfCancellationRequested();
-        await Task.CompletedTask;
-        return false; // Executable/JavaScript installations require explicit approval.
+        BundledPlugin.EnsureSafePath(path);
+        if (backups.ContainsKey(path)) return;
+        if (!File.Exists(path)) { backups[path] = null; return; }
+        using var input = File.OpenRead(path);
+        backups[path] = ManifestContentPolicy.ReadBounded(input, 16 * 1024 * 1024);
     }
 
-    // ── Uninstall ──
-    public Task<(bool ok, string? error)> UninstallAsync(CancellationToken ct = default)
+    private static void SafeWrite(string path, byte[] bytes)
     {
-        return Task.Run(async () =>
-        {
-            try
-            {
-                // Read the manifest BEFORE the FrontendDir delete below wipes it. It holds the exact
-                // enabledPlugins entries we stripped from Millennium's config at install time.
-                var manifest = ReadManifest();
-
-                bool wasRunning = Process.GetProcessesByName("steam").Length > 0;
-                steam.StopSteam();
-                await Task.Delay(1200, ct);
-
-                foreach (var slot in Slots)
-                {
-                    if (SlotPath(slot) is { } bp && File.Exists(bp)) File.Delete(bp);
-                    if (SlotRealPath(slot) is { } br && File.Exists(br)) File.Delete(br);
-                }
-                foreach (var legacy in LegacyDllPaths)
-                    if (File.Exists(legacy)) File.Delete(legacy);
-                if (CdpMarkerPath is { } markerPath) RemoveCdpMarkerJunction(markerPath);
-                if (Directory.Exists(FrontendDir)) Directory.Delete(FrontendDir, recursive: true);
-
-                // Give Millennium its luatools plugin back: we're the ones who disabled it. Steam is
-                // stopped here, so the edit sticks and applies on the restart below.
-                if (MillenniumPresent)
-                    SetMillenniumLuatoolsEnabled(enable: true, restore: manifest?.DisabledMillenniumEntries);
-
-                // Stop injecting the now-deleted content immediately, same reasoning as InstallAsync.
-                await injector.ReloadPluginFilesAsync();
-
-                if (wasRunning) steam.StartSteam();
-                return (true, (string?)null);
-            }
-            catch (Exception ex) { return (false, (string?)ex.Message); }
-        }, ct);
+        BundledPlugin.EnsureSafePath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        BundledPlugin.EnsureSafePath(path);
+        File.WriteAllBytes(path, bytes);
     }
 
-    // ── Millennium coexistence: disable its luatools plugin via config (reversible), not folder-rename ──
+    private static bool MarkerExists(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+    }
+
+    private static void ValidateMarker(string path)
+    {
+        BundledPlugin.EnsureSafePath(Path.GetDirectoryName(path)!);
+        if (!MarkerExists(path)) return;
+        var attributes = File.GetAttributes(path);
+        if ((attributes & FileAttributes.Directory) != 0 && (attributes & FileAttributes.ReparsePoint) == 0)
+            throw new IOException("The CDP marker is an unexpected directory; it has been preserved.");
+        if ((attributes & FileAttributes.ReparsePoint) != 0 && !IsOwnedMarker(path)
+            && !string.Equals(new DirectoryInfo(path).LinkTarget?.TrimEnd('\\'), LegacyCdpMarkerTarget, StringComparison.OrdinalIgnoreCase))
+            throw new IOException("The CDP marker is an unfamiliar reparse point; it has been preserved.");
+    }
+
+    private static bool IsOwnedMarker(string path) =>
+        string.Equals(new DirectoryInfo(path).LinkTarget?.TrimEnd('\\'), CdpMarkerJunctionTarget, StringComparison.OrdinalIgnoreCase);
+
+    private static bool CreateCdpMarkerJunction(string path)
+    {
+        ValidateMarker(path);
+        if (MarkerExists(path)) return false;
+        // cmd's percent expansion is active even within quotes. Refuse such paths.
+        if (path.IndexOfAny(['%', '!', '"', '\r', '\n']) >= 0) throw new IOException("Unsupported CDP marker path.");
+        if (Directory.Exists(CdpMarkerJunctionTarget) || File.Exists(CdpMarkerJunctionTarget)) throw new IOException("The reserved CDP marker target already exists.");
+        var psi = new ProcessStartInfo("cmd.exe", $"/d /c mklink /j \"{path}\" \"{CdpMarkerJunctionTarget}\"")
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        using var process = Process.Start(psi) ?? throw new IOException("Could not create the CDP marker.");
+        if (!process.WaitForExit(5000) || process.ExitCode != 0 || !IsOwnedMarker(path)) throw new IOException("Could not create the CDP marker junction.");
+        return true;
+    }
+
+    private static void RemoveOwnedCdpMarker(string path)
+    {
+        BundledPlugin.EnsureSafePath(Path.GetDirectoryName(path)!);
+        if (!MarkerExists(path)) return;
+        if (!IsOwnedMarker(path)) throw new IOException("An unfamiliar CDP marker has been preserved.");
+        Directory.Delete(path, recursive: false);
+    }
+
+    // -- Millennium coexistence: disable its luatools plugin via config (reversible), not folder-rename --
 
     private const string MillenniumPluginName = "luatools";
     private const string MillenniumDisabledName = MillenniumPluginName + ".disabled-by-luatools";
@@ -560,17 +299,18 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
         root["plugins.enabledPlugins"] as JsonArray; // stray dotted key some Millennium builds also write
 
     /// <summary>Remove (enable=false) or restore (enable=true) our plugin from <c>plugins.enabledPlugins</c>
-    /// in every Millennium config that exists. On disable returns configPath → the exact entry strings
+    /// in every Millennium config that exists. On disable returns configPath ? the exact entry strings
     /// removed, so uninstall can restore them verbatim (passed back in as <paramref name="restore"/>).
     /// Best-effort per file; edits a JSON DOM so all unrelated keys/plugins are preserved.</summary>
     private Dictionary<string, List<string>> SetMillenniumLuatoolsEnabled(
         bool enable, IReadOnlyDictionary<string, List<string>>? restore = null)
     {
         var removedMap = new Dictionary<string, List<string>>();
-        foreach (string path in MillenniumConfigPaths())
+        foreach (string path in MillenniumConfigPaths().Concat(restore?.Keys ?? Enumerable.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             try
             {
+                BundledPlugin.EnsureSafePath(path);
                 if (!File.Exists(path)) continue;
                 if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject root) continue;
                 bool changed = false;
@@ -608,60 +348,19 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
                     {
                         var toAdd = restore is not null && restore.TryGetValue(path, out var r) && r.Count > 0
                             ? r
-                            : new List<string> { MillenniumPluginName };
+                            : new List<string>();
                         foreach (string e in toAdd) arr.Add(e);
                         changed = true;
                     }
                 }
 
-                if (changed) File.WriteAllText(path, root.ToJsonString(ConfigWriteOpts));
+                if (changed) SafeWrite(path, Encoding.UTF8.GetBytes(root.ToJsonString(ConfigWriteOpts)));
             }
             catch { /* best effort per file. A locked/invalid config must not fail install/uninstall */ }
         }
         return removedMap;
     }
 
-    /// <summary>Undo the previous folder-rename approach: bring <c>plugins\luatools</c> back to a normal
-    /// state so only config governs enablement. If both the real and the renamed-aside folder exist
-    /// (Millennium recreated it), drop the stale aside copy; otherwise rename the aside copy back.</summary>
-    private static void RestoreMillenniumPluginFolder(string steamDir)
-    {
-        try
-        {
-            string dir = Path.Combine(steamDir, "millennium", "plugins");
-            string real = Path.Combine(dir, MillenniumPluginName);
-            string aside = Path.Combine(dir, MillenniumDisabledName);
-            if (!Directory.Exists(aside)) return;
-            if (Directory.Exists(real)) Directory.Delete(aside, recursive: true);
-            else Directory.Move(aside, real);
-        }
-        catch { /* best effort */ }
-    }
 
-    /// <summary>If plugin.zip wrapped everything in a single top-level folder, hoist that folder's contents
-    /// up so <c>public/luatools.js</c> sits directly under FrontendDir.</summary>
-    private static void NormalizeFrontendLayout(string frontendDir)
-    {
-        if (Directory.Exists(Path.Combine(frontendDir, "public"))) return;
-        foreach (var sub in Directory.GetDirectories(frontendDir))
-        {
-            if (!Directory.Exists(Path.Combine(sub, "public"))) continue;
-            foreach (var entry in Directory.GetFileSystemEntries(sub))
-            {
-                string dest = Path.Combine(frontendDir, Path.GetFileName(entry));
-                if (Directory.Exists(entry)) Directory.Move(entry, dest);
-                else File.Move(entry, dest, overwrite: true);
-            }
-            try { Directory.Delete(sub, recursive: true); } catch { /* leftover wrapper */ }
-            return;
-        }
-    }
-
-    // ── Helpers (same shape as UnlockerService's) ──
-    private static string? AssetDigest(GithubRelease r, string name) =>
-        AssetHash.ParseDigest(r.Assets.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Digest);
-
-    private static GithubAsset? FindAsset(GithubRelease r, string name) =>
-        r.Assets.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
 
 }

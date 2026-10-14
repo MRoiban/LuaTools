@@ -2,6 +2,8 @@
 
 Reviewed 2026-10-15 by Codex, static inspection only. **Recommendation: do not independently approve `LuaToolsPlugin`, `LuaToolsPluginFrontend`, `plugin.zip`, or `winmm.dll`.** Loader source and source-to-release provenance are unresolved. Findings below distinguish observed code from conditional attack paths; this review does not establish malicious intent.
 
+Follow-up: [static loader reverse engineering](steam-plugin-loader-re.md) now traces the exact installed v2.2 DLL. It confirms a launch path to the upstream LuaTools installation. The statements below about native analysis not being performed describe this earlier review.
+
 ## Exact inputs and provenance
 
 - Repository: [madoiscool/LTSP, main commit `9a38e7e064f0411c03ea0de58d9b8c76be3de44a`](https://github.com/madoiscool/LTSP/tree/9a38e7e064f0411c03ea0de58d9b8c76be3de44a). Its entire tracked tree is [README, line 1](https://github.com/madoiscool/LTSP/blob/9a38e7e064f0411c03ea0de58d9b8c76be3de44a/README#L1), linking to LuaTools releases. Release tag `v2.2` resolves to `006bfbbc9c261af06b766f4a895df698416c7b5f`; that tree also contains README only. Neither tree includes frontend source, `steampluginback/src/lib.rs`, Cargo manifests/lockfiles, loader source, or build workflows.

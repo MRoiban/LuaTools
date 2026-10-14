@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
-using System.IO;
+﻿using System.Collections.Concurrent;
+using System.Windows;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services.Downloads;
 
@@ -49,15 +49,22 @@ public class PluginAddService(
         public bool InstallFailed;
         public string? Error;
         public bool Busy; // a download+install is running
+        public bool Cancelled;
+        internal DownloadItem? QueueItem;
+        internal Task CheckTask = Task.CompletedTask;
     }
 
     private readonly ConcurrentDictionary<long, AddState> _states = new();
+    private readonly object _gate = new();
+
+    private bool IsCurrent(AddState state) => !state.Cancelled
+        && _states.TryGetValue(state.AppId, out var current) && ReferenceEquals(current, state);
 
     public AddState? GetState(long appId) => _states.TryGetValue(appId, out var s) ? s : null;
 
     /// <summary>Begin a headless add: check sources (+ Hubcap synth + gating + usage) and, if FastFetch
     /// is on, auto-download the best source. FastFetch off leaves the sources for the plugin to pick.</summary>
-    public void Start(long appId, string? gameName = null)
+    public bool Start(long appId, string? gameName = null)
     {
         var state = new AddState
         {
@@ -68,34 +75,60 @@ public class PluginAddService(
             // lua.tools /details round-trip. Null/blank → CheckAsync fetches it as a fallback.
             GameName = string.IsNullOrWhiteSpace(gameName) ? null : gameName.Trim(),
         };
-        _states[appId] = state;
+        lock (_gate)
+        {
+            if (_states.TryGetValue(appId, out var current) && (current.Checking || current.Busy))
+                return false;
+            _states[appId] = state;
+        }
         PluginLog.Log($"PluginAdd.Start appid={appId} fastFetch={state.FastFetch} guest={auth.IsGuest}");
-        _ = Task.Run(() => CheckAsync(appId, state));
+        state.CheckTask = Task.Run(() => CheckAsync(appId, state));
+        return true;
     }
 
     /// <summary>Plugin picked a source (FastFetch-off path) → download+install it.</summary>
-    public void Pick(long appId, string sourceName)
+    public bool Pick(long appId, string sourceName)
     {
-        if (!_states.TryGetValue(appId, out var state))
+        lock (_gate)
         {
-            PluginLog.Log($"PluginAdd.Pick appid={appId} source='{sourceName}' -> NO STATE (Start not called?)");
-            return;
+            if (!_states.TryGetValue(appId, out var state) || !IsCurrent(state)
+                || state.Checking || state.Busy || !state.SourcesLoaded)
+                return false;
+            var row = state.Sources.FirstOrDefault(r =>
+                string.Equals(r.Name, sourceName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(r.DisplayName, sourceName, StringComparison.OrdinalIgnoreCase));
+            if (row?.CanDownload != true) return false;
+            state.Busy = true; // reserve admission before another Pick or Start can race us
+            _ = Task.Run(() => DownloadAsync(appId, state, row, reserved: true));
+            return true;
         }
-        if (state.Busy)
+    }
+
+    /// <summary>Invalidate this generation before cancelling its queue item. Late checks cannot enqueue.</summary>
+    public bool Cancel(long appId)
+    {
+        DownloadItem? item;
+        lock (_gate)
         {
-            PluginLog.Log($"PluginAdd.Pick appid={appId} source='{sourceName}' -> BUSY, ignored");
-            return;
+            if (!_states.TryGetValue(appId, out var state) || state.Cancelled
+                || state.QueueItem is { IsActive: false }
+                || (!state.Checking && !state.Busy && !string.IsNullOrEmpty(state.InstallStatus)))
+                return false;
+            state.Cancelled = true;
+            state.Checking = false;
+            state.Error = null;
+            state.InstallFailed = false;
+            state.InstallStatus = null;
+            foreach (var row in state.Sources)
+            {
+                row.Downloading = false;
+                row.Indeterminate = false;
+            }
+            item = state.QueueItem;
         }
-        var row = state.Sources.FirstOrDefault(r =>
-            string.Equals(r.Name, sourceName, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(r.DisplayName, sourceName, StringComparison.OrdinalIgnoreCase));
-        if (row is null)
-        {
-            PluginLog.Log($"PluginAdd.Pick appid={appId} source='{sourceName}' -> ROW NOT FOUND. have=[{string.Join(", ", state.Sources.Select(s => s.Name))}]");
-            return;
-        }
-        PluginLog.Log($"PluginAdd.Pick appid={appId} source='{row.Name}' canDownload={row.CanDownload} needsKey={row.NeedsKey} -> downloading");
-        _ = Task.Run(() => DownloadAsync(appId, state, row));
+        // Queue calls dispatch to WPF: never hold _gate while waiting on its dispatcher.
+        if (item is not null) queue.Cancel(item);
+        return true;
     }
 
     private async Task CheckAsync(long appId, AddState state)
@@ -133,7 +166,7 @@ public class PluginAddService(
                         Stats = $"{stats.DailyUsage}/{stats.DailyLimit}",
                     };
                     if (nameTask is not null) state.GameName = await nameTask;
-                    PublishSources(state, new List<SourceRow> { hubRow }, appId);
+                    if (!PublishSources(state, new List<SourceRow> { hubRow }, appId)) return;
                     await DownloadAsync(appId, state, hubRow);
                     return;
                 }
@@ -165,11 +198,10 @@ public class PluginAddService(
                     };
                 }).ToList();
 
-            // No-key premium rows lock immediately (they show the "needs a key" hint). Keyed rows get their
+            // Premium rows stay locked until quota is known. Keyed rows get their
             // real lock state from the Hubcap stats call in FillBadgesAsync.
             var keyRows = rows.Where(r => r.NeedsKey).ToList();
-            if (keyRows.Count > 0 && string.IsNullOrEmpty(key))
-                foreach (var r in keyRows) r.Locked = true;
+            foreach (var r in keyRows) r.Locked = true;
 
             if (nameTask is not null) state.GameName = await nameTask; // ready before any Pick builds its status
 
@@ -180,10 +212,15 @@ public class PluginAddService(
                 // badges), then pick the best remaining source.
                 if (keyRows.Count > 0 && !string.IsNullOrEmpty(key))
                     await FillHubcapBadgeAsync(keyRows, key);
-                PublishSources(state, rows, appId);
+                if (!PublishSources(state, rows, appId)) return;
 
                 var best = rows.FirstOrDefault(r => r.CanDownload);
-                if (best is null) { state.Error = Resources.Strings.Err_NoSourceAvailable; PluginLog.Log($"PluginAdd.Check appid={appId} FastFetch: no downloadable source"); return; }
+                if (best is null)
+                {
+                    lock (_gate)
+                        if (IsCurrent(state)) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
+                    return;
+                }
                 await DownloadAsync(appId, state, best);
                 return;
             }
@@ -191,23 +228,33 @@ public class PluginAddService(
             // FastFetch off: publish the picker as soon as availability is known, then lazy-fill the usage
             // badges. The plugin polls state (~350ms), so the "12/25" / "X/Unlimited" counters and the real
             // Hubcap lock pop in on the next tick instead of blocking the whole list.
-            PublishSources(state, rows, appId);
+            if (!PublishSources(state, rows, appId)) return;
             await FillBadgesAsync(rows, keyRows, key);
         }
         catch (Exception ex)
         {
-            state.Error = ex.Message;
-            state.Checking = false;
+            lock (_gate)
+            {
+                if (!IsCurrent(state)) return;
+                state.Error = ex.Message;
+                state.Checking = false;
+            }
             PluginLog.Log($"PluginAdd.Check appid={appId} EXCEPTION: {ex}");
         }
     }
 
-    private void PublishSources(AddState state, List<SourceRow> rows, long appId)
+    private bool PublishSources(AddState state, List<SourceRow> rows, long appId)
     {
-        state.Sources = rows;
-        state.SourcesLoaded = true;
-        state.Checking = false;
+        lock (_gate)
+        {
+            if (!IsCurrent(state)) return false;
+            state.Sources = rows;
+            state.SourcesLoaded = true;
+            // Keep FastFetch checking until download admission, closing the Start/Pick race.
+            state.Checking = state.FastFetch;
+        }
         PluginLog.Log($"PluginAdd.Check appid={appId} sources=[{string.Join(", ", rows.Select(r => $"{r.Name}({r.Status},lock={r.Locked})"))}] fastFetch={state.FastFetch}");
+        return true;
     }
 
     private async Task<string?> SafeGetGameNameAsync(long appId)
@@ -272,61 +319,101 @@ public class PluginAddService(
     /// Routing through the queue also makes the popup's Cancel button work for the first time: it posts
     /// to /cancel/{appid}, which now resolves the same queue item this method enqueued.
     /// </remarks>
-    private async Task DownloadAsync(long appId, AddState state, SourceRow row)
+    private async Task DownloadAsync(long appId, AddState state, SourceRow row, bool reserved = false)
     {
-        if (state.Busy) return;
-        state.Busy = true;
-        state.Error = null;
-        state.InstallStatus = null;
-        state.InstallFailed = false;
-        row.Downloading = true;
-        row.Indeterminate = true;
-        row.Progress = 0;
+        lock (_gate)
+        {
+            if (!IsCurrent(state))
+            {
+                if (reserved) state.Busy = false;
+                return;
+            }
+            if ((!reserved && state.Busy) || !row.CanDownload) return;
+            state.Busy = true;
+            state.Checking = false;
+            state.Error = null;
+            state.InstallStatus = null;
+            state.InstallFailed = false;
+            row.Downloading = true;
+            row.Indeterminate = true;
+            row.Progress = 0;
+        }
 
         try
         {
-            var job = jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
-            var item = queue.Enqueue(job);
+            DownloadItem? Enqueue()
+            {
+                // This executes on the queue's dispatcher, so enqueue does not wait on WPF
+                // while holding _gate. Cancellation either sees the item or prevents its creation.
+                lock (_gate)
+                {
+                    if (!IsCurrent(state)) return null;
+                    var job = jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
+                    return state.QueueItem = queue.Enqueue(job);
+                }
+            }
+            var item = Application.Current is { } app
+                ? await app.Dispatcher.InvokeAsync(Enqueue)
+                : Enqueue();
+            if (item is null) return;
 
             void OnChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
             {
-                row.Indeterminate = item.IsIndeterminate;
-                row.Progress = item.Percent;
-                row.Downloading = item.IsActive;
+                lock (_gate)
+                {
+                    if (!IsCurrent(state)) return;
+                    row.Indeterminate = item.IsIndeterminate;
+                    row.Progress = item.Percent;
+                    row.Downloading = item.IsActive;
+                }
             }
             item.PropertyChanged += OnChanged;
-
             try
             {
                 var result = await item.Completion;
-
-                if (result is null || !result.Ok)
+                lock (_gate)
                 {
-                    state.Error = result?.Message ?? item.Message;
-                    state.InstallFailed = true;
-                    PluginLog.Log($"PluginAdd.Download appid={appId} source='{row.Name}' FAILED: {state.Error}");
-                }
-                else
-                {
-                    // "· via {source}" mirrors the GUI's FastFetch suffix, naming the source this add used.
-                    state.InstallStatus = result.Message
-                        + " " + string.Format(Resources.Strings.Add_FastFetch_Via, row.Name);
-                    PluginLog.Log($"PluginAdd.Download appid={appId} source='{row.Name}' OK: {state.InstallStatus}");
+                    if (!IsCurrent(state)) return;
+                    if (item.Status == DownloadStatus.Cancelled)
+                    {
+                        state.Cancelled = true;
+                        state.Error = null;
+                        state.InstallFailed = false;
+                    }
+                    else if (result is null || !result.Ok)
+                    {
+                        state.Error = result?.Message ?? item.Message;
+                        state.InstallFailed = true;
+                    }
+                    else
+                    {
+                        state.InstallStatus = result.Message
+                            + " " + string.Format(Resources.Strings.Add_FastFetch_Via, row.Name);
+                    }
                 }
             }
             finally { item.PropertyChanged -= OnChanged; }
         }
         catch (Exception ex)
         {
-            state.Error = ex.Message;
-            state.InstallFailed = true;
+            lock (_gate)
+            {
+                if (IsCurrent(state))
+                {
+                    state.Error = ex.Message;
+                    state.InstallFailed = true;
+                }
+            }
             PluginLog.Log($"PluginAdd.Download appid={appId} source='{row.Name}' EXCEPTION: {ex}");
         }
         finally
         {
-            row.Downloading = false;
-            row.Indeterminate = false;
-            state.Busy = false;
+            lock (_gate)
+            {
+                row.Downloading = false;
+                row.Indeterminate = false;
+                state.Busy = false;
+            }
         }
     }
 }

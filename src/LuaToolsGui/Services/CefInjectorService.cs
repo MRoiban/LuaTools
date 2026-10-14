@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
@@ -8,118 +8,63 @@ using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui.Services;
 
+/// <summary>
+/// Source-owned UI in a CDP isolated world. Ordinary store scripts cannot access its capability queue.
+/// CDP on Steam's fixed local port does not authenticate the local listening process.
+/// </summary>
 public class CefInjectorService : IHostedService
 {
-    private readonly SteamService _steam;
     private readonly SettingsService _settings;
-    private readonly SemaphoreSlim _lifecycle = new(1, 1);
-    private Task? _loopTask;
     private readonly ILogger<CefInjectorService> _log;
+    private readonly SemaphoreSlim _lifecycle = new(1, 1);
+    private readonly HttpClient _http = AppHttp.CreateLoopback(TimeSpan.FromSeconds(10), 8080, 6767);
+    private readonly Dictionary<string, TabSession> _sessions = new(); // owned only by InjectionLoop
     private CancellationTokenSource? _cts;
-    private string _luatoolsJs = "";
-    private string _polyfillJs = "";
-    private readonly HttpClient _http = AppHttp.CreateLoopback(TimeSpan.FromSeconds(30), 8080, 6767);
-
-    // Persistent CDP WebSocket per tab (keyed by tab id), reused across calls so the fast RPC-drain
-    // loop doesn't pay a connect handshake every tick. Opened lazily, evicted (and reopened next call)
-    // on any socket error. Touched only from the single InjectionLoop task (+ StopAsync on shutdown),
-    // so no locking is needed. _cdpId hands out unique CDP command ids for response correlation.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ClientWebSocket> _sockets = new();
-    private int _cdpId;
-
-    // CDP is opened by the `.cef-enable-remote-debugging` junction PluginInstallerService manages, not by
-    // the loader DLL anymore, and Steam's own internal logic hardcodes this port. Confirmed this can't be
-    // changed (file content has no effect on it), so unlike the old hook-based design (which deliberately
-    // picked the uncommon 42067 to dodge collisions), this is stuck with 8080. A commonly-occupied port
-    // (dev servers, Docker, etc.). PluginInstallerService.IsPort8080BusyAsync() surfaces a best-effort
-    // warning for that case (probing /json to rule out Steam's own CDP server before warning. A bare bind
-    // test can't tell "someone else has it" from "Steam has it and it's working correctly"); there is no
-    // fallback port to switch to.
-    private const string CefDebugUrl = "http://127.0.0.1:8080/json";
-    private const string BaseUrl = "http://127.0.0.1:6767";
-
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private Task? _loopTask;
+    private string _script = "";
+    private const string DebugUrl = "http://127.0.0.1:8080/json";
+    private const string BackendUrl = "http://127.0.0.1:6767";
+    private static readonly HttpResponseBudget DiscoveryBudget = new(256 * 1024, TimeSpan.FromSeconds(5));
+    private static readonly HttpResponseBudget ResultBudget = new(SteamPluginBridge.MaximumResultBytes, TimeSpan.FromSeconds(8));
 
     public CefInjectorService(SteamService steam, SettingsService settings, ILogger<CefInjectorService> logger)
     {
-        _steam = steam;
         _settings = settings;
         _log = logger;
     }
+
+    private bool Enabled => _settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend") && BundledPlugin.IsActivated;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await _lifecycle.WaitAsync(cancellationToken);
         try
         {
-            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend")) return;
-            if (_loopTask is { IsCompleted: false }) return;
+            if (!Enabled || _loopTask is { IsCompleted: false }) return;
             await ReloadPluginFilesAsync();
-            if (string.IsNullOrEmpty(_luatoolsJs)) return;
+            if (_script.Length == 0) return;
             _cts?.Dispose();
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var loopToken = _cts.Token;
-            _loopTask = Task.Run(() => InjectionLoop(loopToken), loopToken);
-            _log.LogInformation("CEF injector started after explicit plugin activation");
+            _cts = new CancellationTokenSource();
+            _loopTask = Task.Run(() => InjectionLoop(_cts.Token));
+            _log.LogInformation("Source-owned Steam store UI activated");
         }
         finally { _lifecycle.Release(); }
     }
 
-    /// <summary>(Re)reads luatools.js + the polyfill from disk into memory. Called once at startup, and
-    /// again by PluginInstallerService right after install/uninstall. The file-finding paths get checked
-    /// exactly once otherwise, so a plugin installed/updated/removed after launch would silently never take
-    /// effect until the app was restarted (the app is commonly launched by the loader BEFORE anything is
-    /// installed, so this isn't just a theoretical edge case). _luatoolsJs/_polyfillJs are plain strings.
-    /// Reassignment is atomic, so this is safe to call while InjectionLoop is concurrently reading them; the
-    /// next poll cycle (~1s) just picks up the new content, no page reload needed.</summary>
-    public async Task ReloadPluginFilesAsync()
+    // Resources belong to this assembly; no downloaded frontend or external polyfill fallback.
+    public Task ReloadPluginFilesAsync()
     {
-        if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend"))
+        _script = "";
+        if (!Enabled) return Task.CompletedTask;
+        try
         {
-            _luatoolsJs = "";
-            _polyfillJs = "";
-            return;
+            var js = BundledPlugin.ReadText("steam-plugin.js");
+            var css = BundledPlugin.ReadText("steam-plugin.css");
+            _script = SteamPluginBridge.Bootstrap + "\nwindow.__LuaToolsCss = " + JsonSerializer.Serialize(css)
+                + ";\nwindow.__LuaToolsStrings = " + SteamPluginStrings.BuildJson() + ";\n" + js;
         }
-
-        var jsPath = FindLuaToolsJs();
-        if (jsPath is not null && File.Exists(jsPath))
-        {
-            try
-            {
-                // Decode the exact bytes verified, rather than reopening a mutable file after hashing.
-                _luatoolsJs = Encoding.UTF8.GetString(UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPluginFrontend", jsPath, _settings.IsExecutableWorkflowEnabled));
-            }
-            catch (Exception ex)
-            {
-                _luatoolsJs = "";
-                _log.LogWarning(ex, "Plugin JavaScript rejected by dependency trust policy");
-            }
-            await Task.CompletedTask;
-            _log.LogInformation("Loaded luatools.js ({Length} bytes)", _luatoolsJs.Length);
-        }
-        else
-        {
-            _luatoolsJs = "";
-            _log.LogWarning("luatools.js not found");
-        }
-
-        var polyfillPath = FindPolyfillJs();
-        if (polyfillPath is not null && File.Exists(polyfillPath))
-        {
-            try
-            {
-                _polyfillJs = Encoding.UTF8.GetString(UserAuthorizedDependencies.ReadVerifiedBytes("LuaToolsPluginFrontend", polyfillPath, _settings.IsExecutableWorkflowEnabled));
-            }
-            catch (Exception ex)
-            {
-                _polyfillJs = BuildInlinePolyfill();
-                _log.LogWarning(ex, "External polyfill rejected by dependency trust policy");
-            }
-        }
-        else
-        {
-            _polyfillJs = BuildInlinePolyfill();
-        }
+        catch (Exception ex) { _log.LogWarning(ex, "Bundled Steam store UI could not be loaded"); }
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -128,397 +73,188 @@ public class CefInjectorService : IHostedService
         try
         {
             _cts?.Cancel();
-            foreach (string tab in _sockets.Keys) EvictSocket(tab);
-            _luatoolsJs = "";
-            _polyfillJs = "";
+            _script = "";
             if (_loopTask is { } loop)
             {
-                try { await loop.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken); }
+                try { await loop.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken); }
                 catch (OperationCanceledException) { }
                 catch (TimeoutException) { }
-                // Keep ownership of a slow canceled generation. Start cannot overlap it.
-                if (!loop.IsCompleted) return;
+                if (!loop.IsCompleted) return; // do not overlap generations
             }
             _loopTask = null;
-            _cts?.Dispose();
-            _cts = null;
+            _cts?.Dispose(); _cts = null;
         }
         finally { _lifecycle.Release(); }
     }
 
-    // Loop cadence: tick fast (drain queued RPCs every tick so the page's calls resolve in ~150ms rather
-    // than the old ~1s), but only refresh the tab list + re-inject on every Nth tick (~1s). Injection
-    // doesn't need to be fast, and the liveness/re-inject logic is unchanged, just decoupled from the drain.
-    private const int TickMs = 150;
-    private const int InjectEveryTicks = 7; // 7 * 150ms ≈ 1s
-
     private async Task InjectionLoop(CancellationToken ct)
-    {
-        // The store tabs to drain each fast tick (id + ws url), refreshed on the ~1s injection cadence.
-        List<(string Id, string Ws)> storeTabs = new();
-        int tick = 0;
-
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend")) break;
-                // ── Slow cadence (~1s): discover store tabs, ensure luatools.js is injected ──
-                if (tick % InjectEveryTicks == 0)
-                {
-                    // Millennium may also be present and running its own plugin loader on this same page.
-                    // That's fine now. The polyfill (BuildInlinePolyfill) only takes over "luatools" calls and
-                    // passes everything else through to Millennium's real window.Millennium if one exists, so
-                    // the two no longer need to be mutually exclusive.
-                    var tabsJson = await _http.GetStringAsync(CefDebugUrl, ct);
-                    if (!string.IsNullOrWhiteSpace(tabsJson))
-                    {
-                        var tabs = JsonSerializer.Deserialize<List<CefTabInfo>>(tabsJson, JsonOpts) ?? new();
-
-                        // Inject luatools.js into every store-page tab whose JS context isn't already alive.
-                        // Steam reuses the same CDP tab ID across SPA-style navigation (Home <-> store pages),
-                        // but navigating to a different page wipes the JS context entirely, so "already
-                        // injected by tab ID" is the wrong signal. Check liveness in the CURRENT context every
-                        // cycle instead (window.__LuaToolsReady, set as the last statement of luatools.js's
-                        // main IIFE) and re-inject whenever it's gone.
-                        var script = _polyfillJs + "\n" + _luatoolsJs;
-                        var live = new List<(string, string)>();
-                        var seen = new HashSet<string>();
-                        foreach (var tab in tabs)
-                        {
-                            // Inject into ALL store pages, not just /app/ game pages: the store-wide header
-                            // icon (and the "games added since last restart" popup, which only fires on the
-                            // store home) need luatools.js present on the home page too. Steam boots straight
-                            // to the home page, which has no "/app/" in its URL, so the old "/app/"-only filter
-                            // meant the icon/popup never appeared there. luatools.js itself gates the per-game
-                            // "Add via LuaTools" button to /app/ pages internally, so injecting store-wide is safe.
-                            if (Uri.TryCreate(tab.Url, UriKind.Absolute, out var storeUri)
-                                && storeUri.Scheme == Uri.UriSchemeHttps && storeUri.IdnHost == "store.steampowered.com"
-                                && !string.IsNullOrEmpty(tab.WebSocketDebuggerUrl)
-                                && !string.IsNullOrEmpty(tab.Id))
-                            {
-                                seen.Add(tab.Id!);
-                                // EvaluateReturnAsync's value.GetString() throws (silently, falling through to
-                                // the raw response text) for a JSON boolean, so stringify explicitly rather
-                                // than returning a bare boolean expression.
-                                var alive = await EvaluateReturnAsync(tab.Id!, tab.WebSocketDebuggerUrl!, "String(window.__LuaToolsReady === true)", ct);
-                                if (alive != "true")
-                                    await EvaluateAsync(tab.Id!, tab.WebSocketDebuggerUrl!, script, ct);
-
-                                live.Add((tab.Id!, tab.WebSocketDebuggerUrl!));
-                            }
-                        }
-
-                        storeTabs = live;
-                        // Drop persistent sockets for tabs that have gone away.
-                        foreach (var stale in _sockets.Keys.Where(k => !seen.Contains(k)).ToList())
-                            EvictSocket(stale);
-                    }
-                }
-
-                // ── Fast cadence (every tick): drain pending CDP bridge requests ──
-                foreach (var (id, ws) in storeTabs)
-                    await ProcessSingleTab(id, ws, ct);
-
-                tick++;
-                await Task.Delay(TickMs, ct);
-            }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex)
-            {
-                _log.LogDebug("CEF cycle: {Message}", ex.Message);
-                try { await Task.Delay(1000, ct); } catch { break; }
-            }
-        }
-    }
-
-    private async Task ProcessSingleTab(string tabId, string wsUrl, CancellationToken ct)
     {
         try
         {
-            var pendingJson = await EvaluateReturnAsync(tabId, wsUrl,
-                "JSON.stringify(Object.values(window.Millennium._pending||{}).map(function(r){return{m:r.method,a:JSON.stringify(r.args)}}))", ct);
-
-            if (string.IsNullOrWhiteSpace(pendingJson) || pendingJson == "[]" || pendingJson == "null")
-                return;
-
-            var pending = JsonSerializer.Deserialize<List<PendingRequest>>(pendingJson, JsonOpts);
-            if (pending is null or { Count: 0 }) return;
-
-            var responses = new List<object>();
-            foreach (var req in pending)
+            while (!ct.IsCancellationRequested && Enabled)
             {
                 try
                 {
-                    var result = await CallBackendMethod(req.m ?? "", req.a ?? "{}");
-                    responses.Add(new { v = JsonSerializer.Deserialize<object>(result) ?? result });
+                    using var discovery = new HttpRequestMessage(HttpMethod.Get, DebugUrl);
+                    DiscoveryBudget.Apply(discovery);
+                    using var response = await _http.SendAsync(discovery, ct);
+                    response.EnsureSuccessStatusCode();
+                    using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+                    if (document.RootElement.ValueKind != JsonValueKind.Array || document.RootElement.GetArrayLength() > 128)
+                        throw new InvalidDataException("Unexpected CEF target list.");
+                    var seen = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var target in document.RootElement.EnumerateArray())
+                    {
+                        if (!target.TryGetProperty("id", out var idValue) || idValue.ValueKind != JsonValueKind.String
+                            || !target.TryGetProperty("url", out var urlValue) || urlValue.ValueKind != JsonValueKind.String
+                            || !target.TryGetProperty("webSocketDebuggerUrl", out var wsValue) || wsValue.ValueKind != JsonValueKind.String)
+                            continue;
+                        string id = idValue.GetString()!, url = urlValue.GetString()!, ws = wsValue.GetString()!;
+                        if (id.Length is < 1 or > 128 || !SteamPluginBridge.IsStoreUrl(url) || !IsAllowedDebuggerEndpoint(ws)
+                            || !seen.Add(id)) continue;
+                        try
+                        {
+                            var session = await GetSession(id, ws, ct);
+                            await EnsureWorld(session, ct);
+                            await ProcessRequests(session, ct);
+                        }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                        catch (Exception ex)
+                        {
+                            Evict(id);
+                            _log.LogDebug("CEF tab unavailable: {Message}", ex.Message);
+                        }
+                    }
+                    foreach (var stale in _sessions.Keys.Where(k => !seen.Contains(k)).ToArray()) Evict(stale);
                 }
-                catch (Exception ex)
-                {
-                    responses.Add(new { e = ex.Message });
-                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                catch (Exception ex) { _log.LogDebug("CEF discovery unavailable: {Message}", ex.Message); }
+                await Task.Delay(350, ct);
             }
-
-            var respArray = JsonSerializer.Serialize(responses);
-            await EvaluateReturnAsync(tabId, wsUrl,
-                "(function(r){var ks=Object.keys(window.Millennium._pending);for(var i=0;i<ks.length&&i<r.length;i++){var id=ks[i];window.Millennium._readyResponses[id]=r[i];delete window.Millennium._pending[id];}})(" + respArray + ");", ct);
         }
-        catch { }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        finally
+        {
+            foreach (var session in _sessions.Values) session.Connection.Dispose();
+            _sessions.Clear();
+        }
     }
 
-    private async Task<string> CallBackendMethod(string method, string argsRaw)
+    private async Task<TabSession> GetSession(string id, string endpoint, CancellationToken ct)
     {
-        var methodMap = new Dictionary<string, (string HttpMethod, string Path)>
+        if (!Enabled) throw new InvalidOperationException("Steam plugin is disabled in Settings.");
+        if (_sessions.TryGetValue(id, out var session))
         {
-            ["HasLuaToolsForApp"] = ("GET", "/has/{appid}"),
-            ["CheckApisForApp"] = ("POST", "/check-sources/{appid}"),
-            ["StartAddViaLuaToolsFromUrl"] = ("POST", "/download/{appid}"),
-            ["GetAddViaLuaToolsStatus"] = ("GET", "/download-status/{appid}"),
-            ["CancelAddViaLuaTools"] = ("POST", "/cancel/{appid}"),
-            ["DeleteLuaToolsForApp"] = ("POST", "/remove/{appid}"),
-            // Store-page popup's self-contained add pipeline (PluginAddService-backed).
-            // Raw fetch() to these from the page context is blocked as mixed content
-            // (HTTPS store page -> HTTP localhost); route through this CDP bridge instead.
-            ["StartLuaToolsAdd"] = ("POST", "/add/{appid}"),
-            ["GetLuaToolsAddStatus"] = ("GET", "/add-status/{appid}"),
-            ["PickLuaToolsAddSource"] = ("POST", "/add-source/{appid}"),
-            // Menu actions (Settings, Fixes, Restart Steam). Same mixed-content problem, same fix.
-            ["OpenSettings"] = ("POST", "/open/settings"),
-            ["OpenFix"] = ("POST", "/open/fix/{appid}"),
-            ["RestartSteam"] = ("POST", "/restart-steam"),
-            // Open an external URL (Discord link, etc.), and check-for-updates. Also route
-            // through the bridge (previously used a dead direct-fetch to a proxy port).
-            ["OpenExternalUrl"] = ("POST", "/open-url"),
-            ["CheckForUpdatesNow"] = ("POST", "/check-updates"),
-            // "Games added since last Steam restart" popup: read the list, then dismiss it.
-            ["ReadLoadedApps"] = ("GET", "/loaded-apps"),
-            ["DismissLoadedApps"] = ("POST", "/loaded-apps"),
-            ["GetApiList"] = ("GET", "/api-list"),
-            ["GetIconDataUrl"] = ("GET", "/icon"),
-            ["GetGamesDatabase"] = ("GET", "/games-database"),
-            ["Logger"] = ("POST", "/log"),
-        };
-
-        if (!methodMap.TryGetValue(method, out var mapping))
-            return """{"success":true}""";
-
-        var path = mapping.Path;
-        if (argsRaw is not null)
+            if (session.Endpoint == endpoint) return session;
+            Evict(id);
+        }
+        var socket = new ClientWebSocket();
+        socket.Options.Proxy = null;
+        try
         {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            await socket.ConnectAsync(new Uri(endpoint), timeout.Token);
+        }
+        catch { socket.Dispose(); throw; }
+        session = new TabSession(endpoint, new SteamCdpConnection(socket));
+        _sessions.Add(id, session);
+        return session;
+    }
+
+    private static async Task<Frame> CurrentFrame(TabSession session, CancellationToken ct)
+    {
+        var result = await session.Connection.CommandAsync("Page.getFrameTree", new { }, ct);
+        var frame = result.GetProperty("frameTree").GetProperty("frame");
+        string url = frame.GetProperty("url").GetString()!;
+        if (!SteamPluginBridge.IsStoreUrl(url)) throw new InvalidOperationException("Steam store context is no longer available.");
+        return new Frame(frame.GetProperty("id").GetString()!, frame.GetProperty("loaderId").GetString()!, url);
+    }
+
+    private async Task EnsureWorld(TabSession session, CancellationToken ct)
+    {
+        var frame = await CurrentFrame(session, ct);
+        if (session.FrameId != frame.Id || session.LoaderId != frame.Loader)
+        {
+            var world = await session.Connection.CommandAsync("Page.createIsolatedWorld",
+                new { frameId = frame.Id, worldName = "LuaTools-" + Guid.NewGuid().ToString("N"), grantUniveralAccess = false }, ct);
+            session.ContextId = world.GetProperty("executionContextId").GetInt32();
+            session.FrameId = frame.Id; session.LoaderId = frame.Loader;
+        }
+        string alive = await session.Connection.EvaluateAsync(session.ContextId, "String(window.__LuaToolsReady === true)", ct);
+        if (alive != "true" && _script.Length != 0)
+            await session.Connection.EvaluateAsync(session.ContextId, _script + "\n; 'injected';", ct);
+    }
+
+    private async Task ProcessRequests(TabSession session, CancellationToken ct)
+    {
+        var raw = await session.Connection.EvaluateAsync(session.ContextId, "window.LuaToolsBridge.__drain()", ct);
+        using var batch = JsonDocument.Parse(raw);
+        if (batch.RootElement.ValueKind != JsonValueKind.Array || batch.RootElement.GetArrayLength() > SteamPluginBridge.MaximumQueue)
+            throw new InvalidDataException("Invalid bridge queue.");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var request in batch.RootElement.EnumerateArray())
+        {
+            string id = request.GetProperty("id").GetString()!;
+            if (id.Length is < 1 or > 128 || !seen.Add(id)) throw new InvalidDataException("Invalid bridge request ID.");
+            object reply;
             try
             {
-                using var doc = JsonDocument.Parse(argsRaw);
-                var root = doc.RootElement;
-                foreach (var prop in root.EnumerateObject())
-                {
-                    path = path.Replace($"{{{prop.Name}}}", Uri.EscapeDataString(prop.Value.ToString()));
-                }
+                var expires = request.GetProperty("expires").GetInt64();
+                long remaining = expires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                if (remaining <= 0 || remaining > SteamPluginBridge.RequestLifetimeMs)
+                    throw new TimeoutException("Steam plugin bridge timed out.");
+                using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                deadline.CancelAfter(TimeSpan.FromMilliseconds(Math.Min(remaining, 8000)));
+                // Re-read the actual top frame before EVERY dispatch, not cached /json metadata.
+                var frame = await CurrentFrame(session, deadline.Token);
+                if (frame.Id != session.FrameId || frame.Loader != session.LoaderId)
+                    throw new InvalidOperationException("Steam store page navigated. Please retry.");
+                string method = request.GetProperty("method").GetString()!;
+                var args = request.GetProperty("args");
+                var mapping = SteamPluginBridge.Map(method, args, frame.Url);
+                if (!Enabled) throw new InvalidOperationException("Steam plugin is disabled in Settings.");
+                using var httpRequest = new HttpRequestMessage(mapping.Method == "GET" ? HttpMethod.Get : HttpMethod.Post, BackendUrl + mapping.Path);
+                ResultBudget.Apply(httpRequest);
+                httpRequest.Headers.TryAddWithoutValidation(LocalPluginBridgePolicy.TokenHeader, LocalPluginBridgePolicy.Token);
+                if (mapping.Method != "GET") httpRequest.Content = new StringContent(args.GetRawText(), Encoding.UTF8, "application/json");
+                using var response = await _http.SendAsync(httpRequest, deadline.Token);
+                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    throw new InvalidOperationException("Steam plugin is disabled in Settings.");
+                var text = await response.Content.ReadAsStringAsync(deadline.Token);
+                response.EnsureSuccessStatusCode();
+                using var result = JsonDocument.Parse(text);
+                reply = new { id, value = result.RootElement.Clone() };
             }
-            catch { }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) { reply = new { id, error = "Steam plugin bridge timed out." }; }
+            catch (Exception ex) { reply = new { id, error = ex.Message }; }
+            // Match by stable request ID, even if another promise expired or new calls arrived meanwhile.
+            await session.Connection.EvaluateAsync(session.ContextId,
+                "window.LuaToolsBridge.__complete([" + JsonSerializer.Serialize(reply) + "]); 'completed';", ct);
         }
-
-        if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPluginFrontend"))
-            throw new InvalidOperationException("Steam plugin is disabled in Settings.");
-        var url = BaseUrl + path;
-        using var request = new HttpRequestMessage(mapping.HttpMethod == "GET" ? HttpMethod.Get : HttpMethod.Post, url);
-        request.Headers.TryAddWithoutValidation(LocalPluginBridgePolicy.TokenHeader, LocalPluginBridgePolicy.Token);
-        if (mapping.HttpMethod != "GET")
-            request.Content = new StringContent(argsRaw ?? "{}", Encoding.UTF8, "application/json");
-        using var response = await _http.SendAsync(request, _cts?.Token ?? CancellationToken.None);
-        return await response.Content.ReadAsStringAsync(_cts?.Token ?? CancellationToken.None);
-    }
-
-    /// <summary>Return the reused (or freshly opened) CDP socket for a tab. Throws if the connect fails.
-    /// The caller evicts on any exception.</summary>
-    private async Task<ClientWebSocket> GetSocketAsync(string tabId, string wsUrl, CancellationToken ct)
-    {
-        UserAuthorizedDependencies.RequireEnabled("LuaToolsPluginFrontend", _settings.IsExecutableWorkflowEnabled);
-        if (!IsAllowedDebuggerEndpoint(wsUrl))
-            throw new InvalidOperationException("Unexpected CEF debugger endpoint.");
-        if (_sockets.TryGetValue(tabId, out var existing))
-        {
-            if (existing.State == WebSocketState.Open) return existing;
-            EvictSocket(tabId); // stale (closed/aborted). Drop and reopen below
-        }
-
-        var ws = new ClientWebSocket();
-        ws.Options.Proxy = null;
-        await ws.ConnectAsync(new Uri(wsUrl), ct);
-        _sockets[tabId] = ws;
-        return ws;
     }
 
     public static bool IsAllowedDebuggerEndpoint(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
-        const string prefix = "/devtools/page/";
-        return uri.Scheme == "ws" && uri.Host == "127.0.0.1" && uri.Port == 8080
-            && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0
-            && uri.AbsolutePath.StartsWith(prefix, StringComparison.Ordinal)
-            && uri.AbsolutePath.Length > prefix.Length && uri.AbsolutePath.Length <= 1024
-            && uri.AbsolutePath[prefix.Length..].All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
+        // Validate the wire form as well: Uri normalizes alternate numeric IPv4 forms and dot segments.
+        const string prefix = "ws://127.0.0.1:8080/devtools/page/";
+        return url.StartsWith(prefix, StringComparison.Ordinal) && url.Length > prefix.Length
+            && url.Length <= prefix.Length + 256
+            && url[prefix.Length..].All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
     }
 
-    private void EvictSocket(string tabId)
+    private void Evict(string id)
     {
-        if (_sockets.TryRemove(tabId, out var ws))
-            try { ws.Dispose(); } catch { /* best effort */ }
+        if (_sessions.Remove(id, out var session)) session.Connection.Dispose();
     }
-
-    /// <summary>Send a Runtime.evaluate over the tab's persistent socket and return the evaluated string
-    /// value (or the raw response text if there's no plain value). Uses a unique CDP id per call and reads
-    /// frames until that id comes back, skipping any interleaved event frames. On any socket error the
-    /// connection is evicted so the next call transparently reopens a fresh one (same net behavior as the
-    /// old open-per-call code, minus the handshake cost on the happy path).</summary>
-    private async Task<string> EvaluateReturnAsync(string tabId, string wsUrl, string expression, CancellationToken ct)
+    private sealed class TabSession(string endpoint, SteamCdpConnection connection)
     {
-        try
-        {
-            var ws = await GetSocketAsync(tabId, wsUrl, ct);
-            int id = ++_cdpId;
-            var cmd = new { id, method = "Runtime.evaluate", @params = new { expression, returnByValue = true } };
-            var json = JsonSerializer.Serialize(cmd);
-            await ws.SendAsync(new ArraySegment<byte>(Encoding.UTF8.GetBytes(json)), WebSocketMessageType.Text, true, ct);
-
-            var buffer = new byte[65536];
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
-
-            // Each CDP message is one WS message (possibly multi-frame). Read whole messages until we get
-            // the one carrying our id. We never enable any CDP domain, so in practice the only traffic is
-            // our own responses. The id check is just defensive against any stray event frames.
-            while (!linked.Token.IsCancellationRequested)
-            {
-                var sb = new StringBuilder();
-                WebSocketReceiveResult result;
-                do
-                {
-                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), linked.Token);
-                    if (result.MessageType == WebSocketMessageType.Close) { EvictSocket(tabId); return ""; }
-                    if (sb.Length + result.Count > 1024 * 1024) throw new InvalidDataException("CEF response exceeds the size limit.");
-                    sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
-                } while (!result.EndOfMessage);
-
-                var responseText = sb.ToString();
-                JsonElement root;
-                try { using var doc = JsonDocument.Parse(responseText); root = doc.RootElement.Clone(); }
-                catch { continue; } // unparseable frame. Keep reading
-
-                if (!(root.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var rid) && rid == id))
-                    continue; // an event or a different id, not our response yet
-
-                if (root.TryGetProperty("result", out var cdpResult) &&
-                    cdpResult.TryGetProperty("result", out var evalResult) &&
-                    evalResult.TryGetProperty("value", out var value) &&
-                    value.ValueKind == JsonValueKind.String)
-                {
-                    // Only a string value maps cleanly; GetString() throws on e.g. a JSON boolean, so
-                    // callers that want a bool stringify it in JS (String(...)). Anything non-string
-                    // falls through to the raw response text (same as the old code) rather than throwing.
-                    return value.GetString() ?? responseText;
-                }
-                return responseText; // our response, but no plain string value (e.g. an injection eval)
-            }
-            return "";
-        }
-        catch (Exception ex)
-        {
-            _log.LogDebug("EvaluateReturnAsync: CDP call failed: {Message}", ex.Message);
-            EvictSocket(tabId);
-            return "";
-        }
+        internal string Endpoint { get; } = endpoint;
+        internal SteamCdpConnection Connection { get; } = connection;
+        internal string? FrameId { get; set; }
+        internal string? LoaderId { get; set; }
+        internal int ContextId { get; set; }
     }
-
-    /// <summary>Fire-and-forget evaluate (used for injecting the polyfill + luatools.js). Shares the same
-    /// persistent socket + id-correlated read path; the return value is ignored.</summary>
-    private async Task EvaluateAsync(string tabId, string wsUrl, string script, CancellationToken ct)
-    {
-        await EvaluateReturnAsync(tabId, wsUrl, script, ct);
-    }
-
-    private string? FindLuaToolsJs()
-    {
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        // The frontend is no longer bundled with the app. PluginInstallerService downloads it from
-        // GitHub releases into %AppData%\LuaToolsGui\plugin. If it isn't installed yet, nothing injects.
-        string[] candidates =
-        {
-            Path.Combine(appData, AppConfig.DataDirectoryName, "plugin", "public", "luatools.js"),
-            Path.Combine(appData, AppConfig.DataDirectoryName, "plugin", "luatools.js"),
-        };
-        foreach (var path in candidates)
-            if (File.Exists(path)) return path;
-        return null;
-    }
-
-    private string? FindPolyfillJs()
-    {
-        string[] candidates =
-        {
-            Path.Combine(AppContext.BaseDirectory, "public", "millennium-polyfill.js"),
-            Path.Combine(AppContext.BaseDirectory, "millennium-polyfill.js"),
-        };
-        foreach (var path in candidates)
-            if (File.Exists(path)) return path;
-        return null;
-    }
-
-    /// <summary>Real Millennium (if present on this page) already defines window.Millennium.callServerMethod
-    /// as one shared object used by every Millennium plugin, routed server-side by the pluginName argument.
-    /// It is NOT per-plugin namespaced. Blindly overwriting it (the old behavior) broke every other
-    /// Millennium plugin on the page whenever both injectors were active, not just LuaTools. This only takes
-    /// over "luatools" calls and passes every other pluginName through to the real callServerMethod
-    /// unchanged, so this app's CDP injection can coexist with Millennium instead of requiring it be absent.
-    /// _pending/_readyResponses are attached directly onto whichever object ends up as window.Millennium
-    /// (fake or real) under their original names. ProcessSingleTab's polling reads/writes those regardless
-    /// of which case this is.</summary>
-    private string BuildInlinePolyfill()
-    {
-        return @"
-(function(){
-var real=window.Millennium;
-var pending={},ready={},reqId=0;
-function ltCall(p,m,a){
-  var i='_ltr_'+(++reqId);
-  pending[i]={method:m,args:a,ts:Date.now()};
-  return new Promise(function(rv,rj){
-    var mx=100;
-    function ck(){
-      var r=ready[i];
-      if(r!==undefined){delete ready[i];if(r.e){rj(new Error(r.e))}else{rv(r.v)}return}
-      if(--mx>0){setTimeout(ck,50)}else{delete pending[i];rv({success:true})}
-    }
-    ck();
-  });
-}
-if(real&&typeof real.callServerMethod==='function'){
-  var realCall=real.callServerMethod.bind(real);
-  real.callServerMethod=function(p,m,a){return p==='luatools'?ltCall(p,m,a):realCall(p,m,a)};
-  real._pending=pending;
-  real._readyResponses=ready;
-  window.Millennium=real;
-}else{
-  window.Millennium={_pending:pending,_readyResponses:ready,callServerMethod:function(p,m,a){return ltCall(p,m,a)}};
-}
-})();
-";
-    }
-}
-
-internal class CefTabInfo
-{
-    [System.Text.Json.Serialization.JsonPropertyName("title")]
-    public string? Title { get; set; }
-    [System.Text.Json.Serialization.JsonPropertyName("url")]
-    public string? Url { get; set; }
-    [System.Text.Json.Serialization.JsonPropertyName("webSocketDebuggerUrl")]
-    public string? WebSocketDebuggerUrl { get; set; }
-    [System.Text.Json.Serialization.JsonPropertyName("id")]
-    public string? Id { get; set; }
-}
-
-internal class PendingRequest
-{
-    public string? m { get; set; }
-    public string? a { get; set; }
+    private sealed record Frame(string Id, string Loader, string Url);
 }

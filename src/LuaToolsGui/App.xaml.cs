@@ -22,7 +22,7 @@ public partial class App : Application
             var settings = _host.Services.GetRequiredService<SettingsService>();
             var server = _host.Services.GetRequiredService<HttpServerService>();
             var injector = _host.Services.GetRequiredService<CefInjectorService>();
-            if (activate && settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"))
+            if (activate && settings.IsExecutableWorkflowEnabled("LuaToolsPlugin") && BundledPlugin.IsActivated)
             {
                 await server.StartAsync(CancellationToken.None);
                 try { await injector.StartAsync(CancellationToken.None); }
@@ -193,8 +193,8 @@ public partial class App : Application
             () => SetPluginRuntimeAsync(activate: true);
         dnsSettings.ExecutableWorkflowChanged += async (component, enabled) =>
         {
-            if (component != "LuaToolsPlugin" || enabled) return;
-            try { await SetPluginRuntimeAsync(activate: false); }
+            if (component != "LuaToolsPlugin") return;
+            try { await SetPluginRuntimeAsync(activate: enabled && BundledPlugin.IsActivated); }
             catch { /* Each request and injection also rechecks the disabled setting. */ }
         };
 
@@ -342,7 +342,11 @@ public partial class App : Application
 
         // Open only the local catalog UI. No protocol installs, onboarding installers,
         // key donation, analytics, upstream updates or automatic Steam modifications run here.
-        window.Show();
+        if (Program.StartMinimized && dnsSettings.SteamPluginEnabled && BundledPlugin.IsActivated)
+            window.StartSilent();
+        else
+            window.Show();
+        await SetPluginRuntimeAsync(activate: BundledPlugin.IsActivated);
 
         // Refresh bounded metadata through the validated catalog service.
         _ = _host.Services.GetRequiredService<HardwareAppIdService>().EnsureFreshAsync();

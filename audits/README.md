@@ -6,7 +6,7 @@ These are targeted static reviews by GPT-6.1-Sol agents at medium reasoning effo
 | --- | --- | --- |
 | BetterSteamTools | [Report](bettersteamtools.md) | Default-on manifest-code donation and self-replacement, unrestricted Lua and insecure build acquisition |
 | OpenSteamTools | [Report](opensteamtools.md) | Unrestricted Lua, mutable hook metadata and unverified build inputs/provenance |
-| Steam plugin and loader | [Report](steam-plugin.md) | Missing loader source/provenance and page-to-native bridge authority |
+| Steam plugin and loader | [Report](steam-plugin.md), [binary analysis](steam-plugin-loader-re.md) | Loader starts the upstream application path; missing source/provenance and page-to-native bridge authority |
 | DepotDownloaderMod | [Report](depotdownloader.md) | Manifest filenames reach filesystem operations without sufficient containment; repack provenance |
 | Steamless | [Report](steamless.md) | Plugin execution and unsafe malformed-PE/disassembler boundaries; opaque bundled code |
 | SteamAutoCrack | [Report](steamautocrack.md) | Nested executable acquisition, opaque bundled binaries and destructive restore scope |

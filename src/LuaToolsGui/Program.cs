@@ -12,6 +12,7 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        StartMinimized = args.Contains("--minimized", StringComparer.Ordinal);
         // A signed update restart waits for the old single-instance owner to exit.
         if (args.Length == 2 && args[0] == "--fork-update-wait" && int.TryParse(args[1], out int parentId))
         {
@@ -31,6 +32,7 @@ public static class Program
             "LuaToolsGui.SecurityHardened.SingleInstance", out bool isFirst);
         if (!isFirst)
         {
+            if (StartMinimized) return;
             try
             {
                 if (EventWaitHandle.TryOpenExisting(ShowWindowEventName, out var signal))
@@ -57,6 +59,8 @@ public static class Program
 
     /// <summary>Owned by the live instance; App wires a listener that restores the window when it's set.</summary>
     internal static EventWaitHandle? ShowWindowSignal;
+
+    internal static bool StartMinimized { get; private set; }
 
     // Historical loader integration cannot force close-to-tray behavior in this fork.
     internal static bool SessionTrayLock => false;

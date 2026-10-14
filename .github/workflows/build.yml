@@ -27,10 +27,15 @@ jobs:
           dotnet --version
       - name: Restore pinned package graph
         run: dotnet restore LuaToolsGui.sln --locked-mode
+      - name: Build source-owned Steam loader
+        shell: pwsh
+        run: ./scripts/build-plugin-loader.ps1 -Test
       - name: Build
         run: dotnet build LuaToolsGui.sln -c Release --no-restore
       - name: Test
         run: dotnet test LuaToolsGui.sln -c Release --no-build --no-restore
+      - name: Test source-owned plugin frontend
+        run: node --test src/LuaToolsGui/Plugin/steam-plugin.test.cjs
       - name: Publish fork for review
         run: dotnet publish src/LuaToolsGui/LuaToolsGui.csproj -c Release --no-restore --self-contained false -o artifacts/publish
       - name: Package and hash
@@ -82,6 +87,9 @@ jobs:
           "value=1.4.$count" >> $env:GITHUB_OUTPUT
       - name: Restore pinned package graph
         run: dotnet restore src/LuaToolsGui/LuaToolsGui.csproj --locked-mode
+      - name: Build source-owned Steam loader
+        shell: pwsh
+        run: ./scripts/build-plugin-loader.ps1
       - name: Publish tested source with commit version
         run: dotnet publish src/LuaToolsGui/LuaToolsGui.csproj -c Release --no-restore --self-contained false -p:Version=${{ steps.version.outputs.value }} -p:InformationalVersion=${{ steps.version.outputs.value }}+${{ github.sha }} -o artifacts/publish
       - name: Package portable release

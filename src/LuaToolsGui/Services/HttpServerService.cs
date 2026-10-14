@@ -271,7 +271,8 @@ public class HttpServerService : IHostedService
                 name = n.GetString();
         }
         catch { }
-        _services.GetRequiredService<PluginAddService>().Start(appId, name);
+        if (!_services.GetRequiredService<PluginAddService>().Start(appId, name))
+            return (409, JsonErr("An add operation is already active for this app."));
         return (200, Json(new { success = true }));
     }
 
@@ -309,6 +310,7 @@ public class HttpServerService : IHostedService
             sources,
             installStatus = st.InstallStatus,
             installFailed = st.InstallFailed,
+            cancelled = st.Cancelled,
             error = st.Error,
             installed,
         }));
@@ -327,7 +329,8 @@ public class HttpServerService : IHostedService
         catch { }
         if (string.IsNullOrWhiteSpace(source)) return (400, JsonErr("source is required"));
 
-        _services.GetRequiredService<PluginAddService>().Pick(appId, source);
+        if (!_services.GetRequiredService<PluginAddService>().Pick(appId, source))
+            return (409, JsonErr("The source is unavailable or an operation is already active."));
         return (200, Json(new { success = true }));
     }
 
@@ -437,6 +440,7 @@ public class HttpServerService : IHostedService
     /// </remarks>
     private (int, string) HandleCancel(long appId)
     {
+        _services.GetRequiredService<PluginAddService>().Cancel(appId);
         var queue = _services.GetRequiredService<Services.Downloads.DownloadQueue>();
         var item = queue.FindActive($"manifest:{appId}");
         if (item is null) return (200, Json(new { success = true, message = "Nothing to cancel" }));
@@ -512,8 +516,8 @@ public class HttpServerService : IHostedService
         }
         catch { /* fall through to validation */ }
 
-        try { new OutboundNetworkPolicy().Validate(new Uri(url)); }
-        catch { return (400, JsonErr("URL is not permitted by network policy")); }
+        if (!SteamPluginBridge.IsAllowedExternalUrl(url))
+            return (400, JsonErr("URL is not permitted by plugin policy"));
 
         try
         {

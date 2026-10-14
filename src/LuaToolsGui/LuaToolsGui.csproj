@@ -40,12 +40,15 @@
   <ItemGroup>
     <Resource Include="icon.ico" />
     <EmbeddedResource Include="Resources\release-signing-public.pem" LogicalName="LuaToolsGui.release-signing-public.pem" />
+    <EmbeddedResource Include="Plugin\steam-plugin.js" LogicalName="LuaToolsGui.Plugin.steam-plugin.js" />
+    <EmbeddedResource Include="Plugin\steam-plugin.css" LogicalName="LuaToolsGui.Plugin.steam-plugin.css" />
+    <EmbeddedResource Include="..\..\artifacts\plugin-loader\winmm.dll" LogicalName="LuaToolsGui.Plugin.winmm.dll" Condition="Exists('..\..\artifacts\plugin-loader\winmm.dll')" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\SECURITY.md" Link="SECURITY.md" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\DEPENDENCY_TRUST.md" Link="DEPENDENCY_TRUST.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- No third-party plugin or executable dependency is bundled or approved by this build. -->
+  <!-- The source-owned plugin is bundled. Other executable dependencies remain separately gated. -->
 
 
   <!-- Localization RESX. We hand-maintain Strings.Designer.cs (works under dotnet watch), so disable the

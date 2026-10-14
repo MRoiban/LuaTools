@@ -20,8 +20,9 @@ settings allow manual opt-in to bounded Cloudflare DNS-over-HTTPS with normal HT
 certificate validation. It never checks, stages or applies upstream
 application updates, and does not run Velopack startup hooks. External protocol URLs and
 loader flags cannot start silent installs. Startup does not install/update a companion
-plugin, modify the selected Steam mode, start Steam browser injection, or expose the
-companion HTTP server. Eight persisted switches default to off: executable game fixes,
+plugin or modify the selected Steam mode. An explicitly installed, enabled source-owned
+plugin resumes its isolated browser injection and authenticated local server at startup.
+Eight persisted switches default to off: executable game fixes,
 BetterSteamTools, OpenSteamTools, Steam plugin, DepotDownloaderMod, Steamless,
 SteamAutoCrack and CloudRedirect. Turning one on only saves consent. A subsequent
 explicit Install or Run action can download, install and execute unreviewed code for
@@ -62,11 +63,13 @@ approvals. HTTPS destination/redirect/credential controls, response limits and f
 path checks still apply after opt-in. ZIP declared-size and CRC checks establish format
 integrity only, not trust in downloaded code. Other remote plaintext requests remain blocked.
 
-The Steam plugin runtime starts only after a successful explicit authorized install,
-and stops when its switch is turned off. It is not activated at application startup.
+The Steam plugin runtime requires a successful explicit installation receipt,
+resumes at startup/re-enable, and stops when its switch is turned off.
 Its local HTTP bridge requires an ephemeral per-process token and rejects browser Origin
-headers; loopback alone does not authorize requests. Browser-injected plugin code remains
-unreviewed code under the user's consent.
+headers; loopback alone does not authorize requests. The frontend and WinMM wrapper
+are now source-owned and bundled with the fork. The frontend runs in a CDP isolated
+world with a narrow bridge. Local CDP process spoofing and same-user filesystem attacks
+remain limitations; see [implementation record](design/steam-plugin/implementation.md).
 
 ## Building and reviewing a release
 
@@ -77,6 +80,7 @@ commits constrain drift but do not audit those dependencies.
 
 ```powershell
 dotnet restore LuaToolsGui.sln --locked-mode
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-plugin-loader.ps1 -Test
 dotnet build LuaToolsGui.sln -c Release --no-restore
 dotnet test LuaToolsGui.sln -c Release --no-build --no-restore
 dotnet publish src/LuaToolsGui/LuaToolsGui.csproj -c Release --no-restore --self-contained false -o artifacts/publish

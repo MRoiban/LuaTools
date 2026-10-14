@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LuaTools Steam store plugin — design mockup</title>
+<style>
+/* ───────────── Steam store tokens (observed on store.steampowered.com, 2026-10-15) ───────────── */
+:root {
+  --st-page: #1b2838;
+  --st-text: #c6d4df;
+  --st-text-muted: #8f98a0;
+  --st-white: #ffffff;
+  --st-link: #67c1f5;
+  --st-font: Arial, Helvetica, sans-serif;
+  --st-font-head: "Motiva Sans", Arial, Helvetica, sans-serif;
+  --st-purchase-bg: linear-gradient(-60deg, rgba(226,244,255,.3) 5%, rgba(84,107,115,.3) 95%);
+  --st-action-bg: #000000;
+  --st-row-bg: rgba(0,0,0,.2);
+  --st-row-hover: rgba(103,193,245,.12);
+  --st-blue-fade-bg: rgba(103,193,245,.2);
+  --st-blue-fade-hover: linear-gradient(-60deg, #417a9b 5%, #67c1f5 95%);
+  --st-green: linear-gradient(to right, #75b022 5%, #588a1b 95%);
+  --st-green-hover: linear-gradient(to right, #8ed629 5%, #6aa621 95%);
+  --st-green-text: #d2efa9;
+  --st-grey-bg: #3d4450;
+  --st-grey-text: #dfe3e6;
+  --st-ok: #a4d007;
+  --st-warn: #d9a441;
+  --st-bad: #c15755;
+  --st-progress: linear-gradient(to right, #1a9fff, #47bfff);
+  --st-modal-bg: radial-gradient(circle at top left, rgba(74,81,92,.4) 0%, rgba(75,81,92,0) 60%), #25282e;
+  --st-menu-bg: #3d4450;
+  --st-menu-text: #dcdedf;
+  --st-menu-hover-bg: #dcdedf;
+  --st-menu-hover-text: #171a21;
+  --st-focus: #67c1f5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--st-page); color: var(--st-text); font: 12px var(--st-font); }
+a { color: var(--st-link); text-decoration: none; }
+button { font: inherit; }
+
+/* ───────────── design-only state switcher (NOT part of the plugin) ───────────── */
+.dz { background: #0e0f12; border-bottom: 1px dashed #4a4f57; padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font: 12px/1.3 system-ui, sans-serif; color: #9aa0a6; }
+.dz b { color: #e8eaed; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 11px; }
+.dz label { display: inline-flex; align-items: center; gap: 6px; }
+.dz select { background: #1c1e22; color: #e8eaed; border: 1px solid #3c4048; border-radius: 4px; padding: 3px 6px; font: inherit; }
+
+/* frame lets the narrow view be shown inside any preview width */
+.frame { margin: 0 auto; transition: max-width .15s; overflow: hidden; position: relative; }
+.frame.narrow { max-width: 390px; border-left: 1px dashed #4a4f57; border-right: 1px dashed #4a4f57; }
+
+/* ───────────── fake Steam page context ───────────── */
+.st-nav { background: linear-gradient(90deg, rgba(62,103,150,.92) 11.38%, rgba(58,120,177,.8) 25.23%, rgb(15,33,110) 100%); box-shadow: 0 0 3px rgba(0,0,0,.4); }
+.st-nav-in { max-width: 940px; margin: 0 auto; display: flex; align-items: center; gap: 2px; height: 35px; padding: 0 8px; }
+.st-nav-in .tab { color: #e5e5e5; font: 13px var(--st-font-head); padding: 0 10px; white-space: nowrap; }
+.st-nav-in .sp { flex: 1; }
+.st-search { width: 200px; height: 27px; border-radius: 3px; background: #316282; color: #0e1c25; font-size: 13px; padding: 6px 9px; color: #a4c0d6; font-style: italic; }
+.page { max-width: 940px; margin: 0 auto; padding: 16px 8px 40px; }
+.crumbs { color: var(--st-text-muted); font-size: 12px; margin-bottom: 4px; }
+.crumbs a { color: var(--st-text-muted); }
+.titlerow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.apphub_AppName { flex: 1; font: 26px/32px var(--st-font-head); color: #fff; margin: 0; min-width: 0; }
+.hero { display: grid; grid-template-columns: 600px 1fr; gap: 14px; }
+.media { aspect-ratio: 16/9; background: radial-gradient(ellipse at 40% 60%, #7a2a1a 0%, #3b1210 40%, #120a0c 85%); border-radius: 0; position: relative; }
+.media::after { content: "media"; position: absolute; left: 10px; bottom: 8px; color: rgba(255,255,255,.3); font-size: 11px; }
+.capsule { aspect-ratio: 460/215; background: linear-gradient(135deg, #5a1b12, #b23a1f 50%, #2a0d0b); }
+.side p { font-size: 13px; line-height: 18px; color: #c6d4df; margin: 10px 0 14px; }
+.meta { display: grid; grid-template-columns: 110px 1fr; gap: 3px 8px; font-size: 11px; }
+.meta span:nth-child(odd) { color: #556772; text-transform: uppercase; }
+.meta span:nth-child(even) { color: var(--st-link); }
+.queue { margin: 18px 0 26px; background: rgba(0,0,0,.2); height: 64px; border-radius: 0; display: flex; align-items: center; padding: 0 16px; color: var(--st-text-muted); }
+.cols { display: grid; grid-template-columns: 616px 1fr; gap: 14px; }
+.rightblock { background: linear-gradient(90deg, rgba(0,0,0,.5) 5%, rgba(0,0,0,.65) 95%); padding: 16px; min-height: 160px; }
+.rightblock .t { color: var(--st-text-muted); margin-bottom: 8px; }
+.feat { background: rgba(103,193,245,.08); color: var(--st-link); padding: 6px 8px; margin-bottom: 2px; font-size: 12px; }
+
+/* native purchase box (context) */
+.game_area_purchase_game { background: var(--st-purchase-bg); border-radius: 4px; padding: 16px 16px 26px; position: relative; margin-bottom: 28px; }
+.game_area_purchase_game h2 { font: 21px/26px var(--st-font-head); color: #fff; margin: 0; padding-right: 60px; }
+.plat { position: absolute; right: 16px; top: 16px; display: flex; gap: 6px; }
+.plat i { width: 18px; height: 18px; display: block; opacity: .9; background: linear-gradient(#fff,#fff) 0 0/8px 8px no-repeat, linear-gradient(#fff,#fff) 10px 0/8px 8px no-repeat, linear-gradient(#fff,#fff) 0 10px/8px 8px no-repeat, linear-gradient(#fff,#fff) 10px 10px/8px 8px no-repeat; }
+.game_purchase_action { position: absolute; right: 16px; bottom: -17px; display: flex; }
+.game_purchase_action_bg { background: var(--st-action-bg); border-radius: 2px; padding: 2px 2px 2px 0; display: flex; align-items: stretch; gap: 2px; }
+.game_purchase_price { color: var(--st-text); font: 13px var(--st-font-head); padding: 0 12px; display: flex; align-items: center; white-space: nowrap; }
+.game_purchase_price.wide { min-width: 0; }
+
+/* ───────────── Steam button primitives ───────────── */
+.btn { display: inline-flex; border: 0; padding: 1px; border-radius: 2px; cursor: pointer; background: transparent; text-decoration: none; white-space: nowrap; }
+.btn > span { display: block; padding: 0 15px; font: 15px/30px var(--st-font-head); border-radius: 2px; }
+.btn.small > span { font-size: 12px; line-height: 22px; padding: 0 10px; }
+.btn_green > span { background: var(--st-green); color: var(--st-green-text); }
+.btn_green:hover > span { background: var(--st-green-hover); color: #fff; }
+.btn_blue { background: var(--st-blue-fade-bg); }
+.btn_blue > span { color: var(--st-link); }
+.btn_blue:hover { background: var(--st-blue-fade-hover); }
+.btn_blue:hover > span { color: #fff; }
+.btn_grey > span { background: var(--st-grey-bg); color: var(--st-grey-text); }
+.btn_grey:hover > span { background: #4a5260; color: #fff; }
+.btn[disabled], .btn.disabled { opacity: .45; cursor: default; pointer-events: none; }
+.btn:focus-visible, .lt-iconbtn:focus-visible, .lt-src:focus-visible, .lt-menu a:focus-visible, .lt-link:focus-visible { outline: 2px solid var(--st-focus); outline-offset: 2px; }
+
+/* ───────────── LuaTools panel (the design) ───────────── */
+.lt-panel { background: var(--st-purchase-bg); border-radius: 4px; padding: 16px 16px 26px; position: relative; margin-bottom: 28px; }
+.lt-panel h2 { font: 21px/26px var(--st-font-head); color: #fff; margin: 0; padding-right: 40px; overflow-wrap: anywhere; }
+.lt-mark { position: absolute; right: 16px; top: 17px; width: 20px; height: 20px; opacity: .85; }
+.lt-sub { margin-top: 4px; font: 13px/18px var(--st-font-head); color: #acdbf5; min-height: 18px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lt-sub:empty { display: none; }
+.lt-sub.muted { color: var(--st-text-muted); }
+.lt-sub.err { color: #e7a3a1; }
+.lt-tag { display: inline-block; font: 11px/17px var(--st-font); padding: 0 7px; border-radius: 2px; background: var(--st-blue-fade-bg); color: var(--st-link); }
+.lt-tag.warn { background: rgba(217,164,65,.18); color: #e2b764; }
+.lt-tag.ok { background: rgba(164,208,7,.15); color: #b9de3a; }
+.lt-tag.bad { background: rgba(193,87,85,.2); color: #e7a3a1; }
+
+/* source list — mirrors the native "Content For This Game" DLC rows */
+.lt-sources { margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.lt-src { display: flex; align-items: center; gap: 10px; background: var(--st-row-bg); min-height: 32px; padding: 4px 6px 4px 12px; border: 0; width: 100%; text-align: left; color: var(--st-text); font: 13px var(--st-font-head); }
+.lt-src .nm { flex: 1; min-width: 0; color: #c6d4df; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lt-src .st { display: inline-flex; align-items: center; gap: 6px; font: 12px var(--st-font); white-space: nowrap; }
+.lt-src .use { color: var(--st-text-muted); font: 11px var(--st-font); white-space: nowrap; }
+.lt-src.ok .st { color: var(--st-ok); }
+.lt-src.lock .st { color: var(--st-warn); }
+.lt-src.none { opacity: .55; }
+.lt-src.none .st { color: var(--st-text-muted); }
+.lt-src.busy { background: rgba(26,159,255,.12); }
+.lt-src.busy .st { color: #8fd0ff; }
+.lt-src.pickable { cursor: pointer; }
+.lt-src.pickable:hover { background: var(--st-row-hover); }
+.lt-src.pickable:hover .nm { color: #fff; }
+.lt-src .act { width: 86px; display: flex; justify-content: flex-end; }
+.lt-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
+.lt-link { color: var(--st-link); background: none; border: 0; padding: 0; cursor: pointer; font: 12px var(--st-font); }
+.lt-link:hover { color: #fff; }
+
+/* progress — Steam client download-bar colours, store density */
+.lt-progress { margin-top: 12px; }
+.lt-bar { height: 6px; background: rgba(0,0,0,.45); border-radius: 1px; overflow: hidden; }
+.lt-bar > i { display: block; height: 100%; background: var(--st-progress); width: 0; transition: width .3s; }
+.lt-bar.indet > i { width: 30%; animation: lt-indet 1.3s ease-in-out infinite; }
+@keyframes lt-indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+.lt-progress .row { display: flex; justify-content: space-between; margin-top: 5px; font-size: 11px; color: var(--st-text-muted); }
+.lt-spin { width: 12px; height: 12px; border: 2px solid rgba(172,219,245,.25); border-top-color: #acdbf5; border-radius: 50%; animation: lt-rot .9s linear infinite; flex: none; }
+@keyframes lt-rot { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lt-spin, .lt-bar.indet > i { animation: none; } }
+
+/* installed state — compact "in library"-style bar */
+.lt-owned { background: rgba(0,0,0,.2); border-radius: 4px; margin-bottom: 28px; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 12px; min-height: 48px; }
+.lt-owned .chk { width: 22px; height: 22px; border-radius: 2px; background: rgba(164,208,7,.18); color: var(--st-ok); display: grid; place-items: center; flex: none; }
+.lt-owned .tx { flex: 1; min-width: 0; font: 15px/20px var(--st-font-head); color: #fff; }
+.lt-owned .tx small { display: block; font: 12px/16px var(--st-font); color: var(--st-text-muted); }
+.lt-owned .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* store-nav icon + dropdown menu (popup_block_new look) */
+.lt-iconbtn { width: 27px; height: 27px; border-radius: 3px; border: 0; padding: 0; background: rgba(103,193,245,.15); color: #c6e6f8; display: grid; place-items: center; cursor: pointer; margin-left: 6px; position: relative; }
+.lt-iconbtn:hover, .lt-iconbtn[aria-expanded="true"] { background: var(--st-blue-fade-hover); color: #fff; }
+.lt-menu { position: absolute; z-index: 50; min-width: 220px; background: var(--st-menu-bg); box-shadow: 0 0 12px #000; padding: 4px 0; display: none; }
+.lt-menu.open { display: block; }
+.lt-menu a { display: flex; justify-content: space-between; gap: 16px; padding: 6px 14px; color: var(--st-menu-text); font: 13px var(--st-font); white-space: nowrap; }
+.lt-menu a:hover { background: var(--st-menu-hover-bg); color: var(--st-menu-hover-text); }
+.lt-menu a .k { color: var(--st-text-muted); font-size: 11px; }
+.lt-menu a:hover .k { color: #4a5260; }
+.lt-menu hr { border: 0; border-top: 1px solid rgba(255,255,255,.08); margin: 4px 0; }
+.lt-menu .hd { padding: 6px 14px 4px; color: var(--st-text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+
+/* modal (newmodal look) */
+.lt-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.8); z-index: 80; display: none; align-items: flex-start; justify-content: center; padding: 120px 12px 12px; }
+.lt-scrim.open { display: flex; }
+.lt-modal { width: 100%; max-width: 460px; background: var(--st-modal-bg); box-shadow: 0 0 12px #000; color: var(--st-text); position: relative; }
+.lt-modal h3 { margin: 0; padding: 24px 48px 0 24px; font: 22px/28px var(--st-font-head); color: #fff; }
+.lt-modal .bd { padding: 12px 24px 0; font: 14px/20px var(--st-font-head); color: #c6d4df; }
+.lt-modal .ft { display: flex; justify-content: flex-end; gap: 8px; padding: 22px 24px 24px; flex-wrap: wrap; }
+.lt-modal .x { position: absolute; right: 12px; top: 12px; width: 28px; height: 28px; border: 0; background: none; color: #8f98a0; cursor: pointer; font-size: 20px; line-height: 28px; }
+.lt-modal .x:hover { color: #fff; }
+.lt-list { margin-top: 4px; max-height: 260px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.lt-list .it { display: flex; align-items: center; gap: 10px; background: var(--st-row-bg); padding: 4px 6px 4px 12px; min-height: 32px; }
+.lt-list .it .nm { flex: 1; min-width: 0; color: #c6d4df; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ───────────── responsive (store responsive breakpoints) ───────────── */
+.frame.narrow .hero, .frame.narrow .cols { grid-template-columns: 1fr; }
+.frame.narrow .rightblock, .frame.narrow .tab.extra { display: none; }
+.frame.narrow .st-search { width: 110px; }
+.frame.narrow .titlerow { flex-wrap: wrap; }
+.frame.narrow .lt-panel, .frame.narrow .game_area_purchase_game { padding-bottom: 12px; }
+.frame.narrow .game_purchase_action { position: static; margin-top: 12px; }
+.frame.narrow .game_purchase_action { justify-content: flex-end; }
+.frame.narrow .game_purchase_action_bg:has(.game_purchase_price) { flex: 1; }
+.frame.narrow .game_purchase_action_bg .game_purchase_price { flex: 1; white-space: normal; padding: 6px 10px; }
+.frame.narrow .lt-src { flex-wrap: wrap; row-gap: 2px; }
+.frame.narrow .lt-src .nm { flex-basis: 100%; }
+.frame.narrow .lt-src .act { width: auto; margin-left: auto; }
+.frame.narrow .lt-owned { flex-wrap: wrap; }
+.frame.narrow .lt-owned .acts { width: 100%; justify-content: stretch; }
+.frame.narrow .lt-owned .acts .btn { flex: 1; justify-content: center; }
+.frame.narrow .lt-owned .acts .btn > span { width: 100%; text-align: center; }
+.frame.narrow .lt-scrim { padding-top: 70px; }
+@media (max-width: 960px) {
+  .hero, .cols { grid-template-columns: 1fr; }
+  .rightblock { display: none; }
+}
+@media (max-width: 600px) {
+  .tab.extra { display: none; }
+  .st-search { width: 110px; }
+  .lt-panel, .game_area_purchase_game { padding-bottom: 12px; }
+  .game_purchase_action { position: static; margin-top: 12px; }
+  .game_purchase_action { justify-content: flex-end; }
+  .game_purchase_action_bg:has(.game_purchase_price) { flex: 1; }
+  .game_purchase_action_bg .game_purchase_price { flex: 1; white-space: normal; padding: 6px 10px; }
+  .lt-src { flex-wrap: wrap; row-gap: 2px; }
+  .lt-src .nm { flex-basis: 100%; }
+  .lt-src .act { width: auto; margin-left: auto; }
+  .lt-owned { flex-wrap: wrap; }
+  .lt-owned .acts { width: 100%; }
+  .lt-owned .acts .btn { flex: 1; justify-content: center; }
+  .lt-owned .acts .btn > span { width: 100%; text-align: center; }
+  .lt-scrim { padding-top: 70px; }
+}
+</style>
+</head>
+<body>
+
+<!-- DESIGN-ONLY CONTROLS: not part of the plugin, no backend -->
+<div class="dz" role="region" aria-label="Mockup state switcher">
+  <b>Mockup</b>
+  <label>State
+    <select id="dz-state">
+      <option value="idle">Not added</option>
+      <option value="checking">Checking sources</option>
+      <option value="pick">Choose source (Fast Download off)</option>
+      <option value="downloading">Downloading</option>
+      <option value="indeterminate">Downloading (no size)</option>
+      <option value="added">Added — restart prompt</option>
+      <option value="installed">Already added (manage)</option>
+      <option value="removed">Removed</option>
+      <option value="err-failed">Error: download failed (sources stay pickable)</option>
+      <option value="err-nosource">Error: no source has it</option>
+      <option value="err-key">Error: API key invalid</option>
+      <option value="err-limit">Error: daily limit reached</option>
+      <option value="offline">LuaTools not responding</option>
+      <option value="disabled">Plugin turned off in LuaTools</option>
+      <option value="cancelled">Cancelled</option>
+    </select>
+  </label>
+  <label>Overlay
+    <select id="dz-overlay">
+      <option value="">None</option>
+      <option value="menu">Store-nav menu</option>
+      <option value="remove">Remove confirmation</option>
+      <option value="restart">Restart confirmation</option>
+      <option value="recent">Added since last restart</option>
+      <option value="updates">Update check started</option>
+    </select>
+  </label>
+  <label>Width
+    <select id="dz-width">
+      <option value="auto">Responsive</option>
+      <option value="narrow">Narrow (390)</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="dz-denuvo"> Page has Denuvo notice</label>
+</div>
+
+<div class="frame" id="frame">
+  <!-- Store nav (client store pages: no global header; this bar is where the menu icon lives) -->
+  <div class="st-nav">
+    <div class="st-nav-in">
+      <span class="tab">Your Store</span><span class="tab extra">New &amp; Noteworthy</span><span class="tab extra">Categories</span><span class="tab extra">Points Shop</span><span class="tab extra">News</span>
+      <span class="sp"></span>
+      <span class="st-search">search</span>
+      <button class="lt-iconbtn Focusable" id="lt-navbtn" type="button" title="LuaTools" aria-label="LuaTools" aria-haspopup="menu" aria-expanded="false">
+        <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14.5 2.5a9.5 9.5 0 1 0 7 15.9A8 8 0 0 1 14.5 2.5Z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="page" id="page">
+    <div class="crumbs"><a>All Games</a> &gt; <a>Action Games</a> &gt; <a>Hades</a></div>
+    <div class="titlerow">
+      <h1 class="apphub_AppName">Hades</h1>
+      <a class="btn btn_blue" href="#" onclick="return false"><span>Community Hub</span></a>
+    </div>
+
+    <div class="hero">
+      <div class="media"></div>
+      <div class="side">
+        <div class="capsule"></div>
+        <p>Defy the god of the dead as you hack and slash out of the Underworld in this rogue-like dungeon crawler.</p>
+        <div class="meta"><span>Recent reviews:</span><span>Overwhelmingly Positive</span><span>Release date:</span><span style="color:#8f98a0">17 Sep, 2020</span><span>Developer:</span><span>Supergiant Games</span></div>
+      </div>
+    </div>
+
+    <div class="queue">Add to your wishlist, follow, or mark as ignored</div>
+
+    <div class="cols">
+      <div>
+        <div id="denuvo-notice" style="display:none;background:rgba(0,0,0,.2);padding:8px 12px;margin-bottom:16px;font-size:11px;color:#8f98a0">Incorporates 3rd-party DRM: Denuvo Anti-tamper</div>
+
+        <!-- ▼▼ LuaTools injected UI: inserted as first child of #game_area_purchase ▼▼ -->
+        <div id="lt-root" aria-live="polite"></div>
+        <!-- ▲▲ end LuaTools ▲▲ -->
+
+        <div class="game_area_purchase_game">
+          <h2>Buy Hades</h2>
+          <div class="plat"><i></i></div>
+          <div class="game_purchase_action"><div class="game_purchase_action_bg"><div class="game_purchase_price">24,50€</div><a class="btn btn_green" href="#" onclick="return false"><span>Add to Cart</span></a></div></div>
+        </div>
+      </div>
+      <div class="rightblock">
+        <div class="t">Single-player · Steam Achievements</div>
+        <div class="feat">Single-player</div><div class="feat">Steam Achievements</div><div class="feat">Steam Cloud</div><div class="feat">Family Sharing</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- store-nav dropdown -->
+  <div class="lt-menu" id="lt-menu" role="menu" aria-label="LuaTools"></div>
+
+  <!-- modal host -->
+  <div class="lt-scrim" id="lt-scrim"><div class="lt-modal" role="dialog" aria-modal="true" aria-labelledby="lt-mtitle" id="lt-modal"></div></div>
+</div>
+
+<script>
+/* Design-only state renderer. Sample data mirrors GET /add-status/{appid} field names. */
+(function () {
+  const GAME = "Hades";
+  const MARK = '<svg class="lt-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="#c6d4df" d="M14.5 2.5a9.5 9.5 0 1 0 7 15.9A8 8 0 0 1 14.5 2.5Z"/></svg>';
+  const SOURCES = [
+    { name: "Sadie (Morrenus)", displayName: "Sadie", status: "available", needsKey: true, locked: false, stats: "12/25" },
+    { name: "Ryuu", displayName: "Ryuu", status: "available", needsKey: false, locked: false, stats: "3/25" },
+    { name: "Kernel", displayName: "Kernel", status: "unavailable", needsKey: false, locked: false, stats: "3/25" },
+    { name: "Mirror", displayName: "Mirror", status: "available", needsKey: false, locked: false, stats: "3/25" },
+  ];
+  const LOCKED = [
+    { name: "Sadie (Morrenus)", displayName: "Sadie", status: "unknown", needsKey: true, locked: true, stats: null },
+    { name: "Ryuu", displayName: "Ryuu", status: "available", needsKey: false, locked: false, stats: "3/25" },
+    { name: "Kernel", displayName: "Kernel", status: "unavailable", needsKey: false, locked: false, stats: "3/25" },
+  ];
+  const RECENT = [{ appid: 1145360, name: "Hades" }, { appid: 1145350, name: "Hades II" }, { appid: 413150, name: "Stardew Valley" }];
+
+  const $ = (id) => document.getElementById(id);
+  const root = $("lt-root");
+  let state = "idle", overlay = "", denuvo = false;
+
+  const btn = (kind, label, attrs = "") => `<button type="button" class="btn ${kind} Focusable" ${attrs}><span>${label}</span></button>`;
+  const action = (inner) => `<div class="game_purchase_action"><div class="game_purchase_action_bg">${inner}</div></div>`;
+  const price = (html) => `<div class="game_purchase_price">${html}</div>`;
+  const denuvoTag = () => denuvo ? '<span class="lt-tag warn">Denuvo</span>' : "";
+
+  function srcRow(s, pickable, busyName) {
+    const busy = busyName && s.name === busyName;
+    let cls = "lt-src", st, act = "";
+    if (busy) { cls += " busy"; st = '<span class="lt-spin"></span>Downloading'; }
+    else if (s.needsKey && s.locked && s.stats) { cls += " lock"; st = '<span class="lt-dot"></span>Limit reached'; }
+    else if (s.needsKey && s.locked) { cls += " lock"; st = '<span class="lt-dot"></span>Needs key'; act = `<button type="button" class="lt-link" data-go="settings">Add key</button>`; }
+    else if (s.status !== "available") { cls += " none"; st = "Not found"; }
+    else { cls += " ok"; st = '<span class="lt-dot"></span>Available'; if (pickable) { cls += " pickable"; act = btn("btn_green small", "Download"); } }
+    const use = s.stats && (s.status === "available" || s.locked) ? `<span class="use">${s.stats}</span>` : "";
+    return `<div class="${cls}" ${pickable && !busy && s.status === "available" && !s.locked ? 'tabindex="-1"' : ""}><span class="nm">${s.displayName}</span>${use}<span class="st">${st}</span><span class="act">${act}</span></div>`;
+  }
+  const list = (rows, pickable, busy) => `<div class="lt-sources" role="list">${rows.map((s) => srcRow(s, pickable, busy)).join("")}</div>`;
+
+  function panel(title, sub, body, act, subCls = "") {
+    return `<section class="lt-panel" aria-label="LuaTools">${MARK}<h2>${title}</h2><div class="lt-sub ${subCls}">${sub}</div>${body || ""}${act ? action(act) : ""}</section>`;
+  }
+
+  const V = {
+    idle: () => panel(`Add ${GAME} via LuaTools`, `<span class="lt-sub muted" style="margin:0">Not added</span>${denuvoTag()}`, "",
+      btn("btn_green", "Add via LuaTools", 'data-go="checking"')),
+    checking: () => panel(`Add ${GAME} via LuaTools`, '<span class="lt-spin"></span>Checking availability…', "",
+      btn("btn_blue", "Cancel", 'data-go="cancelled"')),
+    pick: () => panel(`Choose a source for ${GAME}`, denuvoTag(), list(SOURCES, true),
+      btn("btn_blue", "Cancel", 'data-go="idle"')),
+    downloading: () => panel(`Adding ${GAME}`, "Downloading from Sadie…",
+      `<div class="lt-progress"><div class="lt-bar"><i style="width:42%"></i></div><div class="row"><span></span><span>42%</span></div></div>`,
+      btn("btn_blue", "Cancel", 'data-go="cancelled"')),
+    indeterminate: () => panel(`Adding ${GAME}`, "Downloading from Ryuu…",
+      `<div class="lt-progress"><div class="lt-bar indet"><i></i></div><div class="row"><span></span><span>…</span></div></div>`,
+      btn("btn_blue", "Cancel", 'data-go="cancelled"')),
+    added: () => panel(`${GAME} added`, "Added via Sadie", "",
+      price("Restart required") + btn("btn_green", "Restart Steam", 'data-ov="restart"')),
+    installed: () => `<div class="lt-owned" role="region" aria-label="LuaTools">
+        <span class="chk"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span>
+        <div class="tx">${GAME} is added via LuaTools ${denuvo ? '<span class="lt-tag warn">Denuvo</span>' : ""}</div>
+        <div class="acts">${btn("btn_blue small", "Fixes", 'data-go="fixes"')}${btn("btn_blue small", "Remove", 'data-ov="remove"')}${btn("btn_blue small", "Restart Steam", 'data-ov="restart"')}</div>
+      </div>`,
+    removed: () => panel(`Add ${GAME} via LuaTools`, '<span class="lt-tag">Removed</span>', "",
+      btn("btn_blue", "Restart Steam", 'data-ov="restart"') + btn("btn_green", "Add via LuaTools", 'data-go="checking"')),
+    "err-failed": () => panel(`Choose a source for ${GAME}`, '<span class="lt-tag bad">Failed</span><span>Sadie: manifest download timed out. Pick another source.</span>', list(SOURCES, true),
+      btn("btn_blue", "Cancel", 'data-go="idle"'), "err"),
+    "err-nosource": () => panel(`Couldn't add ${GAME}`, "No source has this game right now.", list(LOCKED, false),
+      btn("btn_blue", "Close", 'data-go="idle"') + btn("btn_green", "Try Again", 'data-go="checking"'), "err"),
+    "err-key": () => panel(`Couldn't add ${GAME}`, "Your Morrenus API key is invalid or expired.", list(LOCKED, true),
+      btn("btn_blue", "Cancel", 'data-go="idle"') + btn("btn_green", "Open Settings", 'data-go="settings"'), "err"),
+    "err-limit": () => panel(`Couldn't add ${GAME}`, "Daily download limit reached (25/25). Try again tomorrow or choose another source.", list(SOURCES.map(s => s.needsKey ? { ...s, locked: true, stats: "25/25" } : s), true),
+      btn("btn_blue", "Cancel", 'data-go="idle"'), "err"),
+    offline: () => panel(`Add ${GAME} via LuaTools`, "LuaTools isn't responding. Make sure the app is running.", "",
+      btn("btn_green", "Retry", 'data-go="idle"'), "err"),
+    disabled: () => panel(`Add ${GAME} via LuaTools`, "The Steam plugin is turned off in LuaTools.", "",
+      "", "muted"),
+    cancelled: () => panel(`Add ${GAME} via LuaTools`, '<span class="lt-tag">Cancelled</span>', "",
+      btn("btn_green", "Add via LuaTools", 'data-go="checking"')),
+  };
+
+  function menu() {
+    const onApp = true, installed = state === "installed" || state === "added";
+    return `<div class="hd">LuaTools</div>
+      ${onApp ? `<a href="#" role="menuitem" data-go="fixes">Fixes for ${GAME}…</a>` : ""}
+      ${onApp && installed ? `<a href="#" role="menuitem" data-ov="remove">Remove ${GAME}…</a>` : ""}
+      <a href="#" role="menuitem" data-ov="recent">Added since last restart<span class="k">3</span></a>
+      <hr>
+      <a href="#" role="menuitem" data-ov="restart">Restart Steam…</a>
+      <a href="#" role="menuitem" data-ov="updates">Check for updates</a>
+      <a href="#" role="menuitem" data-go="settings">Settings…</a>
+      <a href="#" role="menuitem" data-go="discord">Discord</a>`;
+  }
+
+  const MODALS = {
+    remove: () => `<button class="x" aria-label="Close" data-ov="">×</button><h3 id="lt-mtitle">Remove ${GAME}?</h3>
+      <div class="bd">${GAME} will be removed from LuaTools.</div>
+      <div class="ft">${btn("btn_grey", "Cancel", 'data-ov=""')}${btn("btn_blue", "Remove", 'data-go="removed" data-ov=""')}</div>`,
+    restart: () => `<button class="x" aria-label="Close" data-ov="">×</button><h3 id="lt-mtitle">Restart Steam?</h3>
+      <div class="bd">Steam will close and reopen.</div>
+      <div class="ft">${btn("btn_grey", "Cancel", 'data-ov=""')}${btn("btn_green", "Restart", 'data-ov=""')}</div>`,
+    recent: () => `<button class="x" aria-label="Close" data-ov="">×</button><h3 id="lt-mtitle">Added since last restart</h3>
+      <div class="bd"><div class="lt-list">${RECENT.map(a => `<div class="it"><span class="nm">${a.name}</span><button type="button" class="lt-link">SteamDB</button>${btn("btn_green small", "Install")}</div>`).join("")}</div></div>
+      <div class="ft">${btn("btn_grey", "Dismiss", 'data-ov=""')}${btn("btn_green", "Restart Steam", 'data-ov="restart"')}</div>`,
+    updates: () => `<button class="x" aria-label="Close" data-ov="">×</button><h3 id="lt-mtitle">Checking for updates</h3>
+      <div class="bd">LuaTools is checking for updates.</div>
+      <div class="ft">${btn("btn_green", "OK", 'data-ov=""')}</div>`,
+  };
+
+  function render() {
+    root.innerHTML = V[state]();
+    $("denuvo-notice").style.display = denuvo ? "block" : "none";
+    const m = $("lt-menu"), nb = $("lt-navbtn");
+    const isMenu = overlay === "menu";
+    m.classList.toggle("open", isMenu);
+    nb.setAttribute("aria-expanded", String(isMenu));
+    if (isMenu) {
+      m.innerHTML = menu();
+      const f = $("frame").getBoundingClientRect(), b = nb.getBoundingClientRect();
+      m.style.top = (b.bottom - f.top + 4) + "px";
+      m.style.left = Math.max(4, Math.min(b.right - f.left - 220, f.width - 224)) + "px";
+    }
+    const sc = $("lt-scrim");
+    const isModal = !!MODALS[overlay];
+    sc.classList.toggle("open", isModal);
+    if (isModal) $("lt-modal").innerHTML = MODALS[overlay]();
+    $("dz-state").value = state; $("dz-overlay").value = overlay;
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go],[data-ov]");
+    if (t) {
+      e.preventDefault();
+      const go = t.getAttribute("data-go");
+      if (go && V[go]) state = go;
+      if (go === "checking") setTimeout(() => { if (state === "checking") { state = "pick"; render(); } }, 900);
+      overlay = t.hasAttribute("data-ov") ? t.getAttribute("data-ov") : (overlay === "menu" ? "" : overlay);
+      render(); return;
+    }
+    if (e.target.closest(".lt-src.pickable")) { state = "downloading"; render(); return; }
+    if (e.target.closest("#lt-navbtn")) { overlay = overlay === "menu" ? "" : "menu"; render(); return; }
+    if (overlay === "menu" && !e.target.closest("#lt-menu, .dz")) { overlay = ""; render(); }
+    if (e.target.id === "lt-scrim") { overlay = ""; render(); }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && overlay) { overlay = ""; render(); } });
+  $("dz-state").onchange = (e) => { state = e.target.value; render(); };
+  $("dz-overlay").onchange = (e) => { overlay = e.target.value; render(); };
+  $("dz-width").onchange = (e) => { $("frame").classList.toggle("narrow", e.target.value === "narrow"); render(); };
+  $("dz-denuvo").onchange = (e) => { denuvo = e.target.checked; render(); };
+
+  // URL hash lets previews open a given state: #state=pick&overlay=menu&width=narrow
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("state") && V[h.get("state")]) state = h.get("state");
+  if (h.get("overlay") !== null) overlay = h.get("overlay") || "";
+  if (h.get("width") === "narrow") { $("frame").classList.add("narrow"); $("dz-width").value = "narrow"; }
+  if (h.get("denuvo")) { denuvo = true; $("dz-denuvo").checked = true; }
+  window.__mock = { set(s, o, d) { if (s) state = s; if (o !== undefined) overlay = o; if (d !== undefined) denuvo = d; $("dz-denuvo").checked = denuvo; render(); } };
+  render();
+})();
+</script>
+</body>
+</html>

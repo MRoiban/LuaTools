@@ -182,6 +182,7 @@ public sealed class UpdateService
         var destination = Path.Combine(_root, "runs", Guid.NewGuid().ToString("N"));
         ExtractVerified(directory, destination, TrustKey, _version);
         var start = new ProcessStartInfo(Path.Combine(destination, "LuaTools.exe")) { UseShellExecute = false, WorkingDirectory = destination };
+        if (!waitForCurrent && Program.StartMinimized) start.ArgumentList.Add("--minimized");
         if (waitForCurrent)
         {
             start.ArgumentList.Add("--fork-update-wait");
@@ -220,7 +221,8 @@ public sealed class UpdateService
         File.Move(temporary, pointer, overwrite: true);
     }
 
-    private void CleanupRuns() => CleanupDirectories(Path.Combine(_root, "runs"), 2, AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+    private void CleanupRuns() => CleanupDirectories(Path.Combine(_root, "runs"), 2,
+        AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), BundledPlugin.LauncherDirectory);
     private void CleanupPackages() => CleanupDirectories(_root, 2, ActiveDirectory(), _pending);
 
     private static void CleanupDirectories(string root, int retain, params string?[] keep)
