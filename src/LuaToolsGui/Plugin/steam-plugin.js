@@ -39,7 +39,7 @@
   const css = typeof window.__LuaToolsCss === 'string' ? window.__LuaToolsCss : '';
   const t = translator(window.__LuaToolsStrings, document.documentElement.lang || 'en');
   let context = null, nav = null, overlay = null, menu = null, modal = null, url = '', scanPending = false;
-  let loaded = [], menuGeneration = 0, autoChecked = false;
+  let loaded = [], menuGeneration = 0;
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   function moon(panel = false) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -303,11 +303,6 @@
         context = { ...r, id, name: clean(document.querySelector('.apphub_AppName')?.textContent || document.title.replace(/\s+on Steam\s*$/i, '').trim() || `App ${id}`), state: 'checking', generation: 0, timer: null, exists: false, data: {}, error: '', busy: false, fallback: !purchase, expanded: false };
         render(context); read(context);
       }
-    }
-    if (nav && !autoChecked) {
-      autoChecked = true;
-      let shown = false; try { shown = sessionStorage.getItem('LuaTools.loadedAppsShown') === '1'; } catch (_) { shown = true; }
-      if (!shown) call('ReadLoadedApps').then(data => { loaded = normalizeApps(data); if (loaded.length && !modal && !menu) { try { sessionStorage.setItem('LuaTools.loadedAppsShown', '1'); } catch (_) {} loadedModal(); } }).catch(() => {});
     }
   }
   function scheduleScan() { if (!scanPending) { scanPending = true; queueMicrotask(scan); } }
