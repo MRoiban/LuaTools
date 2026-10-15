@@ -1,368 +1,296 @@
+using System.Collections.Concurrent;
 using System.IO;
+using CabinetEngine;
+using CabinetApp = CabinetEngine.App;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui.Services.Cabinet;
 
-/// <summary>Serializes the five-second engine cadence and manual sync without WPF dependencies.</summary>
-public sealed class CabinetService : ICabinetService, IHostedService, IDisposable
+/// <summary>
+/// Hosts the verbatim Cabinet engine (Services/Cabinet/Engine) in place of Cabinet's tray app.
+/// It keeps the same five-second tick, the same data folder (%LOCALAPPDATA%\Cabinet) and the same
+/// Local\Cabinet single-instance mutex. LuaTools and standalone Cabinet therefore share state and
+/// never run the engine at the same time. All engine calls happen on one dedicated thread, as they
+/// did on Cabinet's UI timer thread.
+/// </summary>
+public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedService, IDisposable
 {
     private readonly ICabinetSettings _settings;
-    private readonly CabinetCloud? _cloud;
-    private readonly CabinetPaths _paths;
-    private readonly Action<string> _log;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly object _lifecycle = new();
-    private Task _transition = Task.CompletedTask;
-    private Task? _loop;
-    private CancellationTokenSource? _cancel;
-    private bool _hosted, _disposed;
-    private long _revision;
+    private readonly AutoResetEvent _wake = new(false);
+    private readonly ConcurrentQueue<Action> _work = new();
+    private readonly CancellationTokenSource _stop = new();
+    private Thread? _thread;
     private CabinetStatus _status = CabinetStatus.Off;
+
+    // Engine-thread state, mirroring Cabinet's App fields.
+    private Mutex? _instance;
     private Playtime? _playtime;
-    private Shadows? _helpers;
+    private Shadows? _shadows;
     private SchemaFill? _schemas;
     private bool _workshop;
-    private readonly Dictionary<string, string> _fingerprints = new();
-    private readonly Dictionary<string, long> _syncTimes = new();
+    private readonly Dictionary<string, string> _state = new();
+    private readonly Dictionary<string, string> _syncTimes = new();
+    private static string StatePath => Path.Combine(CabinetApp.DataDir, "state.txt");
+    private static string SyncTimesPath => Path.Combine(CabinetApp.DataDir, "sync-times.txt");
 
-    public CabinetService(ICabinetSettings settings, ILogger<CabinetService> logger, CabinetCloud cloud)
-        : this(settings, CabinetPaths.Default, line => logger.LogInformation("Cabinet: {Detail}", line), cloud) { }
-    public CabinetService(ICabinetSettings settings, CabinetPaths paths, Action<string>? log = null, CabinetCloud? cloud = null)
-    {
-        _settings = settings; _paths = paths; _log = log ?? PluginLog.Log; _cloud = cloud;
-        _cloud?.BindEngineSync(SyncNowAsync);
-        if (_cloud is not null) _cloud.StatusChanged += (_, status) => Publish(Status with { Cloud = status });
-    }
+    public CabinetService(ICabinetSettings settings) { _settings = settings; }
+
     public CabinetStatus Status => Volatile.Read(ref _status);
     public event EventHandler<CabinetStatus>? StatusChanged;
     public event EventHandler<CabinetNotification>? Notification;
-    public static bool HasActiveHelpers => CabinetHelperActivity.Active;
+    public static bool HasActiveHelpers => Shadows.AnyHelper();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        lock (_lifecycle) _hosted = true;
-        SettingsChanged();
+        _thread = new Thread(Run) { IsBackground = true, Name = "Cabinet engine" };
+        _thread.Start();
         return Task.CompletedTask;
     }
-    public async Task StopAsync(CancellationToken cancellationToken)
+
+    public Task StopAsync(CancellationToken cancellationToken)
     {
-        lock (_lifecycle) _hosted = false;
-        SettingsChanged();
-        Task transition;
-        lock (_lifecycle) transition = _transition;
-        await transition.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _stop.Cancel();
+        _wake.Set();
+        _thread?.Join(TimeSpan.FromSeconds(10));
+        return Task.CompletedTask;
     }
+
     public void SettingsChanged()
     {
-        lock (_lifecycle)
-        {
-            if (_disposed) return;
-            var revision = ++_revision;
-            _cancel?.Cancel();
-            // Chain lifecycle changes: a previous loop fully retires before its replacement starts.
-            _transition = _transition.ContinueWith(async _ =>
-            {
-                Task? loop;
-                lock (_lifecycle) { _cancel?.Cancel(); loop = _loop; }
-                if (loop is not null) await loop.ConfigureAwait(false);
-                await _gate.WaitAsync().ConfigureAwait(false);
-                try
-                {
-                    using var context = _paths.Enter();
-                    if (!_settings.CabinetEnabled || !_hosted) StopComponents();
-                    else ConfigureComponents();
-                }
-                catch (Exception ex) { _log("Configuration deferred: " + ex.Message); }
-                finally { _gate.Release(); }
-                lock (_lifecycle)
-                {
-                    _cancel?.Dispose();
-                    _cancel = null;
-                    _loop = null;
-                    if (_hosted && _settings.CabinetEnabled && !_disposed && revision == _revision)
-                    {
-                        _cancel = new CancellationTokenSource();
-                        var token = _cancel.Token;
-                        _loop = Task.Run(() => LoopAsync(token));
-                    }
-                }
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
-        }
         if (!_settings.CabinetEnabled) Publish(CabinetStatus.Off);
+        _wake.Set();
     }
-    private async Task LoopAsync(CancellationToken cancellation)
+
+    public Task SyncNowAsync(CancellationToken cancellationToken = default) => OnEngine(() => Tick(true));
+
+    // ── ICabinetCloud: the tray's Cabinet Cloud menu, driven from Settings ──
+    CabinetCloudStatus ICabinetCloud.Status => Status.Cloud;
+    public event EventHandler<CabinetCloudStatus>? CloudStatusChanged;
+    event EventHandler<CabinetCloudStatus>? ICabinetCloud.StatusChanged
+    {
+        add => CloudStatusChanged += value;
+        remove => CloudStatusChanged -= value;
+    }
+
+    public bool FriendLabels
+    {
+        get => CabinetEngine.FriendLabels.DebugEnabled();
+        set { if (value && !CabinetEngine.FriendLabels.DebugEnabled() && !CabinetEngine.FriendLabels.EnableDebug()) throw new IOException("Steam debugging marker not created"); }
+    }
+
+    public Task ConnectAsync(string link, CancellationToken cancellationToken = default)
+    {
+        try { CloudClient.ParseLink(link.Trim(), out _, out _); }
+        catch (Exception ex) { throw new FormatException("Invalid Cabinet Cloud link", ex); }
+        return OnEngine(() => CloudSync.QueueConnect(link));
+    }
+
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => OnEngine(CloudSync.Disconnect);
+
+    Task ICabinetCloud.SyncNowAsync(CancellationToken cancellationToken) => OnEngine(CloudSync.RequestSync);
+
+    private Task OnEngine(Action action)
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _work.Enqueue(() =>
+        {
+            try { action(); done.SetResult(); }
+            catch (Exception ex) { done.SetException(ex); }
+        });
+        _wake.Set();
+        return done.Task;
+    }
+
+    // ── Engine thread ──
+    private void Run()
     {
         try
         {
-            while (!cancellation.IsCancellationRequested && _settings.CabinetEnabled)
+            while (!_stop.IsCancellationRequested)
             {
-                await RunAsync(false, cancellation).ConfigureAwait(false);
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellation).ConfigureAwait(false);
+                bool active = false;
+                try { active = Prepare(); }
+                catch (Exception ex) { CabinetApp.Log("LuaTools host error: " + ex.Message); }
+                // Queued Cloud requests take effect on the next active tick, as with Cabinet's tray menu.
+                while (_work.TryDequeue(out var action)) action();
+                if (active)
+                {
+                    try { Tick(false); }
+                    catch (Exception ex) { CabinetApp.Log("LuaTools host error: " + ex.Message); }
+                }
+                _wake.WaitOne(5000);
             }
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        finally { Shutdown(); }
     }
-    public Task SyncNowAsync(CancellationToken cancellationToken = default) => RunAsync(true, cancellationToken);
-    private async Task RunAsync(bool manual, CancellationToken cancellation)
+
+    /// <summary>True when this process owns Local\Cabinet and the engine components exist.</summary>
+    private bool Prepare()
     {
-        if (!_settings.CabinetEnabled || _disposed) return;
-        await _gate.WaitAsync(cancellation).ConfigureAwait(false);
-        try
+        if (!_settings.CabinetEnabled) { Shutdown(); Publish(CabinetStatus.Off); return false; }
+        if (_instance is null)
         {
-            if (!_settings.CabinetEnabled || _disposed) return;
-            await Task.Run(() => Step(manual, cancellation), cancellation).ConfigureAwait(false);
+            var mutex = new Mutex(true, @"Local\Cabinet", out bool created);
+            if (!created)
+            {
+                // Standalone Cabinet (or another LuaTools) owns the engine: pause until it exits.
+                mutex.Dispose();
+                Publish(Status with { Enabled = true, IsSyncing = false, StandaloneCabinetRunning = true });
+                return false;
+            }
+            _instance = mutex;
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
-        catch (Exception ex) { _log("Sync deferred: " + ex.Message); }
-        finally
-        {
-            if (!_settings.CabinetEnabled) Publish(CabinetStatus.Off);
-            else if (Status.IsSyncing) Publish(Status with { IsSyncing = false });
-            _gate.Release();
-        }
-    }
-    private void ConfigureComponents()
-    {
-        if (!_settings.CabinetEnabled) { StopComponents(); return; }
-        if (_paths.StandaloneRunning()) { StopComponents(); return; }
         if (_playtime is null)
         {
-            _paths.ImportStandalone();
-            _playtime = new Playtime(Path.Combine(_paths.DataRoot, "playtime.txt"), _log);
-            _playtime.RefreshGames();
+            Directory.CreateDirectory(CabinetApp.DataDir);
             LoadState();
+            _playtime = new Playtime(Path.Combine(CabinetApp.DataDir, "playtime.txt"), CabinetApp.Log);
+            CloudSync.Configure(CabinetApp.Log, _playtime.QueueCloudMinutes, _playtime.CloudMinutesInSteam, () => _playtime!.RunningApps());
+            CabinetApp.Log("started inside LuaTools");
         }
-        if (_settings.CabinetLivePlaytime) _helpers ??= new Shadows(_log);
-        else { _helpers?.Dispose(); _helpers = null; }
-        Optional("Schema configuration", () =>
-        {
-            if (_settings.CabinetFetchSchemas) _schemas ??= new SchemaFill(_log);
-            else { _schemas?.Dispose(); _schemas = null; }
-        });
-        Optional("Workshop configuration", () =>
-        {
-            if (_settings.CabinetWorkshopLinks && !_workshop) { WorkshopLinker.Initialize(_log); _workshop = true; }
-            else if (!_settings.CabinetWorkshopLinks && _workshop) { WorkshopLinker.Stop(); _workshop = false; }
-        });
+        if (_settings.CabinetLivePlaytime) _shadows ??= new Shadows(CabinetApp.Log);
+        else if (_shadows is not null) { _shadows.Dispose(); _shadows = null; }
+        if (_settings.CabinetFetchSchemas) _schemas ??= new SchemaFill(CabinetApp.Log);
+        else if (_schemas is not null) { _schemas.Dispose(); _schemas = null; }
+        if (_settings.CabinetWorkshopLinks && !_workshop) { WorkshopLinker.Initialize(CabinetApp.Log); _workshop = true; }
+        _workshop &= _settings.CabinetWorkshopLinks;
+        return true;
     }
-    private void StopComponents()
+
+    private void Shutdown()
     {
-        _cloud?.Suspend();
         _schemas?.Dispose(); _schemas = null;
-        _helpers?.Dispose(); _helpers = null;
-        if (_workshop) WorkshopLinker.Stop();
-        _workshop = false;
+        _shadows?.Dispose(); _shadows = null;
         _playtime = null;
-        _fingerprints.Clear(); _syncTimes.Clear();
+        _workshop = false;
+        _state.Clear(); _syncTimes.Clear();
+        if (_instance is not null)
+        {
+            try { _instance.ReleaseMutex(); } catch (ApplicationException) { }
+            _instance.Dispose();
+            _instance = null;
+        }
     }
-    private void Step(bool manual, CancellationToken cancellation)
+
+    // Cabinet's App.TickCore, with LuaTools switches gating its optional parts.
+    private void Tick(bool force)
     {
-        using var context = _paths.Enter();
-        if (_paths.StandaloneRunning())
-        {
-            StopComponents();
-            Publish(Status with { Enabled = true, IsSyncing = false, StandaloneCabinetRunning = true,
-                Games = Status.Games.Select(g => g with { IsPlaying = false, LivePlaytime = false }).ToArray() });
-            return;
-        }
-        ConfigureComponents();
-        if (!_settings.CabinetEnabled || _playtime is null) return;
-        cancellation.ThrowIfCancellationRequested();
-        var account = Syncer.AccountId();
-        var running = _playtime.RunningApps();
-        Publish(Status with { Enabled = true, SteamRunning = _paths.SteamRunning(), IsSyncing = true, StandaloneCabinetRunning = false });
-        // Count the elapsed interval before helpers can begin Steam-owned counting.
-        _playtime.Tick(account);
-        var completed = HelperTickOverride is not null ? HelperTickOverride(running, account) : _helpers?.Tick(running, account);
-        if (completed is not null)
-        {
-            bool invalidated = false;
-            foreach (var id in completed) invalidated |= _fingerprints.Remove(id);
-            // Persist invalidation even if a later pass is interrupted or has no account.
-            if (invalidated) SaveFingerprints();
-        }
-        if (_playtime.LastAdded.Count > 0)
-            Notify(CabinetNotificationKind.PlaytimeAdded, _playtime.LastAdded.Select(item =>
-            { var split = item.LastIndexOf('|'); return GameName(item[..split]) + item[split..]; }).ToArray(), _playtime.LastAdded.Count);
-        if (!_settings.CabinetEnabled) return;
-        Optional("Workshop", () =>
-        {
-            OptionalTickOverride?.Invoke();
-            if (!_workshop) return;
-            WorkshopLinker.Tick(running);
-            if (WorkshopLinker.LastCreated > 0) Notify(CabinetNotificationKind.WorkshopChanged, WorkshopLinker.LastGames, WorkshopLinker.LastCreated);
-        });
-        Optional("Schema fetch", () =>
-        {
-            _schemas?.Tick(running.Count > 0 || (_helpers?.HasChildren ?? false), false);
-            if ((_schemas?.LastFound ?? 0) > 0) Notify(CabinetNotificationKind.AchievementListsFound, Array.Empty<string>(), _schemas!.LastFound);
-        });
-        var synced = new List<string>();
-        bool changed = false;
-        if (account is not null)
-        {
-            foreach (var id in Syncer.OnlineFixAppIds())
-            {
-                cancellation.ThrowIfCancellationRequested();
-                if (!_settings.CabinetEnabled || _paths.StandaloneRunning()) return;
-                // No competing disk writer while the game or its Steam IPC helper owns the cache.
-                if (running.Contains(id) || (_helpers?.Active(id) ?? false) || (_schemas?.Active(id) ?? false) || Shadows.HelperActive(id)) continue;
-                var fingerprint = account + "|" + Syncer.Fingerprint(id);
-                if (!manual && _fingerprints.TryGetValue(id, out var previous) && previous == fingerprint && (_syncTimes.ContainsKey(id) || !File.Exists(SchemaFill.SchemaPath(id)))) continue;
-                try
-                {
-                    var result = Syncer.Sync(id, account);
-                    _fingerprints[id] = fingerprint;
-                    if (result.Skipped is not null) { _log(id + ": " + result.Skipped); continue; }
-                    _syncTimes[id] = DateTime.UtcNow.Ticks;
-                    changed |= result.NewAchievements > 0 || result.StatsChanged > 0;
-                    if (result.NewAchievements > 0) synced.Add(result.GameName + "|" + result.NewAchievements);
-                }
-                catch (Exception ex) when (ex is IOException or InvalidDataException) { _log(id + ": deferred: " + ex.Message); }
-            }
-            SaveFingerprints();
-            WorkshopEngine.AtomicWrite(Path.Combine(_paths.DataRoot, "sync-times.txt"), string.Join(Environment.NewLine, _syncTimes.Select(p => p.Key + "|" + p.Value)));
-        }
-        Optional("Cloud/presence", () => _cloud?.Tick(_playtime, account, running, GameName,
-            id => !_settings.CabinetEnabled || running.Contains(id) || (_playtime?.RunningApps().Contains(id) ?? false)
-                || Shadows.HelperActive(id) || Playtime.SteamCounting(id) || (_schemas?.Active(id) ?? false) || _paths.StandaloneRunning(), manual, cancellation), cancellation);
-        Publish(new CabinetStatus(true, _paths.SteamRunning(), false, false, ReadGames(account, running), _cloud?.Status ?? CabinetCloudStatus.Disconnected));
-        if (synced.Count > 0) Notify(CabinetNotificationKind.AchievementsSynced, synced, synced.Count);
-        else if (manual && !changed) Notify(CabinetNotificationKind.AlreadyInSync, Array.Empty<string>(), 0);
-    }
-    // Fixture hooks exercise real skip/sync behavior without starting Steam helper processes.
-    internal Func<HashSet<string>, string?, IEnumerable<string>>? HelperTickOverride { get; set; }
-    internal Action? OptionalTickOverride { get; set; }
-    internal Task TickAsync() => RunAsync(false, default);
-    private void SaveFingerprints() => WorkshopEngine.AtomicWrite(Path.Combine(_paths.DataRoot, "state.txt"),
-        string.Join(Environment.NewLine, _fingerprints.Select(p => p.Key + "=" + p.Value)));
-    private void Optional(string component, Action action, CancellationToken cancellation = default)
-    {
-        try { action(); }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
-        catch (Exception ex) { _log(component + " deferred: " + (component == "Cloud/presence" ? ex.GetType().Name : ex.Message)); }
-    }
-    private IReadOnlyList<CabinetGame> ReadGames(string? account, HashSet<string> running)
-    {
-        VdfText? config = null;
-        if (account is not null)
-        {
-            var file = Path.Combine(Syncer.SteamPath(), "userdata", account, "config", "localconfig.vdf");
-            CabinetFiles.EnsureSafePath(file);
-            if (File.Exists(file)) config = new VdfText(CabinetFiles.ReadText(file));
-        }
-        var games = new List<CabinetGame>();
-        foreach (var id in Syncer.OnlineFixAppIds())
-        {
-            string name = GameName(id); int total = 0, unlocked = 0; bool schemaFound = false;
-            try
-            {
-                var schema = SchemaFill.SchemaPath(id);
-                CabinetFiles.EnsureSafePath(schema);
-                if (File.Exists(schema))
-                {
-                    var game = KV.Read(CabinetFiles.ReadBytes(schema)).Children.FirstOrDefault();
-                    name = game?.Get("gamename")?.Str() ?? name;
-                    var stats = game?.Get("stats");
-                    schemaFound = stats?.Children is not null;
-                    var user = Path.Combine(Syncer.StatsDir(), "UserGameStats_" + account + "_" + id + ".bin");
-                    CabinetFiles.EnsureSafePath(user);
-                    var cache = File.Exists(user) ? KV.Read(CabinetFiles.ReadBytes(user)).Children.FirstOrDefault() : null;
-                    if (stats?.Children is not null) foreach (var stat in stats.Children)
-                    {
-                        var bits = stat.Get("bits")?.Children;
-                        if (bits is null) continue;
-                        int mask = Convert.ToInt32(cache?.Get(stat.Key)?.Get("data")?.Value ?? 0);
-                        foreach (var bit in bits)
-                            if (int.TryParse(bit.Get("bit")?.Str() ?? bit.Key, out var n) && n is >= 0 and <= 31)
-                            { total++; if ((mask & (1 << n)) != 0) unlocked++; }
-                    }
-                }
-            }
-            catch (Exception ex) { _log("Overview " + id + ": " + ex.Message); }
-            long.TryParse(config?.GetAppValue(id, "Playtime"), out var minutes);
-            _syncTimes.TryGetValue(id, out var ticks);
-            var last = ticks > 0 && ticks <= DateTime.MaxValue.Ticks ? new DateTimeOffset(new DateTime(ticks, DateTimeKind.Utc)) : (DateTimeOffset?)null;
-            games.Add(new CabinetGame(id, name, schemaFound ? unlocked : null, schemaFound ? total : null,
-                Math.Max(0, minutes) / 60.0, last, running.Contains(id), _helpers?.Active(id) ?? false,
-                _playtime?.PendingMinutes(id) ?? 0, schemaFound));
-        }
-        return games.OrderByDescending(g => g.IsPlaying).ThenByDescending(g => g.LastSynced).ThenBy(g => g.AppId, StringComparer.Ordinal).ToArray();
-    }
-    private string GameName(string id)
-    {
+        if (_playtime is null) return;
+        Publish(Status with { Enabled = true, IsSyncing = true, StandaloneCabinetRunning = false });
+        var running = new HashSet<string>();
+        // Count before launching/stopping helpers; Running=1 excludes native Steam time.
         try
         {
-            CabinetPaths.Numeric(id);
-            var schema = SchemaFill.SchemaPath(id);
-            if (File.Exists(schema))
+            var account = Syncer.AccountId();
+            var msg = _playtime.Tick(account);
+            running = _playtime.RunningApps();
+            if (_workshop)
             {
-                var name = KV.Read(CabinetFiles.ReadBytes(schema)).Children.FirstOrDefault()?.Get("gamename")?.Str();
-                if (!string.IsNullOrEmpty(name)) return name;
+                var workshopMsg = WorkshopLinker.Tick(running);
+                if (workshopMsg != null) Message(workshopMsg);
             }
-            foreach (var library in Playtime.Libraries())
+            var schemaMsg = _schemas?.Tick(running.Count > 0 || (_shadows?.HasChildren ?? false), false);
+            if (_shadows is not null) foreach (var id in _shadows.Tick(running, account)) _state.Remove(id);
+            var cloudMsg = CloudSync.Tick(running.Count > 0 || (_shadows?.HasChildren ?? false) || (_schemas?.HasChild ?? false) || Shadows.AnyHelper(), running);
+            if (cloudMsg != null) Message(cloudMsg);
+            if (schemaMsg != null) Message(schemaMsg);
+            if (msg != null) Message(msg);
+        }
+        catch (Exception ex) { CabinetApp.Log("playtime/shadow error: " + ex.Message); }
+        try
+        {
+            var account = Syncer.AccountId();
+            if (account == null) return;
+            var synced = new List<string>();
+            foreach (var appId in Syncer.OnlineFixAppIds())
             {
-                var manifest = Path.Combine(library, "steamapps", "appmanifest_" + id + ".acf");
-                if (!File.Exists(manifest)) continue;
-                var name = new VdfText(CabinetFiles.ReadText(manifest)).StringValue("AppState", "name");
-                if (!string.IsNullOrEmpty(name)) return name;
+                // Steam IPC owns this cache while a helper is connected. File fallback
+                // retries after exit, avoiding competing writers and stale fingerprints.
+                if ((_shadows?.Active(appId) ?? false) || (_schemas?.Active(appId) ?? false) || Shadows.HelperActive(appId)) continue;
+                var fp = account + "|" + Syncer.Fingerprint(appId);
+                if (!force && _state.TryGetValue(appId, out var last) && last == fp &&
+                    (_syncTimes.ContainsKey(appId) || !File.Exists(SchemaFill.SchemaPath(appId)))) continue;
+                SyncResult r;
+                try { r = Syncer.Sync(appId, account); }
+                catch (IOException) { continue; }   // file busy, retry next tick
+                _state[appId] = fp;
+                if (r.Skipped != null) { CabinetApp.Log(r.GameName + " (" + appId + "): skipped, " + r.Skipped); continue; }
+                _syncTimes[appId] = DateTime.UtcNow.Ticks.ToString();
+                if (r.NewAchievements > 0 || r.StatsChanged > 0)
+                {
+                    CabinetApp.Log(r.GameName + " (" + appId + "): +" + r.NewAchievements + " achievements, " + r.StatsChanged + " stats");
+                    if (r.NewAchievements > 0) synced.Add(r.GameName + " : +" + r.NewAchievements + L.T(" achievement", " succès") + (r.NewAchievements == 1 || L.Fr ? "" : "s"));
+                }
+            }
+            File.WriteAllLines(StatePath, _state.Select(kv => kv.Key + "=" + kv.Value).ToArray());
+            File.WriteAllLines(SyncTimesPath, _syncTimes.Select(kv => kv.Key + "|" + kv.Value).ToArray());
+            if (synced.Count > 0)
+                Message(L.T("Achievements synced to Steam", "Succès synchronisés avec Steam") + "\n" + string.Join("\n", synced));
+            else if (force)
+                Notify(new CabinetNotification(CabinetNotificationKind.AlreadyInSync, Array.Empty<string>(), 0));
+        }
+        catch (Exception ex) { CabinetApp.Log("error: " + ex.Message); }
+        finally { PublishSnapshot(running); }
+    }
+
+    private void PublishSnapshot(HashSet<string> running)
+    {
+        var games = new List<CabinetGame>();
+        try
+        {
+            foreach (var g in CabinetApp.Games(_syncTimes))
+            {
+                bool list = g.Total > 0;
+                var synced = g.Synced > 0 && g.Synced <= DateTime.MaxValue.Ticks
+                    ? new DateTimeOffset(new DateTime(g.Synced, DateTimeKind.Utc)) : (DateTimeOffset?)null;
+                games.Add(new CabinetGame(g.Id, g.Name, list ? g.Unlocked : null, list ? g.Total : null,
+                    g.Minutes / 60.0, synced, running.Contains(g.Id), _shadows?.Active(g.Id) ?? false,
+                    _playtime?.PendingMinutes(g.Id) ?? 0, list));
             }
         }
-        catch (Exception ex) { _log("Game name " + id + ": " + ex.Message); }
-        return id;
+        catch (Exception ex) { CabinetApp.Log("overview error: " + ex.Message); }
+        CabinetCloudStatus cloud;
+        try
+        {
+            string? server = CloudSync.Server;
+            string? host = Uri.TryCreate(server, UriKind.Absolute, out var uri) ? uri.Host : server;
+            cloud = CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
+        }
+        catch { cloud = CabinetCloudStatus.Disconnected; }
+        bool cloudChanged = cloud != Status.Cloud;
+        Publish(new CabinetStatus(true, Playtime.SteamRunning(), false, false, games, cloud));
+        if (cloudChanged) { try { CloudStatusChanged?.Invoke(this, cloud); } catch { } }
     }
+
     private void LoadState()
     {
-        var state = Path.Combine(_paths.DataRoot, "state.txt");
-        CabinetFiles.EnsureSafePath(state);
-        if (File.Exists(state)) foreach (var line in CabinetFiles.ReadLines(state))
-        { int equals = line.IndexOf('='); if (equals > 0) _fingerprints[line[..equals]] = line[(equals + 1)..]; }
-        var times = Path.Combine(_paths.DataRoot, "sync-times.txt");
-        CabinetFiles.EnsureSafePath(times);
-        if (File.Exists(times)) foreach (var line in CabinetFiles.ReadLines(times))
-        { var pair = line.Split('|'); if (pair.Length == 2 && long.TryParse(pair[1], out var ticks)) _syncTimes[pair[0]] = ticks; }
+        if (File.Exists(StatePath)) foreach (var l in File.ReadAllLines(StatePath))
+        {
+            int i = l.IndexOf('=');
+            if (i > 0) _state[l.Substring(0, i)] = l.Substring(i + 1);
+        }
+        if (File.Exists(SyncTimesPath)) foreach (var line in File.ReadAllLines(SyncTimesPath))
+        {
+            var p = line.Split('|'); if (p.Length == 2) _syncTimes[p[0]] = p[1];
+        }
     }
+
+    private void Message(string text) => Notify(new CabinetNotification(CabinetNotificationKind.Message, new[] { text }, 1));
+
     private void Publish(CabinetStatus status)
     {
         Volatile.Write(ref _status, status);
-        try { StatusChanged?.Invoke(this, status); } catch (Exception ex) { _log("Status subscriber: " + ex.Message); }
+        try { StatusChanged?.Invoke(this, status); } catch (Exception ex) { CabinetApp.Log("status subscriber: " + ex.Message); }
     }
-    private void Notify(CabinetNotificationKind kind, IReadOnlyList<string> items, int count)
+
+    private void Notify(CabinetNotification notification)
     {
-        try { Notification?.Invoke(this, new CabinetNotification(kind, items, count)); } catch (Exception ex) { _log("Notification subscriber: " + ex.Message); }
+        try { Notification?.Invoke(this, notification); } catch (Exception ex) { CabinetApp.Log("notification subscriber: " + ex.Message); }
     }
+
     public void Dispose()
     {
-        lock (_lifecycle) { if (_disposed) return; _disposed = true; _hosted = false; _cancel?.Cancel(); }
-        _gate.Wait();
-        try { using var context = _paths.Enter(); StopComponents(); }
-        finally { _gate.Release(); }
-        Publish(CabinetStatus.Off);
-    }
-}
-
-internal static class CabinetHelperActivity
-{
-    private static int _children;
-    internal static bool Active => Volatile.Read(ref _children) > 0 || AnyEvent();
-    private static bool AnyEvent()
-    {
-        try { using var activity = EventWaitHandle.OpenExisting("Local\\Cabinet-shadow-active"); return true; }
-        catch (WaitHandleCannotBeOpenedException) { return false; }
-    }
-    internal static void Track(System.Diagnostics.Process child)
-    {
-        // Separate process handle remains valid after the component disposes its own handle.
-        System.Diagnostics.Process monitor;
-        try { monitor = System.Diagnostics.Process.GetProcessById(child.Id); }
-        catch (ArgumentException) { return; } // Already exited; there is no executable in use.
-        Interlocked.Increment(ref _children);
-        _ = Task.Run(() =>
-        {
-            try { monitor.WaitForExit(); }
-            catch (InvalidOperationException) { }
-            finally { monitor.Dispose(); Interlocked.Decrement(ref _children); }
-        });
+        _stop.Cancel();
+        _wake.Set();
     }
 }

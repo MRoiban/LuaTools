@@ -39,10 +39,10 @@
   <!-- Embed icon.ico as a resource so the Window Icon="icon.ico" can resolve it at runtime -->
   <ItemGroup>
     <Resource Include="icon.ico" />
-    <EmbeddedResource Include="Services\Cabinet\workshop-profiles.json" LogicalName="LuaToolsGui.Cabinet.workshop-profiles.json" />
     <EmbeddedResource Include="Resources\release-signing-public.pem" LogicalName="LuaToolsGui.release-signing-public.pem" />
     <EmbeddedResource Include="Plugin\steam-plugin.js" LogicalName="LuaToolsGui.Plugin.steam-plugin.js" />
     <EmbeddedResource Include="Plugin\steam-plugin.css" LogicalName="LuaToolsGui.Plugin.steam-plugin.css" />
+    <EmbeddedResource Include="Services\Cabinet\Engine\cabinet-32.png" LogicalName="Cabinet.Icon32" />
     <EmbeddedResource Include="..\..\artifacts\plugin-loader\winmm.dll" LogicalName="LuaToolsGui.Plugin.winmm.dll" Condition="Exists('..\..\artifacts\plugin-loader\winmm.dll')" />
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="..\..\SECURITY.md" Link="SECURITY.md" CopyToPublishDirectory="PreserveNewest" />

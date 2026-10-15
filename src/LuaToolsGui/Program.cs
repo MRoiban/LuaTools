@@ -55,7 +55,7 @@ public static class Program
         ShowWindowSignal.Dispose();
     }
 
-    private static bool TryRunCabinetHelper(string[] args) => Services.Cabinet.CabinetHelper.Handle(args);
+    private static bool TryRunCabinetHelper(string[] args) => CabinetEngine.HelperEntry.Handle(args);
 
     /// <summary>Named event a second instance sets to ask the running one to surface its window.</summary>
     private const string ShowWindowEventName = "LuaToolsGui.SecurityHardened.ShowWindow";

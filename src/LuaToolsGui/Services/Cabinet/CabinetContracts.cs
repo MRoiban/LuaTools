@@ -51,6 +51,7 @@ public enum CabinetNotificationKind
     PlaytimeAdded,             // Items: "<game>|<minutes>"
     AchievementListsFound,     // Count
     WorkshopChanged,           // Items: game names; Count = links created
+    Message,                   // Items[0]: Cabinet's own already-localized (en/fr) balloon text
 }
 
 /// <summary>Language-neutral event; the UI localizes it (en/fr) and shows a toast/tray balloon.</summary>

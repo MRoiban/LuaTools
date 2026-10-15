@@ -201,7 +201,7 @@ public class SettingsService : Cabinet.ICabinetSettings
 
     public bool CabinetWorkshopLinks
     {
-        get => _settings.CabinetWorkshopLinks ?? false;
+        get => _settings.CabinetWorkshopLinks ?? true; // Cabinet always linked Workshop items
         set { _settings.CabinetWorkshopLinks = value; Save(); }
     }
 

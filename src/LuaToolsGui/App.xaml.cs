@@ -44,9 +44,8 @@ public partial class App : Application
             {
                 services.AddSingleton<SettingsService>();
                 services.AddSingleton<ICabinetSettings>(sp => sp.GetRequiredService<SettingsService>());
-                services.AddSingleton<CabinetCloud>();
-                services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetCloud>());
                 services.AddSingleton<CabinetService>();
+                services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<UpdateService>();

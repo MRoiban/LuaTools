@@ -243,9 +243,6 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
         return true;
     }
 
-    internal static void EnableCabinetDebugging(string steamDirectory) =>
-        CreateCdpMarkerJunction(Path.Combine(steamDirectory, CdpMarkerName));
-
     private static void RemoveOwnedCdpMarker(string path)
     {
         BundledPlugin.EnsureSafePath(Path.GetDirectoryName(path)!);

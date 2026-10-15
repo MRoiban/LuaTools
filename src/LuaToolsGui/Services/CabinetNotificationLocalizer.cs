@@ -19,6 +19,7 @@ public static class CabinetNotificationLocalizer
             CabinetNotificationKind.PlaytimeAdded => string.Format(Strings.Cabinet_Notification_PlaytimeAdded, Items(Strings.Cabinet_Notification_PlaytimeItem)),
             CabinetNotificationKind.AchievementListsFound => string.Format(Strings.Cabinet_Notification_AchievementListsFound, notification.Count),
             CabinetNotificationKind.WorkshopChanged => string.Format(Strings.Cabinet_Notification_WorkshopChanged, notification.Count, string.Join(", ", notification.Items)),
+            CabinetNotificationKind.Message => notification.Items.Count > 0 ? notification.Items[0] : "",
             _ => throw new ArgumentOutOfRangeException(nameof(notification)),
         };
     }

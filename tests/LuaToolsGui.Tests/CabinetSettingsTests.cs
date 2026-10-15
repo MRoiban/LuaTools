@@ -37,7 +37,7 @@ public sealed class CabinetSettingsTests
         var registry = new Startup();
         var settings = new SettingsService(new AppSettings { StartWithWindows = true }, startup: registry);
         Assert.False(settings.CabinetEnabled); Assert.True(settings.CabinetLivePlaytime); Assert.True(settings.CabinetFetchSchemas);
-        Assert.False(settings.CabinetWorkshopLinks);
+        Assert.True(settings.CabinetWorkshopLinks); // Cabinet parity: Workshop links on by default
         Assert.False(settings.StartWithWindows); Assert.Equal(0, registry.Writes);
         registry.IsEnabled = true; Assert.True(settings.StartWithWindows); Assert.Equal(0, registry.Writes);
         settings.StartWithWindows = false; Assert.False(registry.IsEnabled); Assert.Equal(1, registry.Writes);
@@ -69,10 +69,10 @@ public sealed class CabinetSettingsTests
         var vm = new SettingsViewModel(settings, new AuthService(), new SteamService(settings), new HubcapService(), service);
         Assert.Equal(0, service.Changes); Assert.False(vm.CabinetEnabled); Assert.True(vm.CabinetLivePlaytime); Assert.False(vm.CabinetOptionsEnabled);
         vm.CabinetEnabled = true; vm.CabinetLivePlaytime = false; vm.CabinetFetchSchemas = false;
-        vm.CabinetWorkshopLinks = true;
+        vm.CabinetWorkshopLinks = false;
         Assert.True(vm.CabinetOptionsEnabled);
         Assert.Equal(4, service.Changes); Assert.True(settings.CabinetEnabled); Assert.False(settings.CabinetLivePlaytime);
-        Assert.True(settings.CabinetWorkshopLinks);
+        Assert.False(settings.CabinetWorkshopLinks);
     }
     [Fact]
     public void TurningMasterOffDisablesOptionsAndRefreshDoesNotReconfigureEngine()
@@ -88,8 +88,8 @@ public sealed class CabinetSettingsTests
         Assert.True(vm.CabinetOptionsEnabled); Assert.Equal(1, service.Changes);
     }
     [Theory]
-    [InlineData("en", "Achievements synced", "Everything is already", "Playtime added", "achievement lists", "Workshop links")]
-    [InlineData("fr", "Succès synchronisés", "Tout est déjà", "Temps de jeu ajouté", "listes de succès", "liens Workshop")]
+    [InlineData("en", "Achievements synced", "Everything is already", "Playtime added", "achievement lists", "Workshop links", "Game|3")]
+    [InlineData("fr", "Succès synchronisés", "Tout est déjà", "Temps de jeu ajouté", "listes de succès", "liens Workshop", "Game|3")]
     public void AllNotificationKindsAreLocalized(string language, params string[] expected)
     {
         var previous = CultureInfo.CurrentUICulture;
