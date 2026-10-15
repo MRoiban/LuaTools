@@ -2,7 +2,7 @@
 
 Security-focused fork of [madoiscool/LuaTools](https://github.com/madoiscool/LuaTools), based on tag `v1.3.2`, commit `946125981a7addb6150e83886443cc8ddb68931b`. The original MIT license and copyright are retained in [LICENSE](LICENSE).
 
-The WPF desktop interface is retained. This fork removes key donation, analytics and upstream self-updates, enforces scoped outbound HTTPS policies, validates downloaded data, and disables executable workflows by default. Eight independent Settings switches allow explicit subsequent installation or execution of unreviewed dependencies. Enabling a switch is user consent, not an independent audit or hash approval. [ENDPOINTS.md](ENDPOINTS.md) records the original integration contracts, preserved workflows, controlled tests, sanitized HTTP observations and remaining incompatibilities. See [SECURITY.md](SECURITY.md) for the trust boundaries.
+The WPF desktop interface is retained. This fork ships English and French only. This fork removes key donation, analytics and upstream self-updates, enforces scoped outbound HTTPS policies, validates downloaded data, and disables executable workflows by default. Eight independent Settings switches allow explicit subsequent installation or execution of unreviewed dependencies. Enabling a switch is user consent, not an independent audit or hash approval. [ENDPOINTS.md](ENDPOINTS.md) records the original integration contracts, preserved workflows, controlled tests, sanitized HTTP observations and remaining incompatibilities. See [SECURITY.md](SECURITY.md) for the trust boundaries.
 
 ## Build locally
 

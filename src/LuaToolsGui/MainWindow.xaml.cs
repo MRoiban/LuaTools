@@ -1,4 +1,5 @@
-﻿using System.Windows;
+using LuaToolsGui.Services.Cabinet;
+using System.Windows;
 using LuaToolsGui.Services;
 using LuaToolsGui.ViewModels;
 using LuaToolsGui.Views;
@@ -8,12 +9,16 @@ namespace LuaToolsGui;
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly SettingsService _settings;
+    private readonly ICabinetService _cabinet;
+    private readonly ToastService _toast;
     private System.Windows.Forms.NotifyIcon? _trayIcon;
     private bool _reallyExiting; // true once the user picks tray "Exit". Lets the close go through
 
-    public MainWindow(MainViewModel viewModel, IServiceProvider services, SettingsService settings)
+    public MainWindow(MainViewModel viewModel, IServiceProvider services, SettingsService settings, ICabinetService cabinet, ToastService toast)
     {
         _settings = settings;
+        _cabinet = cabinet;
+        _toast = toast;
         InitializeComponent();
         DataContext = viewModel;
 
@@ -21,6 +26,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         RootNavigation.SetServiceProvider(services);
 
         InitializeTrayIcon();
+        _cabinet.Notification += OnCabinetNotification;
+        Closed += (_, _) => _cabinet.Notification -= OnCabinetNotification;
         Closing += OnWindowClosing;
 
         Loaded += async (_, _) =>
@@ -31,7 +38,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         };
     }
 
-    // ── System tray ─────────────────────────────────────────────────
+    private void OnCabinetNotification(object? sender, CabinetNotification notification)
+    {
+        if (Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_reallyExiting) return;
+            var message = CabinetNotificationLocalizer.Format(notification);
+            if (IsVisible) _toast.Show(LuaToolsGui.Resources.Strings.Cabinet_Title, message);
+            else _trayIcon?.ShowBalloonTip(5000, LuaToolsGui.Resources.Strings.Cabinet_Title, message,
+                System.Windows.Forms.ToolTipIcon.Info);
+        });
+    }
+
+    // System tray
     private void InitializeTrayIcon()
     {
         _trayIcon = new System.Windows.Forms.NotifyIcon { Text = "LuaTools", Visible = false };

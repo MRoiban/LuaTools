@@ -1,3 +1,4 @@
+using LuaToolsGui.Services.Cabinet;
 using System.IO;
 using System.Net.Http;
 using System.Net.WebSockets;
@@ -40,9 +41,9 @@ public class CefInjectorService : IHostedService
         await _lifecycle.WaitAsync(cancellationToken);
         try
         {
-            if (!Enabled || _loopTask is { IsCompleted: false }) return;
             await ReloadPluginFilesAsync();
-            if (_script.Length == 0) return;
+            if (_loopTask is { IsCompleted: false }) return;
+
             _cts?.Dispose();
             _cts = new CancellationTokenSource();
             _loopTask = Task.Run(() => InjectionLoop(_cts.Token));
@@ -91,10 +92,12 @@ public class CefInjectorService : IHostedService
     {
         try
         {
-            while (!ct.IsCancellationRequested && Enabled)
+            while (!ct.IsCancellationRequested)
             {
                 try
                 {
+                    if (!Enabled && !FriendLabels.Active && !_sessions.Values.Any(s => s.Friends))
+                    { await Task.Delay(1000, ct); continue; }
                     using var discovery = new HttpRequestMessage(HttpMethod.Get, DebugUrl);
                     DiscoveryBudget.Apply(discovery);
                     using var response = await _http.SendAsync(discovery, ct);
@@ -110,11 +113,30 @@ public class CefInjectorService : IHostedService
                             || !target.TryGetProperty("webSocketDebuggerUrl", out var wsValue) || wsValue.ValueKind != JsonValueKind.String)
                             continue;
                         string id = idValue.GetString()!, url = urlValue.GetString()!, ws = wsValue.GetString()!;
-                        if (id.Length is < 1 or > 128 || !SteamPluginBridge.IsStoreUrl(url) || !IsAllowedDebuggerEndpoint(ws)
+                        bool friends = target.TryGetProperty("title", out var title) && title.GetString() == "SharedJSContext"
+                            && IsFriendsUrl(url) && (FriendLabels.Active || _sessions.TryGetValue(id, out var old) && old.Friends);
+                        if (id.Length is < 1 or > 128 || !(friends || Enabled && SteamPluginBridge.IsStoreUrl(url)) || !IsAllowedDebuggerEndpoint(ws)
                             || !seen.Add(id)) continue;
                         try
                         {
                             var session = await GetSession(id, ws, ct);
+                            if (friends)
+                            {
+                                // Steam's own store objects live in its main world. No bridge, token, or
+                                // downloaded code enters this context; only bundled hooks and sanitized JSON.
+                                session.Friends = true;
+                                if (DateTimeOffset.UtcNow >= session.NextLabels || !FriendLabels.Active)
+                                {
+                                    var tree = await session.Connection.CommandAsync("Page.getFrameTree", new { }, ct);
+                                    if (!IsFriendsUrl(tree.GetProperty("frameTree").GetProperty("frame").GetProperty("url").GetString()!))
+                                        throw new InvalidOperationException("Steam friends context changed.");
+                                    var result = await session.Connection.CommandAsync("Runtime.evaluate", new { expression = FriendLabels.Script, returnByValue = true }, ct);
+                                    if (result.TryGetProperty("exceptionDetails", out _)) throw new InvalidOperationException("Steam friends hooks unavailable.");
+                                    session.NextLabels = DateTimeOffset.UtcNow.AddSeconds(5);
+                                }
+                                if (!FriendLabels.Active) Evict(id);
+                                continue;
+                            }
                             await EnsureWorld(session, ct);
                             await ProcessRequests(session, ct);
                         }
@@ -135,14 +157,21 @@ public class CefInjectorService : IHostedService
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         finally
         {
-            foreach (var session in _sessions.Values) session.Connection.Dispose();
+            foreach (var session in _sessions.Values)
+            {
+                if (session.Friends)
+                {
+                    try { await session.Connection.CommandAsync("Runtime.evaluate", new { expression = FriendLabels.BuildScript(new()), returnByValue = true }, CancellationToken.None); } catch { }
+                }
+                session.Connection.Dispose();
+            }
             _sessions.Clear();
         }
     }
 
     private async Task<TabSession> GetSession(string id, string endpoint, CancellationToken ct)
     {
-        if (!Enabled) throw new InvalidOperationException("Steam plugin is disabled in Settings.");
+        if (!Enabled && !FriendLabels.Active && !_sessions.ContainsKey(id)) throw new InvalidOperationException("Steam UI features are disabled.");
         if (_sessions.TryGetValue(id, out var session))
         {
             if (session.Endpoint == endpoint) return session;
@@ -244,6 +273,10 @@ public class CefInjectorService : IHostedService
             && url[prefix.Length..].All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
     }
 
+    internal static bool IsFriendsUrl(string url) =>
+        url == "about:blank" || url == "https://steamloopback.host/" || url == "https://steamloopback.host/index.html"
+        || url == "https://steamloopback.host/friends.html";
+
     private void Evict(string id)
     {
         if (_sessions.Remove(id, out var session)) session.Connection.Dispose();
@@ -255,6 +288,8 @@ public class CefInjectorService : IHostedService
         internal string? FrameId { get; set; }
         internal string? LoaderId { get; set; }
         internal int ContextId { get; set; }
+        internal bool Friends { get; set; }
+        internal DateTimeOffset NextLabels { get; set; }
     }
     private sealed record Frame(string Id, string Loader, string Url);
 }

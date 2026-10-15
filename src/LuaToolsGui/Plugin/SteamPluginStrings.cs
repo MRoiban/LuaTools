@@ -16,12 +16,7 @@ public static class SteamPluginStrings
         new("LuaToolsGui.Resources.Strings", typeof(LuaToolsGui.Resources.Strings).Assembly);
 
     // Keep aligned with Program.SupportedLanguages and Resources/Strings.*.resx.
-    private static readonly string[] Languages =
-    [
-        "en", "zh-Hans", "zh-Hant", "ja", "ko", "es", "es-419", "pt-BR", "pt-PT",
-        "fr", "de", "it", "nl", "pl", "ru", "uk", "tr", "ar", "cs", "hu", "ro",
-        "el", "bg", "th", "vi", "id", "da", "fi", "nb", "sv",
-    ];
+    private static readonly string[] Languages = ["en", "fr"];
 
     private static readonly (string Text, string Resource)[] Shared =
     [
@@ -51,14 +46,6 @@ public static class SteamPluginStrings
             }
             languages[language.ToLowerInvariant()] = strings;
         }
-
-        // Steam may expose regional page tags rather than our resource tags.
-        foreach (var (alias, target) in new[]
-        {
-            ("zh-cn", "zh-hans"), ("zh-sg", "zh-hans"),
-            ("zh-tw", "zh-hant"), ("zh-hk", "zh-hant"), ("no", "nb"),
-            ("pt", "pt-pt"),
-        }) languages[alias] = languages[target];
 
         // Default escaping prevents resource data becoming executable script text.
         return JsonSerializer.Serialize(languages);

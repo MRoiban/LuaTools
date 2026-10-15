@@ -1,17 +1,20 @@
 name: i18n check
 
 # Validates the localization RESX files on every PR/push that touches them:
-# same key set as English, valid XML, consistent {0}/{1} placeholders.
+# English source and complete French only: matching keys, valid XML, consistent placeholders.
 # This guards against community translation PRs that drop keys or break interpolation.
 on:
   pull_request:
     paths:
       - 'src/LuaToolsGui/Resources/Strings*.resx'
       - 'scripts/check-i18n.py'
+      - '.github/workflows/i18n-check.yml'
   push:
     branches: [master, main, security-hardened]
     paths:
       - 'src/LuaToolsGui/Resources/Strings*.resx'
+      - 'scripts/check-i18n.py'
+      - '.github/workflows/i18n-check.yml'
 
 permissions:
   contents: read

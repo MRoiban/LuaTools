@@ -1,3 +1,4 @@
+using LuaToolsGui.Services.Cabinet;
 using System.Windows;
 using System.Windows.Threading;
 using LuaToolsGui.Models;
@@ -30,7 +31,6 @@ public partial class App : Application
             }
             else
             {
-                await injector.StopAsync(CancellationToken.None);
                 await server.StopAsync(CancellationToken.None);
             }
         }
@@ -43,6 +43,12 @@ public partial class App : Application
             .ConfigureServices(services =>
             {
                 services.AddSingleton<SettingsService>();
+                services.AddSingleton<ICabinetSettings>(sp => sp.GetRequiredService<SettingsService>());
+                services.AddSingleton<CabinetCloud>();
+                services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetCloud>());
+                services.AddSingleton<CabinetService>();
+                services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
+                services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<UpdateService>();
                 services.AddSingleton<CacheService>();
                 services.AddSingleton<SteamService>();
@@ -82,9 +88,11 @@ public partial class App : Application
                 // Also resolvable as a plain singleton (not just IHostedService) so PluginInstallerService
                 // can call ReloadPluginFilesAsync() after install/uninstall. Same pattern as HttpServerService.
                 services.AddSingleton<CefInjectorService>();
+                services.AddHostedService(sp => sp.GetRequiredService<CefInjectorService>());
                 services.AddSingleton<DownloadViewModel>();
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<ManageViewModel>();
+                services.AddSingleton<CabinetViewModel>();
                 services.AddSingleton<BuildsViewModel>();
                 services.AddTransient<LaunchOptionsViewModel>(); // one per dialog
                 services.AddSingleton<HomeViewModel>();
@@ -99,6 +107,7 @@ public partial class App : Application
                 services.AddSingleton<DownloadView>();
                 services.AddSingleton<DownloadsView>();
                 services.AddSingleton<ManageView>();
+                services.AddSingleton<CabinetView>();
                 services.AddSingleton<BuildsView>();
                 services.AddSingleton<ModeView>();
                 services.AddSingleton<FixesView>();
@@ -342,7 +351,7 @@ public partial class App : Application
 
         // Open only the local catalog UI. No protocol installs, onboarding installers,
         // key donation, analytics, upstream updates or automatic Steam modifications run here.
-        if (Program.StartMinimized && dnsSettings.SteamPluginEnabled && BundledPlugin.IsActivated)
+        if (Program.StartMinimized)
             window.StartSilent();
         else
             window.Show();

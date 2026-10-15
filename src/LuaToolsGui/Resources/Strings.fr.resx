@@ -210,13 +210,13 @@
   <data name="Drop_Confirm_NoChanges" xml:space="preserve"><value>Aucun changement de dépôt/DLC — même contenu.</value></data>
   <data name="Drop_NothingInstalled" xml:space="preserve"><value>Rien d'installé (annulé ou noms de fichiers non reconnus).</value></data>
   <data name="Drop_Count_Luas" xml:space="preserve"><value>{0} lua</value></data>
-  <data name="Drop_Count_Manifests" xml:space="preserve"><value>{0} manifest(s)</value></data>
+  <data name="Drop_Count_Manifests" xml:space="preserve"><value>{0} manifeste(s)</value></data>
   <data name="Drop_Result_Installed" xml:space="preserve"><value>{0} installé(s) dans Steam.</value></data>
   <data name="Drop_Result_Failed" xml:space="preserve"><value> {0} fichier(s) en échec — fermez Steam et réessayez.</value></data>
   <data name="Common_SearchPlaceholder" xml:space="preserve"><value>Rechercher par nom ou App ID...</value></data>
   <data name="Common_Loading" xml:space="preserve"><value>Chargement…</value></data>
   <data name="Common_AppId" xml:space="preserve"><value>App ID : {0}</value></data>
-  <data name="Common_AppFallback" xml:space="preserve"><value>App {0}</value></data>
+  <data name="Common_AppFallback" xml:space="preserve"><value>Appli {0}</value></data>
   <data name="Manage_Title" xml:space="preserve"><value>Gérer</value></data>
   <data name="Manage_Refresh" xml:space="preserve"><value>Actualiser</value></data>
   <data name="Manage_Filters" xml:space="preserve"><value>Filtres</value></data>
@@ -297,8 +297,8 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Manage_RestartSteam_Failed" xml:space="preserve"><value>Impossible de trouver ou de lancer Steam. Définissez son emplacement dans les Paramètres.</value></data>
   <data name="Fixes_Title" xml:space="preserve"><value>Correctifs</value></data>
   <data name="Fixes_Loading" xml:space="preserve"><value>Chargement des correctifs…</value></data>
-  <data name="Fixes_Build" xml:space="preserve"><value>Build {0}</value></data>
-  <data name="Fixes_Manifest" xml:space="preserve"><value>Manifest</value></data>
+  <data name="Fixes_Build" xml:space="preserve"><value>Version {0}</value></data>
+  <data name="Fixes_Manifest" xml:space="preserve"><value>Manifeste</value></data>
   <data name="Fixes_Fix" xml:space="preserve"><value>Correctif</value></data>
   <data name="Fixes_Count" xml:space="preserve"><value>{0} correctifs</value></data>
   <data name="Fixes_Err_Load" xml:space="preserve"><value>Impossible de charger les correctifs — vérifiez votre connexion.</value></data>
@@ -329,7 +329,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Add_Fetch" xml:space="preserve"><value>Récupérer</value></data>
   <data name="Add_Checking" xml:space="preserve"><value>Vérification…</value></data>
   <data name="Add_Reveal" xml:space="preserve"><value>Afficher</value></data>
-  <data name="Add_Supporter" xml:space="preserve"><value>Supporter</value></data>
+  <data name="Add_Supporter" xml:space="preserve"><value>Soutien</value></data>
   <data name="Add_Unlimited" xml:space="preserve"><value>Illimité</value></data>
   <data name="Add_RequiresOwnKey" xml:space="preserve"><value>Nécessite votre propre clé API</value></data>
   <data name="Add_Discord" xml:space="preserve"><value>Discord</value></data>
@@ -381,7 +381,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Plugin_Badge_UpdateAvailable" xml:space="preserve"><value>Mise à jour disponible</value></data>
   <data name="Plugin_Row_InstalledVersion" xml:space="preserve"><value>Version installée</value></data>
   <data name="Plugin_Row_LatestVersion" xml:space="preserve"><value>Dernière version</value></data>
-  <data name="Plugin_Row_Frontend" xml:space="preserve"><value>Frontend</value></data>
+  <data name="Plugin_Row_Frontend" xml:space="preserve"><value>Interface</value></data>
   <data name="Plugin_Row_Loader" xml:space="preserve"><value>Chargeur (winmm.dll)</value></data>
   <data name="Plugin_Millennium_Coexisting" xml:space="preserve"><value>Millennium détecté — LuaTools fonctionne à ses côtés. L'installation désactive la copie de cette extension propre à Millennium afin que seul LuaLoader effectue l'injection.</value></data>
   <data name="Plugin_Footer" xml:space="preserve"><value>LuaLoader s'installe dans votre dossier Steam. Cette appli sert de backend — si vous la fermez depuis la barre d'état système, le plugin cessera de fonctionner !</value></data>
@@ -422,14 +422,14 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Manage_AboutHeader" xml:space="preserve"><value>À propos</value></data>
   <data name="Manage_Info_Developer" xml:space="preserve"><value>Développeur</value></data>
   <data name="Manage_Info_Publisher" xml:space="preserve"><value>Éditeur</value></data>
-  <data name="Nav_Builds" xml:space="preserve"><value>Depots</value></data>
-  <data name="Builds_Title" xml:space="preserve"><value>Depots</value></data>
+  <data name="Nav_Builds" xml:space="preserve"><value>Dépôts</value></data>
+  <data name="Builds_Title" xml:space="preserve"><value>Dépôts</value></data>
   <data name="Builds_Subtitle" xml:space="preserve"><value>Conservez plusieurs versions du lua d'un jeu et choisissez celle que Steam utilise.</value></data>
   <data name="Builds_NoSelection" xml:space="preserve"><value>Choisissez un jeu à gauche pour voir ses préréglages.</value></data>
   <data name="Builds_ActiveBuild" xml:space="preserve"><value>Préréglage actif</value></data>
   <data name="Builds_Active" xml:space="preserve"><value>ACTIF</value></data>
   <data name="Builds_Variant_Default" xml:space="preserve"><value>Par défaut</value></data>
-  <data name="Builds_Variant_Build" xml:space="preserve"><value>Build {0}</value></data>
+  <data name="Builds_Variant_Build" xml:space="preserve"><value>Version {0}</value></data>
   <data name="Builds_Variant_Preset" xml:space="preserve"><value>Enregistré · {0}</value></data>
   <data name="Builds_Pinned" xml:space="preserve"><value>Épinglé</value></data>
   <data name="Builds_AutoUpdating" xml:space="preserve"><value>Mise à jour automatique</value></data>
@@ -437,7 +437,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Builds_Manifest" xml:space="preserve"><value>manifeste {0}</value></data>
   <data name="Builds_ManifestLatest" xml:space="preserve"><value>le dernier est {0}</value></data>
   <data name="Builds_PinDisabled" xml:space="preserve"><value>épinglage désactivé (mise à jour auto)</value></data>
-  <data name="Builds_Meta_Depots" xml:space="preserve"><value>{0} depots · {1} DLC</value></data>
+  <data name="Builds_Meta_Depots" xml:space="preserve"><value>{0} dépôts · {1} DLC</value></data>
   <data name="Builds_Meta_Unsaved" xml:space="preserve"><value>non enregistré</value></data>
   <data name="Builds_Source" xml:space="preserve"><value>depuis {0}</value></data>
   <data name="Builds_Action_Apply" xml:space="preserve"><value>Appliquer</value></data>
@@ -624,4 +624,76 @@ Annuler - continuer le téléchargement</value></data>
   <data name="Fixes_Revert_Conflict_Body" xml:space="preserve"><value>{0} a changé depuis l'application de ce correctif ; le restaurer écraserait ces modifications. Si vous avez appliqué un autre correctif par-dessus, annulez-le d'abord. {1} fichier(s) concerné(s).</value></data>
   <data name="Fixes_Revert_Partial" xml:space="preserve"><value>Correctif partiellement annulé</value></data>
   <data name="Fixes_Revert_Partial_Body" xml:space="preserve"><value>Impossible de restaurer {0} fichier(s). Fermez le jeu et réessayez.</value></data>
+  <data name="Settings_Section_ExecutableWorkflows" xml:space="preserve"><value>Fonctionnalités exécutables</value></data>
+  <data name="Settings_ExecutableGameFixes" xml:space="preserve"><value>Correctifs de jeu exécutables</value></data>
+  <data name="Settings_BetterSteamTools" xml:space="preserve"><value>BetterSteamTools</value></data>
+  <data name="Settings_OpenSteamTools" xml:space="preserve"><value>OpenSteamTools</value></data>
+  <data name="Settings_SteamPlugin" xml:space="preserve"><value>Extension Steam</value></data>
+  <data name="Settings_DepotDownloader" xml:space="preserve"><value>DepotDownloaderMod</value></data>
+  <data name="Settings_Steamless" xml:space="preserve"><value>Steamless</value></data>
+  <data name="Settings_SteamAutoCrack" xml:space="preserve"><value>SteamAutoCrack</value></data>
+  <data name="Settings_CloudRedirect" xml:space="preserve"><value>CloudRedirect</value></data>
+  <data name="Cabinet_Title" xml:space="preserve"><value>Cabinet</value></data>
+  <data name="Cabinet_Subtitle" xml:space="preserve"><value>Succès, statistiques et temps de jeu OnlineFix attribués au vrai jeu dans Steam.</value></data>
+  <data name="Cabinet_SyncNow" xml:space="preserve"><value>Synchroniser</value></data>
+  <data name="Cabinet_Syncing" xml:space="preserve"><value>Synchronisation…</value></data>
+  <data name="Cabinet_TrackingOn" xml:space="preserve"><value>Suivi activé</value></data>
+  <data name="Cabinet_TrackingOff" xml:space="preserve"><value>Suivi désactivé</value></data>
+  <data name="Cabinet_SteamOn" xml:space="preserve"><value>Steam en cours d’exécution</value></data>
+  <data name="Cabinet_SteamOff" xml:space="preserve"><value>Steam fermé</value></data>
+  <data name="Cabinet_Playing" xml:space="preserve"><value>En jeu : {0}</value></data>
+  <data name="Cabinet_CloudOff" xml:space="preserve"><value>Cabinet Cloud : non connecté</value></data>
+  <data name="Cabinet_CloudOn" xml:space="preserve"><value>Cabinet Cloud : {0}</value></data>
+  <data name="Cabinet_Paused" xml:space="preserve"><value>Cabinet autonome est en cours d’exécution — en pause</value></data>
+  <data name="Cabinet_Game" xml:space="preserve"><value>JEU</value></data>
+  <data name="Cabinet_Achievements" xml:space="preserve"><value>SUCCÈS</value></data>
+  <data name="Cabinet_Played" xml:space="preserve"><value>TEMPS DE JEU</value></data>
+  <data name="Cabinet_LastSync" xml:space="preserve"><value>DERNIÈRE SYNCHRO</value></data>
+  <data name="Cabinet_Live" xml:space="preserve"><value>En jeu · temps de jeu en direct</value></data>
+  <data name="Cabinet_PlayingNow" xml:space="preserve"><value>En jeu</value></data>
+  <data name="Cabinet_Pending" xml:space="preserve"><value>{0} min en attente · ajoutées à la fermeture de Steam</value></data>
+  <data name="Cabinet_NoSchema" xml:space="preserve"><value>Liste des succès pas encore téléchargée</value></data>
+  <data name="Cabinet_Hours" xml:space="preserve"><value>{0:0.0} h</value></data>
+  <data name="Cabinet_Never" xml:space="preserve"><value>Jamais</value></data>
+  <data name="Cabinet_JustNow" xml:space="preserve"><value>À l’instant</value></data>
+  <data name="Cabinet_MinutesAgo" xml:space="preserve"><value>Il y a {0} min</value></data>
+  <data name="Cabinet_Yesterday" xml:space="preserve"><value>Hier à {0}</value></data>
+  <data name="Cabinet_EmptyTitle" xml:space="preserve"><value>Aucun jeu OnlineFix trouvé pour le moment</value></data>
+  <data name="Cabinet_EmptyHint" xml:space="preserve"><value>Cabinet recherche la progression OnlineFix dans C:\Users\Public\Documents\OnlineFix. Lancez un jeu OnlineFix une fois, puis synchronisez.</value></data>
+  <data name="Cabinet_OffTitle" xml:space="preserve"><value>Cabinet est désactivé</value></data>
+  <data name="Cabinet_OffHint" xml:space="preserve"><value>Activez-le pour transférer les succès et le temps de jeu OnlineFix de Spacewar au vrai jeu dans Steam.</value></data>
+  <data name="Cabinet_TurnOn" xml:space="preserve"><value>Activer</value></data>
+  <data name="Cabinet_OpenGame" xml:space="preserve"><value>{0}, ouvrir dans Steam</value></data>
+  <data name="Cabinet_SyncFailed" xml:space="preserve"><value>La synchronisation a échoué. Réessayez plus tard.</value></data>
+  <data name="Cabinet_NoAchievements" xml:space="preserve"><value>—</value></data>
+  <data name="Cabinet_Notification_AchievementsSynced" xml:space="preserve"><value>Succès synchronisés : {0}</value></data>
+  <data name="Cabinet_Notification_AlreadyInSync" xml:space="preserve"><value>Tout est déjà synchronisé.</value></data>
+  <data name="Cabinet_Notification_PlaytimeAdded" xml:space="preserve"><value>Temps de jeu ajouté : {0}</value></data>
+  <data name="Cabinet_Notification_AchievementListsFound" xml:space="preserve"><value>{0} listes de succès téléchargées.</value></data>
+  <data name="Cabinet_Notification_WorkshopChanged" xml:space="preserve"><value>{0} liens Workshop créés : {1}</value></data>
+  <data name="Cabinet_Notification_AchievementItem" xml:space="preserve"><value>{0} : {1} succès</value></data>
+  <data name="Cabinet_Notification_PlaytimeItem" xml:space="preserve"><value>{0} : {1} min</value></data>
+  <data name="Settings_Cabinet_Enabled" xml:space="preserve"><value>Synchroniser les jeux OnlineFix avec Steam</value></data>
+  <data name="Settings_Cabinet_Enabled_Hint" xml:space="preserve"><value>Transfère les succès, statistiques et temps de jeu de Spacewar au vrai jeu.</value></data>
+  <data name="Settings_Cabinet_LivePlaytime" xml:space="preserve"><value>Temps de jeu en direct</value></data>
+  <data name="Settings_Cabinet_LivePlaytime_Hint" xml:space="preserve"><value>Pendant une partie, Steam comptabilise les heures pour le vrai jeu.</value></data>
+  <data name="Settings_Cabinet_FetchSchemas" xml:space="preserve"><value>Télécharger les listes de succès manquantes</value></data>
+  <data name="Settings_Cabinet_WorkshopLinks" xml:space="preserve"><value>Liens Workshop</value></data>
+  <data name="Settings_Cabinet_WorkshopLinks_Hint" xml:space="preserve"><value>Relie les éléments Workshop auxquels vous êtes abonné aux jeux OnlineFix.</value></data>
+  <data name="Settings_Cabinet_StartWithWindows" xml:space="preserve"><value>Démarrer avec Windows</value></data>
+  <data name="Settings_Cabinet_StartWithWindows_Hint" xml:space="preserve"><value>Démarre dans la zone de notification pour que Cabinet puisse suivre les jeux.</value></data>
+  <data name="CabinetCloud_Title" xml:space="preserve"><value>Cabinet Cloud</value></data>
+  <data name="CabinetCloud_NotConnected" xml:space="preserve"><value>Non connecté</value></data>
+  <data name="CabinetCloud_SharingHint" xml:space="preserve"><value>Synchronise les sauvegardes, succès, statistiques et temps de jeu. Partage votre identifiant de compte Steam et le vrai jeu en cours avec les utilisateurs du même serveur.</value></data>
+  <data name="CabinetCloud_LinkPlaceholder" xml:space="preserve"><value>Collez votre lien de connexion</value></data>
+  <data name="CabinetCloud_Connect" xml:space="preserve"><value>Connecter</value></data>
+  <data name="CabinetCloud_Disconnect" xml:space="preserve"><value>Déconnecter</value></data>
+  <data name="CabinetCloud_ConnectedAs" xml:space="preserve"><value>Connecté en tant que {0}</value></data>
+  <data name="CabinetCloud_Details" xml:space="preserve"><value>{0} · dernière synchronisation : {1}</value></data>
+  <data name="CabinetCloud_Friends" xml:space="preserve"><value>Afficher les vrais jeux des amis</value></data>
+  <data name="CabinetCloud_FriendsHint" xml:space="preserve"><value>Prend effet après le redémarrage de Steam. Active son port de débogage local. Supprimez .cef-enable-remote-debugging et redémarrez Steam pour fermer le port.</value></data>
+  <data name="CabinetCloud_InvalidLink" xml:space="preserve"><value>Lien de connexion invalide. Utilisez un lien HTTPS Cabinet Cloud.</value></data>
+  <data name="CabinetCloud_ConnectError" xml:space="preserve"><value>Connexion impossible. Vérifiez le lien et le serveur, puis réessayez.</value></data>
+  <data name="CabinetCloud_DisconnectError" xml:space="preserve"><value>Impossible d’enregistrer la déconnexion. Réessayez.</value></data>
+  <data name="CabinetCloud_DebugError" xml:space="preserve"><value>Impossible d’activer le débogage de Steam. Vérifiez l’accès au dossier Steam.</value></data>
 </root>

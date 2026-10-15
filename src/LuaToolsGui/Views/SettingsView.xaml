@@ -488,6 +488,125 @@
                 </StackPanel>
             </Border>
 
+            <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Cabinet_Title}"/>
+            <Border Style="{StaticResource SettingsCard}">
+                <StackPanel>
+                    <Grid Margin="14,12">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="13" FontWeight="Medium" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_Enabled}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_Enabled_Hint}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{x:Static res:Strings.Settings_Cabinet_Enabled}" IsChecked="{Binding CabinetEnabled, Mode=TwoWay}"/>
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}"/>
+                    <Grid Margin="14,12" IsEnabled="{Binding CabinetOptionsEnabled}">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="13" FontWeight="Medium" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_LivePlaytime}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_LivePlaytime_Hint}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{x:Static res:Strings.Settings_Cabinet_LivePlaytime}" IsChecked="{Binding CabinetLivePlaytime, Mode=TwoWay}"/>
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}"/>
+                    <Grid Margin="14,12" IsEnabled="{Binding CabinetOptionsEnabled}">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="13" FontWeight="Medium" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_FetchSchemas}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{x:Static res:Strings.Settings_Cabinet_FetchSchemas}" IsChecked="{Binding CabinetFetchSchemas, Mode=TwoWay}"/>
+                    </Grid>
+                    <Border Style="{StaticResource RowDivider}"/>
+                    <Grid Margin="14,12" IsEnabled="{Binding CabinetOptionsEnabled}">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="13" FontWeight="Medium" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_WorkshopLinks}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_WorkshopLinks_Hint}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{x:Static res:Strings.Settings_Cabinet_WorkshopLinks}" IsChecked="{Binding CabinetWorkshopLinks, Mode=TwoWay}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.CabinetCloud_Title}"/>
+            <Border Style="{StaticResource SettingsCard}" IsEnabled="{Binding CabinetOptionsEnabled}">
+                <StackPanel>
+                    <StackPanel Margin="14,12" Visibility="{Binding CloudConnected, Converter={StaticResource InverseBoolToVis}}">
+                        <TextBlock FontWeight="Medium" Text="{x:Static res:Strings.CabinetCloud_NotConnected}"/>
+                        <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_SharingHint}"/>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <ui:TextBox Text="{Binding CloudConnectLink, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Static res:Strings.CabinetCloud_LinkPlaceholder}" AutomationProperties.Name="{x:Static res:Strings.CabinetCloud_LinkPlaceholder}"/>
+                            <ui:Button Grid.Column="1" Margin="8,0,0,0" Appearance="Primary" Content="{x:Static res:Strings.CabinetCloud_Connect}" Command="{Binding ConnectCloudCommand}"/>
+                        </Grid>
+                    </StackPanel>
+                    <Grid Margin="14,12" Visibility="{Binding CloudConnected, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontWeight="Medium" Text="{Binding CloudIdentity}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{Binding CloudDetails}"/>
+                        </StackPanel>
+                        <ui:Button Grid.Column="1" Margin="12,0,0,0" Content="{x:Static res:Strings.CabinetCloud_Disconnect}" Command="{Binding DisconnectCloudCommand}"/>
+                    </Grid>
+                    <TextBlock Margin="14,0,14,12" FontSize="12" Foreground="#f87171" TextWrapping="Wrap" Text="{Binding CloudError}" Visibility="{Binding CloudError, Converter={StaticResource NullToCollapsed}}"/>
+                    <Border Style="{StaticResource RowDivider}"/>
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock FontWeight="Medium" Text="{x:Static res:Strings.CabinetCloud_Friends}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_FriendsHint}"/>
+                        </StackPanel>
+                        <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" IsEnabled="{Binding CloudFriendsEnabled}" IsChecked="{Binding CloudFriendLabels, Mode=TwoWay}" AutomationProperties.Name="{x:Static res:Strings.CabinetCloud_Friends}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
             <!-- General (language) -->
             <TextBlock Style="{StaticResource SectionHeader}" Text="{x:Static res:Strings.Settings_Section_General}" />
             <Border Style="{StaticResource SettingsCard}">
@@ -615,6 +734,27 @@
                             VerticalAlignment="Center"
                             IsChecked="{Binding MinimizeToTray, Mode=TwoWay}" />
                     </Grid>
+                    <Border Style="{StaticResource RowDivider}"/>
+                    <Grid Margin="14,12">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Style.Triggers>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Opacity" Value="0.45"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock FontSize="13" FontWeight="Medium" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_StartWithWindows}"/>
+                            <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.Settings_Cabinet_StartWithWindows_Hint}"/>
+                </StackPanel>
+                <ui:ToggleSwitch Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" AutomationProperties.Name="{x:Static res:Strings.Settings_Cabinet_StartWithWindows}" IsChecked="{Binding StartWithWindows, Mode=TwoWay}"/>
+            </Grid>
                 </StackPanel>
             </Border>
 

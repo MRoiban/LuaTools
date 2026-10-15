@@ -39,14 +39,13 @@ Three rules are non-negotiable.
 
 ### 1. Every user-facing string must be localized
 
-The app ships 29 languages. **Never hardcode a visible string**, whether in XAML, a toast, a
+This fork ships English and French only. **Never hardcode a visible string**, whether in XAML, a toast, a
 `MessageBox`, or an empty-state label. Adding text means:
 
 1. Add the key to the English source, `src/LuaToolsGui/Resources/Strings.resx`.
 2. Add the accessor to the hand-maintained `Strings.Designer.cs`
    (`public static string Key => Get(nameof(Key));`).
-3. Add the same key, with a real translation, to all `Strings.<tag>.resx` files. A key missing
-   from any one of them is a bug.
+3. Add the same key, with a real translation, to `Strings.fr.resx`. A missing French key is a bug.
 4. Reference it. XAML: `Text="{x:Static res:Strings.Key}"`; C#: `Resources.Strings.Key` or
    `string.Format(Resources.Strings.Key, arg)`.
 

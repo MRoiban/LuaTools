@@ -51,7 +51,7 @@
                         FontWeight="SemiBold"
                         Foreground="#e5e7eb"
                         Text="{x:Static res:Strings.Drop_Title}" />
-                    <!-- The box also takes a dragged SteamDB / Steam store link (installs that appid)                         a separate line because Drop_Title is already translated into 29 languages and
+                    <!-- The box also takes a dragged SteamDB / Steam store link (installs that appid)                         a separate line because Drop_Title is already translated into English and French and
                          rewording it would leave every one of them describing the old behaviour. -->
                     <TextBlock
                         Margin="0,2,0,0"

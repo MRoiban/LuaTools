@@ -193,7 +193,7 @@ public sealed class UpdateService
 
     public void ApplyAndRestart(string[]? restartArgs = null)
     {
-        if (_pending is null) return;
+        if (_pending is null || Cabinet.CabinetService.HasActiveHelpers) return;
         var pointer = Path.Combine(_root, "approved.txt");
         CatalogDataPolicy.CheckLocal(pointer);
         var previous = File.Exists(pointer) ? ReadBounded(pointer, 64) : null;

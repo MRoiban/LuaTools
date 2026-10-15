@@ -12,6 +12,7 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        if (TryRunCabinetHelper(args)) return;
         StartMinimized = args.Contains("--minimized", StringComparer.Ordinal);
         // A signed update restart waits for the old single-instance owner to exit.
         if (args.Length == 2 && args[0] == "--fork-update-wait" && int.TryParse(args[1], out int parentId))
@@ -54,6 +55,8 @@ public static class Program
         ShowWindowSignal.Dispose();
     }
 
+    private static bool TryRunCabinetHelper(string[] args) => Services.Cabinet.CabinetHelper.Handle(args);
+
     /// <summary>Named event a second instance sets to ask the running one to surface its window.</summary>
     private const string ShowWindowEventName = "LuaToolsGui.SecurityHardened.ShowWindow";
 
@@ -65,15 +68,9 @@ public static class Program
     // Historical loader integration cannot force close-to-tray behavior in this fork.
     internal static bool SessionTrayLock => false;
 
-    // Supported UI languages (a Strings.<tag>.resx exists for each). A saved/OS culture not in here
-    // falls back to English. Keep in sync with the Settings language dropdown.
-    private static readonly string[] SupportedLanguages =
-    [
-        "en", "zh-Hans", "zh-Hant", "ja", "ko",
-        "es", "es-419", "pt-BR", "pt-PT", "fr", "de", "it", "nl", "pl",
-        "ru", "uk", "tr", "ar",
-        "cs", "hu", "ro", "el", "bg", "th", "vi", "id", "da", "fi", "nb", "sv",
-    ];
+    // Supported UI languages. Unsupported saved settings use automatic OS detection.
+    // Keep in sync with the Settings language dropdown.
+    private static readonly string[] SupportedLanguages = ["en", "fr"];
 
     /// <summary>Resolve the UI language (saved setting → OS display language → English) and apply it to
     /// the thread + WPF before any UI is built.</summary>
@@ -81,7 +78,7 @@ public static class Program
     {
         try
         {
-            string tag = ResolveLanguageTag();
+            string tag = ResolveLanguageTag(CultureInfo.InstalledUICulture);
             var culture = new CultureInfo(tag);
 
             CultureInfo.DefaultThreadCurrentUICulture = culture;
@@ -102,62 +99,28 @@ public static class Program
 
     /// <summary>Saved language from settings.json if set + supported; else the OS display language if
     /// supported; else "en".</summary>
-    private static string ResolveLanguageTag()
+    internal static string ResolveLanguageTag(CultureInfo os, string? settingsPath = null)
     {
-        string? saved = ReadSavedLanguage();
+        string? saved = ReadSavedLanguage(settingsPath);
         if (saved is not null && IsSupported(saved)) return saved;
 
-        return MatchOsLanguage(CultureInfo.InstalledUICulture);
+        return MatchOsLanguage(os);
     }
 
-    /// <summary>Map an OS culture to one of our supported tags. Tries the exact tag (e.g. "pt-BR"), then
-    /// our regional variants, then the two-letter neutral parent (e.g. "es-ES" → "es", "fr-FR" → "fr").
-    /// Falls back to "en". Internal-visible for tests.</summary>
-    internal static string MatchOsLanguage(CultureInfo os)
-    {
-        // 1. Exact match: handles tags we ship verbatim (e.g. "pt-BR", "pt-PT", "zh-Hant", "es-419").
-        if (IsSupported(os.Name)) return os.Name;
-
-        string two = os.TwoLetterISOLanguageName; // "es", "fr", "pt", "zh", "nb"/"nn"...
-
-        // 2. Chinese: script (Hans/Hant) matters more than region. zh-CN/zh-SG → Hans, zh-TW/HK/MO → Hant.
-        if (two == "zh")
-        {
-            if (os.Name.IndexOf("Hant", StringComparison.OrdinalIgnoreCase) >= 0) return "zh-Hant";
-            if (os.Name.IndexOf("Hans", StringComparison.OrdinalIgnoreCase) >= 0) return "zh-Hans";
-            return os.Name is "zh-TW" or "zh-HK" or "zh-MO" ? "zh-Hant" : "zh-Hans";
-        }
-
-        // 3. Portuguese: we ship pt-BR + pt-PT but no neutral "pt". Default neutral/unknown → pt-PT (European).
-        if (two == "pt") return "pt-PT";
-
-        // 4. Spanish: we ship neutral "es" (Spain) + "es-419" (Latin America). Map LatAm regions to es-419.
-        if (two == "es") return IsLatinAmericanSpanish(os.Name) ? "es-419" : "es";
-
-        // 5. Norwegian: Bokmål ("nb") and Nynorsk ("nn") both fall back to our "nb".
-        if (two is "nb" or "nn" or "no") return "nb";
-
-        // 6. Generic: try the two-letter neutral parent (es-ES→es, fr-FR→fr, de-DE→de, ja-JP→ja, ...).
-        if (IsSupported(two)) return two;
-
-        return "en";
-    }
-
-    /// <summary>True for Spanish locales of Latin America (anything except Spain), so they map to es-419.</summary>
-    private static bool IsLatinAmericanSpanish(string name) =>
-        name.StartsWith("es-", StringComparison.OrdinalIgnoreCase) &&
-        !name.Equals("es-ES", StringComparison.OrdinalIgnoreCase);
+    /// <summary>French OS cultures use French; every other OS culture uses English.</summary>
+    internal static string MatchOsLanguage(CultureInfo os) =>
+        os.TwoLetterISOLanguageName == "fr" ? "fr" : "en";
 
     private static bool IsSupported(string tag) =>
         SupportedLanguages.Contains(tag, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Read just the "Language" key from %AppData%\LuaToolsGui\settings.json without spinning up
+    /// <summary>Read just the "Language" key from the fork's settings.json without spinning up
     /// the DI container (this runs before App is constructed).</summary>
-    private static string? ReadSavedLanguage()
+    private static string? ReadSavedLanguage(string? settingsPath)
     {
         try
         {
-            string path = Path.Combine(
+            string path = settingsPath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 AppConfig.DataDirectoryName, "settings.json");
             if (!File.Exists(path)) return null;

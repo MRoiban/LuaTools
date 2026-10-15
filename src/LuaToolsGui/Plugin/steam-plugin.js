@@ -25,7 +25,8 @@
   function translator(dictionaries, language = 'en') {
     const lang = clean(language, 32).replace(/_/g, '-').toLowerCase();
     const source = dictionaries && typeof dictionaries === 'object' ? dictionaries : {};
-    const dict = source[lang] || source[lang.split('-')[0]] || source;
+    const tag = lang.split('-')[0] === 'fr' ? 'fr' : 'en';
+    const dict = source[tag] || {};
     return (key, values = {}) => {
       const value = Object.prototype.hasOwnProperty.call(dict, key) && typeof dict[key] === 'string' ? clean(dict[key], 1000) : key;
       return value.replace(/\{(\w+)\}/g, (match, name) => Object.prototype.hasOwnProperty.call(values, name) ? clean(values[name]) : match);

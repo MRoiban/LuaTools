@@ -143,3 +143,10 @@ test('purchase redraw preserves an active operation instead of resetting to idle
   assert.equal(h.calls.filter(c => c.method === 'StartLuaToolsAdd').length, 1);
   assert.equal(h.timers.size, 1);
 });
+
+test('only French page languages select French; other languages use English', () => {
+  const dictionaries = { en: { Cancel: 'Cancel' }, fr: { Cancel: 'Annuler' }, de: { Cancel: 'Abbrechen' } };
+  assert.equal(translator(dictionaries, 'fr_CA')('Cancel'), 'Annuler');
+  assert.equal(translator(dictionaries, 'de-DE')('Cancel'), 'Cancel');
+  assert.equal(translator(dictionaries, 'en-US')('Cancel'), 'Cancel');
+});

@@ -8,7 +8,7 @@ public class SteamPluginStringsTests
 {
     [Theory]
     [InlineData("fr", "Cancel", "Annuler")]
-    [InlineData("nl", "Download", "Downloaden")]
+    [InlineData("fr", "Download", "Télécharger")]
     [InlineData("en", "Restart Steam…", "Restart Steam…")]
     [InlineData("fr", "Settings…", "Paramètres…")]
     public void SharedLabelsComeFromAppResources(string language, string key, string expected)
@@ -18,13 +18,11 @@ public class SteamPluginStringsTests
     }
 
     [Fact]
-    public void AllAppLanguagesAndSteamAliasesExistWithEnglishFallbackForNewCopy()
+    public void OnlyEnglishAndFrenchExistWithEnglishFallbackForNewCopy()
     {
         using var json = JsonDocument.Parse(SteamPluginStrings.BuildJson());
         var root = json.RootElement;
-        Assert.Equal(36, root.EnumerateObject().Count());
-        Assert.Equal(root.GetProperty("zh-hans").GetRawText(), root.GetProperty("zh-cn").GetRawText());
-        Assert.Equal(root.GetProperty("nb").GetRawText(), root.GetProperty("no").GetRawText());
+        Assert.Equal(new[] { "en", "fr" }, root.EnumerateObject().Select(p => p.Name).ToArray());
         Assert.False(root.GetProperty("fr").TryGetProperty("Add {game} via LuaTools", out _));
         Assert.Equal("Cancel", root.GetProperty("en").GetProperty("Cancel").GetString());
     }

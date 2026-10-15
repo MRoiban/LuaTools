@@ -8,6 +8,61 @@ Rows document integrations, not trust in their responses. HTTPS authenticates th
 
 ## Account and lua.tools APIs
 
+Cabinet's default-off local engine handles
+OnlineFix input and Steam achievement/stat and playtime files, with backups and journals. Workshop profiles are embedded data.
+Live tracking and schema requests use parent-bound hidden LuaTools processes with
+offline-verified Valve-signed `steamclient64.dll`; the WPF process never loads it.
+Steam may perform its own server communication through this IPC. Cabinet Cloud is
+separately opt-in through Settings and the user's connect link, as described below.
+Profile downloading and Cabinet self-updates remain excluded.
+Tests use temporary fixture roots and an unsigned inert DLL; no live Steam
+DLL or real standalone Cabinet state is used.
+
+### Cabinet Cloud (user-selected server)
+
+Source-derived from the user's Cabinet `Cloud.cs`, `FriendLabels.cs` and `cloud/*.ts`;
+no live cloud server or Steam debugging port was probed for this port.
+
+| Destination and path | Method / data | Authentication and limits |
+| --- | --- | --- |
+| User-selected HTTPS origin, `/api/me` | GET; validates connect link and obtains user ID/name | Cabinet bearer token and same-origin `Origin`; 4 MiB JSON |
+| Same origin, `/api/state` | GET; per-app achievements, stats, playtime by device, save metadata | Same token; 4 MiB JSON |
+| Same origin, `/api/apps/<appid>/progress` | POST; stable device ID, device/PC name, achievements/timestamps, stats/timestamp, own playtime minutes | Same token; JSON; canonical numeric app ID |
+| Same origin, `/api/apps/<appid>/save?deviceId=&updatedAt=&sha256=` | PUT ZIP; GET downloads winning save ZIP | Same token; 90 MiB response/upload cap; verified SHA-256 on pull, backups before replacement; bounded extraction |
+| Same origin, `/api/presence` | PUT `{accountId, appId, name}`; GET fresh server-wide reports; DELETE `?accountId=` on stop/disconnect, best effort | Same token; positive Steam 32-bit account ID, real app ID, cleaned game name, no lobby/connect string |
+
+Only public DNS HTTPS origins on port 443 are accepted. `AppHttp.CreateCabinetCloud`
+uses a dedicated `OutboundNetworkPolicy` scope with fixed API routes, ordinary TLS,
+public-address resolution pinned at connection, no cookies/proxy, and **no redirects**.
+It cannot send this token to a second origin or use the app's other credentials.
+Requests and response bodies time out after 30 seconds; connect timeout is five seconds.
+JSON is bounded to 4 MiB and save bytes to 90 MiB. Raw connect links, tokens,
+transport exceptions and server error bodies are not logged or shown in the UI.
+
+Connecting explicitly opts in to save/progress synchronization after a game ends
+and roughly every 30 minutes while idle. It also shares the Steam account ID and
+running real-game name/app ID about once a minute with **all connected users on
+that server**; reports expire after three minutes. Several detected games use the
+first app ID in ordinal order. The friends switch controls local label display;
+presence publication follows the cloud connection, including when that switch is off.
+Cloud is paused with the engine when Cabinet is disabled or standalone Cabinet runs.
+
+Tokens use CurrentUser DPAPI in the isolated fork Cabinet directory. Standalone
+`playtime.txt`, `cloud.json` and `cloud-state.json` are never imported: copying a
+pending-credit ledger or independently advancing cloud receipts/device identity can
+double-credit playtime. Only non-spendable fingerprints, sync times, schema outcomes,
+backups and Workshop ownership/disabled journals are copied. Cloud requires a separate
+explicit Connect action. Standalone files are never deleted or modified.
+
+Friends use the existing `CefInjectorService` and `SteamCdpConnection` at literal
+`127.0.0.1:8080`, bounded discovery and websocket messages, with exact debugger
+endpoint validation. An explicit friends toggle reuses the plugin's marker
+validation/creation and tells the user to restart Steam. Cloud connection
+never creates the marker. Only bundled relabel hooks and sanitized label JSON
+enter `SharedJSContext`; no token, HTTP capability or plugin bridge does. The store
+plugin remains in its separate isolated world. Labels/hooks restore on disconnect,
+disable or expiry; the marker remains until manually removed and Steam restarted.
+
 All rows below are source-derived. `Bearer session` is the signed-in Supabase access token; `anon apikey` is the compiled public Supabase client key. Secret values are intentionally omitted.
 
 | Host and path | Method and request | Authentication | Response expected by source | Consumer / workflow |

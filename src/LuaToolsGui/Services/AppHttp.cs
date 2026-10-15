@@ -110,6 +110,15 @@ public static class AppHttp
         new(new OutboundPolicyHandler(new OutboundNetworkPolicy(externalDestination: destination), handler,
             responseBudget ?? HttpResponseBudget.Download)) { Timeout = timeout };
 
+    // The only authenticated arbitrary-origin client: explicit Cabinet connect consent, exact origin,
+    // public DNS pinned at connection, fixed API routes, no cookies/proxy/redirects.
+    internal static HttpClient CreateCabinetCloud(Uri origin, HttpMessageHandler? testingTransport = null) =>
+        new(new OutboundPolicyHandler(new OutboundNetworkPolicy(externalDestination: origin, cabinetCloud: true),
+            testingTransport ?? new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false,
+                ConnectTimeout = TimeSpan.FromSeconds(5), ConnectCallback = ExternalDataTransport.ConnectAsync },
+            new HttpResponseBudget(4 * 1024 * 1024, TimeSpan.FromSeconds(30))))
+        { Timeout = TimeSpan.FromSeconds(30) };
+
     /// <summary>Current mode: "Never" (default), "Auto" or "Always". DoH requires an explicit choice.</summary>
     private static string Mode
     {

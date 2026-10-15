@@ -27,6 +27,7 @@ public class PrivacyPolicyTests
         var settings = new SettingsService(legacy);
 
         Assert.False(settings.DonateKeys);
+        // A saved flag cannot register autostart: only explicit user toggles write the Run key.
         Assert.False(settings.StartWithWindows);
         // Even an in-memory legacy value reintroduced after loading is ignored by the policy getters.
         legacy.DonateKeys = true;

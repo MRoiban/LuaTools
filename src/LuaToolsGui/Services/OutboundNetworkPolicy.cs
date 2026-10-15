@@ -18,12 +18,15 @@ public sealed class OutboundNetworkPolicy
     private readonly HashSet<int> _loopbackPorts;
     private readonly bool _dns;
     private readonly string? _externalOrigin;
-    internal bool IsExternalData => _externalOrigin is not null;
+    private readonly bool _cabinetCloud;
+    internal bool IsCabinetCloud => _cabinetCloud;
+    internal bool IsExternalData => _externalOrigin is not null && !_cabinetCloud;
 
-    internal OutboundNetworkPolicy(IEnumerable<int>? loopbackPorts = null, bool dns = false, Uri? externalDestination = null)
+    internal OutboundNetworkPolicy(IEnumerable<int>? loopbackPorts = null, bool dns = false, Uri? externalDestination = null, bool cabinetCloud = false)
     {
         _loopbackPorts = new(loopbackPorts ?? []);
         _dns = dns;
+        _cabinetCloud = cabinetCloud;
         if (externalDestination is not null)
         {
             if (!externalDestination.IsAbsoluteUri || externalDestination.Scheme != Uri.UriSchemeHttps
@@ -43,7 +46,7 @@ public sealed class OutboundNetworkPolicy
         if (uri is null || !uri.IsAbsoluteUri || !string.IsNullOrEmpty(uri.UserInfo)
             || !string.IsNullOrEmpty(uri.Fragment))
             throw new HttpRequestException("Destination is not permitted by the outbound network policy.");
-        if (IsExternalData)
+        if (_externalOrigin is not null)
         {
             if (uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443
                 && uri.GetLeftPart(UriPartial.Authority).Equals(_externalOrigin, StringComparison.OrdinalIgnoreCase)) return;
@@ -120,6 +123,18 @@ internal sealed class OutboundPolicyHandler(OutboundNetworkPolicy policy, HttpMe
                     && !h.Key.Equals("Range", StringComparison.OrdinalIgnoreCase)))
                 throw new HttpRequestException("External data requests cannot carry account credentials or custom headers.");
         }
+        if (policy.IsCabinetCloud)
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            bool allowed = request.Method == HttpMethod.Get && path is "/api/me" or "/api/state" or "/api/presence"
+                || path == "/api/presence" && (request.Method == HttpMethod.Put || request.Method == HttpMethod.Delete)
+                || System.Text.RegularExpressions.Regex.IsMatch(path, @"^/api/apps/[1-9][0-9]{0,9}/(progress|save)$")
+                    && (path.EndsWith("/progress") ? request.Method == HttpMethod.Post : request.Method == HttpMethod.Get || request.Method == HttpMethod.Put);
+            if (!allowed || request.Headers.Authorization?.Scheme != "Bearer"
+                || request.Headers.Contains("Cookie") || request.Headers.Contains("apikey")
+                || request.Headers.Any(h => h.Key is not ("Authorization" or "Origin" or "Accept" or "User-Agent")))
+                throw new HttpRequestException("Invalid Cabinet Cloud request.");
+        }
         var budget = request.Options.TryGetValue(HttpResponseBudget.RequestOption, out var specifiedBudget)
             ? specifiedBudget : defaultBudget ?? HttpResponseBudget.Json;
         budget.Validate();
@@ -128,7 +143,7 @@ internal sealed class OutboundPolicyHandler(OutboundNetworkPolicy policy, HttpMe
         {
             for (int hop = 0; ; hop++)
             {
-                if (!policy.IsExternalData && (current.Headers.Authorization is not null
+                if (!policy.IsExternalData && !policy.IsCabinetCloud && (current.Headers.Authorization is not null
                     || current.Headers.Contains("apikey") || current.Headers.Contains("Cookie")
                     || HasCredentialQuery(current.RequestUri!)))
                 {
@@ -148,6 +163,7 @@ internal sealed class OutboundPolicyHandler(OutboundNetworkPolicy policy, HttpMe
                 {
                     if (current.Headers.Contains(LocalPluginBridgePolicy.TokenHeader))
                         throw new HttpRequestException("Local bridge redirects are prohibited.");
+                    if (policy.IsCabinetCloud) throw new HttpRequestException("Cabinet Cloud redirects are prohibited.");
                     if (policy.IsExternalData) throw new HttpRequestException("External data redirects are prohibited.");
                     if (hop >= 5 || response.Headers.Location is null)
                         throw new HttpRequestException("Invalid or excessive redirect.");

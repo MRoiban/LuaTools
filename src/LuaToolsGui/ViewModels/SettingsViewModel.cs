@@ -1,3 +1,4 @@
+using LuaToolsGui.Services.Cabinet;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,6 +21,8 @@ public record DnsModeOption(string Display, string Tag);
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly SettingsService _settings;
+    private readonly ICabinetService _cabinet;
+    private readonly ICabinetCloud? _cloud;
     private readonly AuthService _auth;
     private readonly SteamService _steam;
     private readonly HubcapService _hubcap;
@@ -72,6 +75,65 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnFastFetchChanged(bool value) => _settings.FastFetch = value;
 
+    [ObservableProperty] private string _cloudConnectLink = "";
+    [ObservableProperty] private string? _cloudError;
+    [ObservableProperty] private bool _cloudBusy;
+    public bool CloudConnected => _cloud?.Status.Connected == true;
+    public bool CloudFriendsEnabled => CabinetEnabled && CloudConnected && !CloudBusy;
+    public string CloudIdentity => string.Format(Resources.Strings.CabinetCloud_ConnectedAs, _cloud?.Status.UserName);
+    public string CloudDetails => string.Format(Resources.Strings.CabinetCloud_Details, _cloud?.Status.ServerHost,
+        _cloud?.Status.LastSync?.ToLocalTime().ToString("g") ?? Resources.Strings.Cabinet_Never);
+    public bool CloudFriendLabels
+    {
+        get => _cloud?.FriendLabels == true;
+        set
+        {
+            try { if (_cloud is not null) _cloud.FriendLabels = value; CloudError = null; }
+            catch { CloudError = Resources.Strings.CabinetCloud_DebugError; }
+            OnPropertyChanged();
+        }
+    }
+    partial void OnCloudBusyChanged(bool value) => RefreshCloud();
+    private void RefreshCloud()
+    {
+        OnPropertyChanged(nameof(CloudConnected)); OnPropertyChanged(nameof(CloudFriendsEnabled));
+        OnPropertyChanged(nameof(CloudIdentity)); OnPropertyChanged(nameof(CloudDetails)); OnPropertyChanged(nameof(CloudFriendLabels));
+    }
+    [RelayCommand]
+    private async Task ConnectCloudAsync()
+    {
+        if (_cloud is null || !CabinetEnabled || CloudBusy) return;
+        CloudBusy = true; CloudError = null;
+        try { await _cloud.ConnectAsync(CloudConnectLink.Trim()); CloudConnectLink = ""; }
+        catch (FormatException) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; }
+        catch { CloudError = Resources.Strings.CabinetCloud_ConnectError; }
+        finally { CloudBusy = false; RefreshCloud(); }
+    }
+    [RelayCommand]
+    private async Task DisconnectCloudAsync()
+    {
+        if (_cloud is null || CloudBusy) return;
+        CloudBusy = true; CloudError = null;
+        try { await _cloud.DisconnectAsync(); }
+        catch { CloudError = Resources.Strings.CabinetCloud_DisconnectError; }
+        finally { CloudBusy = false; RefreshCloud(); }
+    }
+
+    private bool _refreshingCabinetSettings;
+    [ObservableProperty] private bool _startWithWindows;
+    partial void OnStartWithWindowsChanged(bool value) { if (!_refreshingCabinetSettings) _settings.StartWithWindows = value; }
+    public bool CabinetOptionsEnabled => CabinetEnabled;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CabinetOptionsEnabled))]
+    private bool _cabinetEnabled;
+    partial void OnCabinetEnabledChanged(bool value) { if (_refreshingCabinetSettings) return; _settings.CabinetEnabled = value; _cabinet.SettingsChanged(); RefreshCloud(); }
+    [ObservableProperty] private bool _cabinetLivePlaytime;
+    partial void OnCabinetLivePlaytimeChanged(bool value) { if (_refreshingCabinetSettings) return; _settings.CabinetLivePlaytime = value; _cabinet.SettingsChanged(); }
+    [ObservableProperty] private bool _cabinetFetchSchemas;
+    partial void OnCabinetFetchSchemasChanged(bool value) { if (_refreshingCabinetSettings) return; _settings.CabinetFetchSchemas = value; _cabinet.SettingsChanged(); }
+    [ObservableProperty] private bool _cabinetWorkshopLinks;
+    partial void OnCabinetWorkshopLinksChanged(bool value) { if (_refreshingCabinetSettings) return; _settings.CabinetWorkshopLinks = value; _cabinet.SettingsChanged(); }
+
     // Executable workflow switches persist consent only; actions remain on their original pages.
     [ObservableProperty] private bool _executableGameFixesEnabled;
     partial void OnExecutableGameFixesEnabledChanged(bool value) => _settings.ExecutableGameFixesEnabled = value;
@@ -114,41 +176,12 @@ public partial class SettingsViewModel : ObservableObject
     public Action? RequestShowWindow { get; set; }
 
     // ── Language ────────────────────────────────────────────────────
-    /// <summary>Available UI languages (native endonyms, matching Steam's list). "System default"
-    /// (null tag) follows Windows. Languages whose .resx isn't present fall back to English.</summary>
+    /// <summary>English and French, with a system default (null tag) that follows Windows.</summary>
     public ObservableCollection<LanguageOption> LanguageOptions { get; } =
     [
         new(Resources.Strings.Settings_Language_SystemDefault, null),
         new("English", "en"),
-        new("简体中文", "zh-Hans"),
-        new("繁體中文", "zh-Hant"),
-        new("日本語", "ja"),
-        new("한국어", "ko"),
-        new("Español (España)", "es"),
-        new("Español (Latinoamérica)", "es-419"),
-        new("Português (Brasil)", "pt-BR"),
-        new("Português (Portugal)", "pt-PT"),
         new("Français", "fr"),
-        new("Deutsch", "de"),
-        new("Italiano", "it"),
-        new("Nederlands", "nl"),
-        new("Polski", "pl"),
-        new("Русский", "ru"),
-        new("Українська", "uk"),
-        new("العربية", "ar"),
-        new("Čeština", "cs"),
-        new("Magyar", "hu"),
-        new("Română", "ro"),
-        new("Türkçe", "tr"),
-        new("Ελληνικά", "el"),
-        new("Български", "bg"),
-        new("ไทย", "th"),
-        new("Tiếng Việt", "vi"),
-        new("Bahasa Indonesia", "id"),
-        new("Dansk", "da"),
-        new("Suomi", "fi"),
-        new("Norsk", "nb"),
-        new("Svenska", "sv"),
     ];
 
     [ObservableProperty] private LanguageOption _selectedLanguage = null!;
@@ -245,9 +278,23 @@ public partial class SettingsViewModel : ObservableObject
     public Action? RequestRestartPrompt { get; set; }
 
     public SettingsViewModel(SettingsService settings, AuthService auth, SteamService steam,
-        HubcapService hubcap)
+        HubcapService hubcap, ICabinetService cabinet, ICabinetCloud? cloud = null)
     {
         _settings = settings;
+        _cabinet = cabinet;
+        _cloud = cloud;
+        if (cloud is not null) cloud.StatusChanged += (_, _) =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) RefreshCloud();
+            else dispatcher.BeginInvoke(RefreshCloud);
+        };
+        _cabinetEnabled = settings.CabinetEnabled;
+        _cabinetLivePlaytime = settings.CabinetLivePlaytime;
+        _cabinetFetchSchemas = settings.CabinetFetchSchemas;
+        _cabinetWorkshopLinks = settings.CabinetWorkshopLinks;
+        _startWithWindows = settings.StartWithWindows;
+        RefreshCloud();
         _auth = auth;
         _steam = steam;
         _hubcap = hubcap;
@@ -391,9 +438,26 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── Hubcap key management ───────────────────────────────────────
 
+    /// <summary>Refresh page bindings without persisting or reconfiguring the engine.</summary>
+    public void RefreshCabinetSettings()
+    {
+        _refreshingCabinetSettings = true;
+        try
+        {
+            CabinetEnabled = _settings.CabinetEnabled;
+            CabinetLivePlaytime = _settings.CabinetLivePlaytime;
+            CabinetFetchSchemas = _settings.CabinetFetchSchemas;
+            CabinetWorkshopLinks = _settings.CabinetWorkshopLinks;
+            StartWithWindows = _settings.StartWithWindows;
+        }
+        finally { _refreshingCabinetSettings = false; RefreshCloud(); }
+    }
+
     /// <summary>Called by the View when loaded. Auto-refreshes stats if a key is saved.</summary>
     public void OnViewLoaded()
     {
+        // Cabinet's Turn on action may have changed settings while this singleton page was hidden.
+        RefreshCabinetSettings();
         if (HubcapIsKeyConfigured)
             RefreshHubcapStatsCommand.Execute(null);
         // Re-sync FastFetch in case the Add screen's toggle changed it this session (both are singletons

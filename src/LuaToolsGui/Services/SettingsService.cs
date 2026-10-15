@@ -45,6 +45,10 @@ public class AppSettings
     // When true, register the app to launch on Windows sign-in (HKCU …\Run). Nullable so "never set"
     // (→ default OFF) is distinguishable from an explicit choice.
     public bool? StartWithWindows { get; set; }
+    public bool? CabinetEnabled { get; set; }
+    public bool? CabinetLivePlaytime { get; set; }
+    public bool? CabinetFetchSchemas { get; set; }
+    public bool? CabinetWorkshopLinks { get; set; }
 
     // When true, minimizing hides the window to the system tray instead of the taskbar. Nullable so
     // "never set" (→ default OFF) is distinguishable from an explicit choice.
@@ -67,22 +71,24 @@ public class AppSettings
     public string? DnsMode { get; set; }
 }
 
-public class SettingsService
+public class SettingsService : Cabinet.ICabinetSettings
 {
     private readonly string Dir;
     private readonly string FilePath;
     private readonly string TmpPath;
     private readonly string BakPath;
     private readonly bool _persist;
+    private readonly IStartupRegistration _startup;
     private AppSettings _settings = new();
 
     public SettingsService() : this(null, Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName)) { }
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName), new WindowsStartupRegistration()) { }
 
     // Without a directory, policy tests remain entirely in memory. A supplied directory isolates
     // persistence tests from the real user profile and exercises the normal atomic save/load path.
-    internal SettingsService(AppSettings? settings, string? directory = null)
+    internal SettingsService(AppSettings? settings, string? directory = null, IStartupRegistration? startup = null)
     {
+        _startup = startup ?? new MemoryStartupRegistration();
         _persist = directory is not null;
         Dir = directory is null ? string.Empty : Path.GetFullPath(directory);
         FilePath = Path.Combine(Dir, "settings.json");
@@ -96,7 +102,6 @@ public class SettingsService
     private void EnforceForkPolicy()
     {
         _settings.DonateKeys = false;
-        _settings.StartWithWindows = false;
         if (UnprotectApiKey(_settings.HubcapApiKey) is null) _settings.HubcapApiKey = null;
     }
 
@@ -171,9 +176,36 @@ public class SettingsService
     /// <summary>When true, the app is registered to launch on Windows sign-in (default OFF).</summary>
     public bool StartWithWindows
     {
-        get => false;
-        set { _settings.StartWithWindows = false; Save(); }
+        get => _startup.IsEnabled;
+        set { _startup.SetEnabled(value); _settings.StartWithWindows = value; Save(); }
     }
+
+    // Optional Cabinet settings preserve the contract defaults until explicitly changed.
+    public bool CabinetEnabled
+    {
+        get => _settings.CabinetEnabled ?? false;
+        set { _settings.CabinetEnabled = value; Save(); }
+    }
+
+    public bool CabinetLivePlaytime
+    {
+        get => _settings.CabinetLivePlaytime ?? true;
+        set { _settings.CabinetLivePlaytime = value; Save(); }
+    }
+
+    public bool CabinetFetchSchemas
+    {
+        get => _settings.CabinetFetchSchemas ?? true;
+        set { _settings.CabinetFetchSchemas = value; Save(); }
+    }
+
+    public bool CabinetWorkshopLinks
+    {
+        get => _settings.CabinetWorkshopLinks ?? false;
+        set { _settings.CabinetWorkshopLinks = value; Save(); }
+    }
+
+
 
     /// <summary>When true, minimizing hides the window to the system tray (default OFF).</summary>
     public bool MinimizeToTray
@@ -403,6 +435,10 @@ public class SettingsService
             && _settings.Language is null
             && _settings.HubcapApiKey is null
             && _settings.StartWithWindows is null
+            && _settings.CabinetEnabled is null
+            && _settings.CabinetLivePlaytime is null
+            && _settings.CabinetFetchSchemas is null
+            && _settings.CabinetWorkshopLinks is null
             && _settings.MinimizeToTray is null
             && _settings.FastFetch is null
             && _settings.DnsMode is null

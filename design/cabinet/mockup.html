@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cabinet in LuaTools - mockup</title>
+<style>
+  :root{--bg:#24262e;--card:#ffffff08;--cardB:#ffffff12;--div:#ffffff10;--muted:#9ca3af;--dim:#6b7280;--accent:#f0605f;--ok:#4ade80;--warn:#fbbf24}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;color:#eee;font-size:13px}
+  .switcher{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+  .switcher button{font:inherit;font-size:12px;color:#ddd;background:#ffffff0d;border:1px solid #ffffff1f;border-radius:6px;padding:4px 10px;cursor:pointer}
+  .switcher button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:#1b1b1b}
+  .window{display:flex;background:linear-gradient(160deg,#272a33,#2b2a26);border-radius:8px;overflow:hidden;min-height:560px}
+  nav{width:190px;flex-shrink:0;padding:16px 8px;border-right:1px solid #ffffff0a}
+  nav a{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;color:#ddd;text-decoration:none}
+  nav a.on{background:#ffffff12}
+  nav a.on:before{content:"";width:3px;height:16px;background:var(--accent);border-radius:2px;margin-left:-8px}
+  nav .ic{width:16px;text-align:center;opacity:.8}
+  main{flex:1;min-width:0;padding:16px 16px 24px 8px}
+  .page{max-width:760px;margin:0 8px}
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  h1{font-size:22px;margin:0;font-weight:700}
+  .sub{color:var(--dim);font-size:12px;margin-top:4px}
+  .btn{font:inherit;display:inline-flex;align-items:center;gap:6px;color:#eee;background:#ffffff0f;border:1px solid #ffffff1a;border-radius:6px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#1b1b1b;font-weight:600}
+  .btn:disabled{opacity:.45;cursor:default}
+  .btn:focus-visible,.sw:focus-visible,.game:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--cardB);border-radius:999px;padding:4px 10px;font-size:12px;color:#ddd}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+  .card{background:var(--card);border:1px solid var(--cardB);border-radius:8px;margin-top:14px}
+  .colhead{display:grid;grid-template-columns:1fr 150px 70px 110px;gap:12px;padding:8px 14px;color:var(--muted);font-size:11px;font-weight:600}
+  .game{display:grid;grid-template-columns:1fr 150px 70px 110px;gap:12px;align-items:center;padding:10px 14px;border-top:1px solid var(--div);cursor:pointer}
+  .game:hover{background:#ffffff06}
+  .title{display:flex;align-items:center;gap:12px;min-width:0}
+  .cover{width:92px;height:43px;border-radius:4px;flex-shrink:0;background:linear-gradient(135deg,#3b4252,#2e3440)}
+  .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;margin-top:3px}
+  .badge.live{background:#4ade8022;color:var(--ok)} .badge.pend{background:#fbbf2422;color:var(--warn)} .badge.noschema{background:#ffffff10;color:var(--muted)}
+  .ach small{color:var(--muted)}
+  .bar{height:4px;border-radius:2px;background:#ffffff14;margin-top:5px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--accent)}
+  .num{font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  .empty{padding:40px 24px;text-align:center}
+  .empty .big{font-size:15px;font-weight:600;margin-bottom:6px}
+  .empty p{color:var(--muted);margin:0 auto 14px;max-width:420px;line-height:1.45}
+  /* settings */
+  .settings{max-width:640px}
+  .sh{margin:24px 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px}
+  .row+.row{border-top:1px solid var(--div);margin:0 14px;padding-left:0;padding-right:0}
+  .row .lbl{font-weight:500}
+  .row .hint{color:var(--dim);font-size:12px;margin-top:4px;line-height:1.4}
+  .row.disabled .lbl,.row.disabled .hint{opacity:.45}
+  .sw{border:1px solid #aaa;background:transparent;border-radius:14px;width:40px;height:20px;flex-shrink:0;padding:3px;cursor:pointer}
+  .sw:before{content:"";display:block;width:12px;height:12px;border-radius:50%;background:#aaa}
+  .sw[aria-checked=true]{background:var(--accent);border-color:var(--accent)}
+  .sw[aria-checked=true]:before{margin-left:18px;background:#202020}
+  .sw:disabled{opacity:.4;cursor:default}
+  .connect{display:flex;gap:8px;margin-top:10px}
+  input{font:inherit;flex:1;min-width:0;color:#eee;background:#ffffff0d;border:1px solid #ffffff1f;border-bottom-color:#ffffff40;border-radius:6px;padding:6px 10px}
+  .err{color:#f87171;font-size:12px;margin-top:6px}
+  [hidden]{display:none!important}
+  @media (max-width:640px){
+    nav{width:52px} nav a span.t{display:none}
+    .colhead{display:none}
+    .game{grid-template-columns:1fr auto;row-gap:6px}
+    .game .ach{grid-column:1/-1;grid-row:2}
+    .game .last{display:none}
+    .cover{width:64px;height:30px}
+    .head{flex-direction:column}
+    .connect{flex-direction:column}
+  }
+</style>
+</head>
+<body>
+<div class="switcher" role="toolbar" aria-label="Mockup state">
+  <button data-s="populated" aria-pressed="true">Cabinet: games</button>
+  <button data-s="syncing" aria-pressed="false">Cabinet: syncing</button>
+  <button data-s="empty" aria-pressed="false">Cabinet: no games</button>
+  <button data-s="off" aria-pressed="false">Cabinet: turned off</button>
+  <button data-s="settings" aria-pressed="false">Settings: disconnected</button>
+  <button data-s="settings-on" aria-pressed="false">Settings: cloud connected</button>
+</div>
+
+<div class="window">
+  <nav aria-label="Main">
+    <a href="#"><span class="ic">⌂</span><span class="t">Home</span></a>
+    <a href="#"><span class="ic">＋</span><span class="t">Add</span></a>
+    <a href="#"><span class="ic">▤</span><span class="t">Manage</span></a>
+    <a href="#"><span class="ic">⧉</span><span class="t">Builds</span></a>
+    <a href="#"><span class="ic">◐</span><span class="t">Mode</span></a>
+    <a href="#"><span class="ic">✚</span><span class="t">Fixes</span></a>
+    <a href="#" id="navCab" class="on"><span class="ic">🗄</span><span class="t">Cabinet</span></a>
+    <a href="#"><span class="ic">⧈</span><span class="t">Plugin</span></a>
+    <a href="#" id="navSet"><span class="ic">⚙</span><span class="t">Settings</span></a>
+  </nav>
+
+  <main>
+    <!-- ================= CABINET PAGE ================= -->
+    <section class="page" id="cabinet">
+      <div class="head">
+        <div>
+          <h1>Cabinet</h1>
+          <div class="sub">Achievements, stats and playtime from OnlineFix games, filed under the real game in Steam.</div>
+        </div>
+        <button class="btn primary" id="syncBtn">⟳ <span>Sync now</span></button>
+      </div>
+
+      <div class="chips" id="chips">
+        <span class="chip"><span class="dot ok"></span>Tracking on</span>
+        <span class="chip"><span class="dot ok"></span>Steam running</span>
+        <span class="chip" id="chipPlaying"><span class="dot ok"></span>Playing: Lethal Company</span>
+        <span class="chip"><span class="dot"></span>Cabinet Cloud: not connected</span>
+      </div>
+
+      <!-- populated -->
+      <div class="card" id="list">
+        <div class="colhead"><span>GAME</span><span>ACHIEVEMENTS</span><span>PLAYED</span><span>LAST SYNC</span></div>
+        <div class="game" tabindex="0" role="link" aria-label="Lethal Company, open in Steam">
+          <div class="title"><div class="cover" style="background:linear-gradient(135deg,#5a2a1e,#1d1d1d)"></div><div style="min-width:0"><div class="name">Lethal Company</div><span class="badge live">Playing now · live playtime</span></div></div>
+          <div class="ach"><span class="num">14</span> <small>/ 22</small><div class="bar"><i style="width:64%"></i></div></div>
+          <div class="num">38.4 h</div>
+          <div class="last muted">Just now</div>
+        </div>
+        <div class="game" tabindex="0" role="link" aria-label="Sons of the Forest, open in Steam">
+          <div class="title"><div class="cover" style="background:linear-gradient(135deg,#2c3d2a,#151a14)"></div><div style="min-width:0"><div class="name">Sons of the Forest</div><span class="badge pend">22 min pending · added when Steam closes</span></div></div>
+          <div class="ach"><span class="num">31</span> <small>/ 48</small><div class="bar"><i style="width:65%"></i></div></div>
+          <div class="num">61.0 h</div>
+          <div class="last muted">Yesterday 23:12</div>
+        </div>
+        <div class="game" tabindex="0" role="link" aria-label="Slay the Spire 2, open in Steam">
+          <div class="title"><div class="cover" style="background:linear-gradient(135deg,#3b2346,#141018)"></div><div style="min-width:0"><div class="name">Slay the Spire 2</div></div></div>
+          <div class="ach"><span class="num">9</span> <small>/ 9</small><div class="bar"><i style="width:100%"></i></div></div>
+          <div class="num">112.7 h</div>
+          <div class="last muted">12 Oct 18:40</div>
+        </div>
+        <div class="game" tabindex="0" role="link" aria-label="Phasmophobia, open in Steam">
+          <div class="title"><div class="cover" style="background:linear-gradient(135deg,#1e2f3b,#0e1419)"></div><div style="min-width:0"><div class="name">Phasmophobia</div><span class="badge noschema">Achievement list not downloaded yet</span></div></div>
+          <div class="ach muted">—</div>
+          <div class="num">4.2 h</div>
+          <div class="last muted">Never</div>
+        </div>
+      </div>
+
+      <!-- empty -->
+      <div class="card empty" id="empty" hidden>
+        <div class="big">No OnlineFix games found yet</div>
+        <p>Cabinet looks for OnlineFix progress in C:\Users\Public\Documents\OnlineFix. Play an OnlineFix game once, then sync.</p>
+      </div>
+
+      <!-- off -->
+      <div class="card empty" id="off" hidden>
+        <div class="big">Cabinet is turned off</div>
+        <p>Turn it on to copy OnlineFix achievements and playtime from Spacewar to the real game in Steam.</p>
+        <button class="btn primary">Turn on</button>
+      </div>
+    </section>
+
+    <!-- ================= SETTINGS: CABINET SECTIONS ================= -->
+    <section class="page settings" id="settings" hidden>
+      <h1>Settings</h1>
+      <div class="sh" style="margin-top:16px;opacity:.5">… Executable workflows, General, Steam …</div>
+
+      <div class="sh">Cabinet</div>
+      <div class="card" style="margin-top:0">
+        <div class="row"><div><div class="lbl">Sync OnlineFix games to Steam</div><div class="hint">Copies achievements, stats and playtime from Spacewar to the real game.</div></div><button class="sw" role="switch" aria-checked="true" aria-label="Sync OnlineFix games to Steam" data-master></button></div>
+        <div class="row dep"><div><div class="lbl">Live playtime</div><div class="hint">While a game runs, Steam counts hours under the real game.</div></div><button class="sw" role="switch" aria-checked="true" aria-label="Live playtime"></button></div>
+        <div class="row dep"><div><div class="lbl">Download missing achievement lists</div></div><button class="sw" role="switch" aria-checked="true" aria-label="Download missing achievement lists"></button></div>
+        <div class="row dep"><div><div class="lbl">Workshop links</div><div class="hint">Links subscribed Workshop items into OnlineFix games.</div></div><button class="sw" role="switch" aria-checked="false" aria-label="Workshop links"></button></div>
+      </div>
+
+      <div class="sh">Cabinet Cloud</div>
+      <div class="card" style="margin-top:0">
+        <div class="row" id="cloudOff">
+          <div style="flex:1;min-width:0">
+            <div class="lbl">Not connected</div>
+            <div class="hint">Shares the OnlineFix game you're playing with other users on the same server.</div>
+            <div class="connect"><input aria-label="Cabinet Cloud connect link" placeholder="Paste your connect link" value="https://cabinet.example/connect/abc"><button class="btn primary">Connect</button></div>
+            <div class="err">Invalid connect link.</div>
+          </div>
+        </div>
+        <div class="row" id="cloudOn" hidden>
+          <div><div class="lbl">Connected as Alex</div><div class="hint">cabinet.example · last sync 1 min ago</div></div>
+          <button class="btn">Disconnect</button>
+        </div>
+        <div class="row" id="friendRow"><div><div class="lbl">Show friends' real games</div><div class="hint">Applies after Steam restarts. Uses Steam's local debugging port.</div></div><button class="sw" role="switch" aria-checked="false" aria-label="Show friends' real games" id="friendSw" disabled></button></div>
+      </div>
+
+      <div class="sh">Startup</div>
+      <div class="card" style="margin-top:0">
+        <div class="row"><div><div class="lbl">Minimize to system tray</div><div class="hint">Closing the window keeps LuaTools running in the tray.</div></div><button class="sw" role="switch" aria-checked="true" aria-label="Minimize to system tray"></button></div>
+        <div class="row"><div><div class="lbl">Start with Windows</div><div class="hint">Starts in the tray so Cabinet can track games.</div></div><button class="sw" role="switch" aria-checked="true" aria-label="Start with Windows"></button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+function show(state){
+  document.querySelectorAll('.switcher button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.s===state));
+  const set=state.startsWith('settings');
+  $('#cabinet').hidden=set; $('#settings').hidden=!set;
+  $('#navCab').classList.toggle('on',!set); $('#navSet').classList.toggle('on',set);
+  $('#list').hidden=!(state==='populated'||state==='syncing');
+  $('#empty').hidden=state!=='empty'; $('#off').hidden=state!=='off';
+  $('#chips').hidden=state==='off';
+  $('#chipPlaying').hidden=state!=='populated'&&state!=='syncing';
+  const sb=$('#syncBtn'); sb.disabled=state==='syncing'||state==='off';
+  sb.querySelector('span').textContent=state==='syncing'?'Syncing…':'Sync now';
+  const on=state==='settings-on';
+  $('#cloudOff').hidden=on; $('#cloudOn').hidden=!on;
+  $('#friendSw').disabled=!on; $('#friendRow').classList.toggle('disabled',!on);
+  if(on) $('#friendSw').setAttribute('aria-checked','true');
+}
+document.querySelectorAll('.switcher button').forEach(b=>b.onclick=()=>show(b.dataset.s));
+document.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{
+  const v=s.getAttribute('aria-checked')!=='true'; s.setAttribute('aria-checked',v);
+  if(s.hasAttribute('data-master')) document.querySelectorAll('.row.dep').forEach(r=>{r.classList.toggle('disabled',!v); r.querySelector('.sw').disabled=!v;});
+});
+show(new URLSearchParams(location.search).get('s')||'populated');
+</script>
+</body>
+</html>
