@@ -59,4 +59,12 @@ public sealed class OnlineFixMeGameFilterTests
     public void EmptyInstalledLibraryDoesNotFallBackToThePublicListing() =>
         Assert.Empty(FixesViewModel.FilterGameCards([Card("620", "Portal 2")], [],
             FixesViewModel.OnlineFixMeTagId, false, new HashSet<long>(), ""));
+
+    [Fact]
+    public void SteamRuntimesAreNotListedAsGames()
+    {
+        var cards = FixesViewModel.BuildOnlineFixMeCards([],
+            [new(228980, "Steamworks Common Redistributables", "local"), new(391540, "Undertale", "local")]);
+        Assert.Equal(["Undertale"], cards.Select(c => c.Name));
+    }
 }

@@ -354,11 +354,17 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         return q.Length > 0 ? shown.Where(g => g.Matches(q)) : shown;
     }
 
+    // Installed Steam apps that are runtimes, not games: Steamworks Common Redistributables, Proton,
+    // Steam Linux Runtime and Steamworks SDK Redist.
+    private static readonly HashSet<long> SteamRuntimeAppIds =
+        [228980, 1007, 1070560, 1391110, 1628350, 1493710, 2180100, 1887720, 2348590, 2805730, 3658110];
+
     internal static List<FixGameCardVm> BuildOnlineFixMeCards(
         IReadOnlyList<FixGameCardVm> listing, IEnumerable<SteamLibraryService.InstalledGame> installed)
     {
         var byId = listing.GroupBy(g => g.AppId).ToDictionary(g => g.Key, g => g.First());
         return installed.DistinctBy(g => g.AppId)
+            .Where(g => !SteamRuntimeAppIds.Contains(g.AppId))
             .Select(g => byId.TryGetValue(g.AppId.ToString(), out var card) ? card : CreateInstalledCard(g))
             .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
