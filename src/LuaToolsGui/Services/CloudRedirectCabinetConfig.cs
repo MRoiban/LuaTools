@@ -52,6 +52,7 @@ internal sealed class CloudRedirectCabinetConfig
     {
         lock (Gate)
         {
+            if (!Directory.Exists(_directory)) return;
             File.Delete(TokenPath);
             var config = ReadConfig(backupInvalid: false);
             if (config is null) return;
