@@ -47,6 +47,30 @@ All rows below are source-derived. `Bearer session` is the signed-in Supabase ac
 
 Sources: `Services/AuthService.cs`, `Services/LuaToolsApiClient.cs`, `Services/Downloads/ManifestJobFactory.cs`, `Models/ApiModels.cs`, `Models/FixModels.cs`, `ViewModels/DownloadViewModel.cs`, and `Services/PluginAddService.cs`.
 
+## Online-Fix.me patch folders
+
+`OnlineFixMeClient` uses GET on `https://uploads.online-fix.me:2053/uploads/<game>/Fix%20Repair/`
+and eligible files in that folder, with `User-Agent: LuaTools-Fixes/0.2`. The escaped game title
+(or the one-game folder supplied by the user) is sent in the path. No global or full-game listing
+is requested. Matching tries at most three title candidates; 401/403/404 mean no patch folder,
+while other errors or a missing autoindex title stop the lookup as unavailable.
+
+A download first fetches a fresh listing, then sends up to four filtered anonymous cookies from
+that response and `Referer: <Fix Repair folder URL>` only on the archive GET. This session is
+required by the host to download patches; no lua.tools credentials or browser cookies are used.
+Cookies are held only for that call, never cached, logged or persisted. Cookie names are limited to
+64 ASCII letters/digits/underscore/hyphen, values to 4,096 permitted ASCII characters. Authorization
+and apikey headers are prohibited for this purpose. The credential rule permits cookies only on
+GET to this exact origin and `/uploads/<one segment>/Fix%20Repair/<file>`.
+
+The outbound policy allows port 2053 only on this host under `/uploads/`, with no query, userinfo
+or fragment. Listings have a 1 MiB / 15-second budget, inspect at most 512 double-quoted hrefs,
+and cache results for five minutes per folder without cookies. Names are limited to 200 characters;
+only single-volume `fix_repair` RAR/ZIP/7z files qualify. Archive transfers have a 256 MiB / five-minute
+budget and use the exact name confirmed in the fresh listing, ignoring server-supplied filenames.
+Responses and archives remain untrusted; executable-fix consent and validated conversion govern
+installation. Live listing fixtures captured on 2026-10-23 exercise parsing without live test requests.
+
 ## Hubcap API
 
 All rows are source-derived direct HTTPS requests. The app uses the user's Hubcap key, independently of the lua.tools account.

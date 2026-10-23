@@ -52,6 +52,9 @@ public sealed class OutboundNetworkPolicy
         {
             if (uri.Scheme == Uri.UriSchemeHttp && uri.Host == "127.0.0.1" && _loopbackPorts.Contains(uri.Port)) return;
         }
+        else if (!_dns && uri.Scheme == Uri.UriSchemeHttps && uri.IdnHost == "uploads.online-fix.me"
+            && uri.Port == 2053 && uri.AbsolutePath.StartsWith("/uploads/", StringComparison.Ordinal)
+            && string.IsNullOrEmpty(uri.Query)) return;
         else if (uri.Scheme == Uri.UriSchemeHttps && uri.Port == 443)
         {
             if (_dns)
