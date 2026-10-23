@@ -178,7 +178,7 @@
   <data name="Mode_UserManaged" xml:space="preserve"><value>You're on your own</value></data>
   <data name="Mode_Experimental" xml:space="preserve"><value>EXPERIMENTAL</value></data>
   <data name="Mode_CloudRedirectSupport" xml:space="preserve"><value>CLOUDREDIRECT SUPPORT</value></data>
-  <data name="Mode_CloudRedirect_AddonDesc" xml:space="preserve"><value>Brings back native Steam Cloud support via third-party storage providers such as Google Drive / OneDrive / Cloudflare R2 + more. Only compatible with OpenSteamTools / BetterSteamTools at the moment. Don't forget to configure it by clicking "Manage" after enabling, then restart Steam!</value></data>
+  <data name="Mode_CloudRedirect_AddonDesc" xml:space="preserve"><value>Stores Steam Cloud saves in Cabinet, including games without a Steam license. Compatible with OpenSteamTools / BetterSteamTools. Connect Cabinet in Settings, then enable this add-on.</value></data>
   <data name="Mode_CloudRedirect_Locked" xml:space="preserve"><value>Select OpenSteamTools / BetterSteamTools to use CloudRedirect.</value></data>
   <data name="Mode_CloudRedirect_Enable" xml:space="preserve"><value>Enable</value></data>
   <data name="Mode_CloudRedirect_Disable" xml:space="preserve"><value>Disable</value></data>
@@ -727,8 +727,22 @@ Cancel - keep downloading</value></data>
   <data name="CabinetCloud_Details" xml:space="preserve"><value>{0} · last sync {1}</value></data>
   <data name="CabinetCloud_Friends" xml:space="preserve"><value>Show friends' real games</value></data>
   <data name="CabinetCloud_FriendsHint" xml:space="preserve"><value>Applies after Steam restarts. Enables Steam's local debugging port. Remove .cef-enable-remote-debugging and restart Steam to close the port.</value></data>
-  <data name="CabinetCloud_InvalidLink" xml:space="preserve"><value>Invalid connect link. Use an HTTPS Cabinet Cloud link.</value></data>
-  <data name="CabinetCloud_ConnectError" xml:space="preserve"><value>Could not connect. Check your link and server, then try again.</value></data>
+  <data name="CabinetCloud_InvalidLink" xml:space="preserve"><value>Invalid connect link or server. Use an HTTPS Cabinet server origin.</value></data>
+  <data name="CabinetCloud_ConnectError" xml:space="preserve"><value>The Cabinet server could not complete the connection. Try again later.</value></data>
   <data name="CabinetCloud_DisconnectError" xml:space="preserve"><value>Could not save the disconnected state. Try again.</value></data>
   <data name="CabinetCloud_DebugError" xml:space="preserve"><value>Could not enable Steam debugging. Check access to the Steam folder.</value></data>
+  <data name="CabinetCloud_PairingCode" xml:space="preserve"><value>Pairing code</value></data>
+  <data name="CabinetCloud_CodePlaceholder" xml:space="preserve"><value>XXXX-XXXX-XXXX</value></data>
+  <data name="CabinetCloud_PairingHelp" xml:space="preserve"><value>Get a code from cabinet.mc2.onl on the Connect page. Connect links still work.</value></data>
+  <data name="CabinetCloud_ServerAdvanced" xml:space="preserve"><value>Server (advanced)</value></data>
+  <data name="CabinetCloud_ServerPlaceholder" xml:space="preserve"><value>https://cabinet.mc2.onl</value></data>
+  <data name="CabinetCloud_ServerHelp" xml:space="preserve"><value>Leave empty for cabinet.mc2.onl. HTTPS origins only.</value></data>
+  <data name="CabinetCloud_InvalidCode" xml:space="preserve"><value>Invalid or expired pairing code. Get a new code from the Connect page.</value></data>
+  <data name="CabinetCloud_TooManyAttempts" xml:space="preserve"><value>Too many attempts. Try again in a minute.</value></data>
+  <data name="CabinetCloud_Unreachable" xml:space="preserve"><value>Cannot reach the Cabinet server. Check your connection and try again.</value></data>
+  <data name="CabinetCloud_NotHttps" xml:space="preserve"><value>The Cabinet server must use HTTPS.</value></data>
+  <data name="CabinetCloud_ConfigError" xml:space="preserve"><value>Cabinet is connected, but CloudRedirect could not be configured. Check access to its settings and try enabling the add-on again.</value></data>
+  <data name="Mode_CloudRedirect_Cabinet" xml:space="preserve"><value>Saves go to Cabinet ({0})</value></data>
+  <data name="Mode_CloudRedirect_ConnectCabinet" xml:space="preserve"><value>Connect Cabinet in Settings to store saves</value></data>
+  <data name="Mode_CloudRedirect_RestartHint" xml:space="preserve"><value>Restart Steam after changing CloudRedirect or its Cabinet connection.</value></data>
 </root>

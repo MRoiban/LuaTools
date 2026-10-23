@@ -18,6 +18,11 @@ Run `publish/LuaTools.exe`. The app uses a separate profile from upstream. Origi
 
 The hosted fork is [MRoiban/LuaTools](https://github.com/MRoiban/LuaTools), on `security-hardened`; the original repository remains tracked as `upstream`. Release setup and update trust are documented in [RELEASES.md](RELEASES.md).
 
+Connect Cabinet in Settings with the 12-character code from the Connect page at cabinet.mc2.onl
+(existing connect links still work). The optional advanced server must be an HTTPS origin.
+With the CloudRedirect add-on enabled on the Mode page, Steam Cloud saves automatically go to
+Cabinet, including games without a Steam license. Restart Steam to pick up configuration changes.
+
 ## Dependencies and updates
 
 Application updates come only from this fork and require its pinned release-key signature. Downloading and staging are separate from the explicit restart that applies an update. Do not install upstream releases over this fork. NuGet dependency versions are captured in committed lockfiles; review lockfile changes before restoring updated dependencies. A lockfile provides reproducibility, not a source audit of each package.

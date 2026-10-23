@@ -8,20 +8,25 @@ Rows document integrations, not trust in their responses. HTTPS authenticates th
 
 ## Account and lua.tools APIs
 
-### Cabinet (default off; unmodified upstream engine)
+### Cabinet (default off; upstream engine with LuaTools pairing integration)
 
-Source-derived from the user's Cabinet (`Services/Cabinet/Engine`, ported verbatim). It behaves
-exactly as standalone Cabinet does.
+Source-derived from the user's Cabinet (`Services/Cabinet/Engine`, with small marked integration changes).
+Cabinet retains its separate, user-selected server transport rather than the app HTTP host allowlist.
 
 | Destination | Use |
 | --- | --- |
 | `raw.githubusercontent.com/MRoiban/cabinet/main/workshop-profiles.json` | Daily Workshop profile refresh, with a last-good cache and built-in fallback |
-| Cabinet Cloud server from the user's connect link (default `cabinet.mc2.onl`) | Opt-in: saves, achievements, stats, playtime, plus presence (Steam account ID and the real game being played) shared with users of that server |
+| Cabinet Cloud server from the pairing Server field or connect link (default `cabinet.mc2.onl`) | Opt-in: saves, achievements, stats, playtime, plus presence (Steam account ID and the real game being played) shared with users of that server |
+| `{Cabinet server}/api/pair` (default `https://cabinet.mc2.onl/api/pair`) | POST JSON `{code, deviceName}`, no account headers/cookies or redirects; `User-Agent: LuaTools/<version> (Windows)`. A single-use 12-character code returns one Cabinet token, verified through GET `/api/me` and shared with the enabled CloudRedirect add-on. 401 = invalid/expired/used code; 429 = retry in a minute. |
 | `127.0.0.1:8080` (Steam's debugging port) | Friend labels in Steam's `SharedJSContext`, active only when Steam's `.cef-enable-remote-debugging` marker exists |
 
 Steam may contact its own servers in response to the helpers' local Steam IPC. The Cloud
 login is shared with standalone Cabinet through `%LOCALAPPDATA%\Cabinet\cloud.json`
 (CurrentUser DPAPI).
+CloudRedirect uses `%APPDATA%\CloudRedirect\tokens_cabinet.json` (raw CurrentUser DPAPI bytes)
+and a merged `config.json` selecting `cabinet`, both token-path entries and `auto_update_dll: false`.
+Disconnecting removes the Cabinet token and provider selection while retaining other settings.
+Restart Steam after changing the add-on or Cabinet connection.
 
 All rows below are source-derived. `Bearer session` is the signed-in Supabase access token; `anon apikey` is the compiled public Supabase client key. Secret values are intentionally omitted.
 
@@ -94,7 +99,7 @@ Eight independent default-off switches permit subsequent explicit Install/Run ac
 | `github.com/madoiscool/BetterSteamTools/releases/download/{version}/OpenSteamTool-{version}-Release.zip` | ZIP payload | Constructed BST transfer retains original path; BetterSteamTools opt-in and an explicit install authorize staging after quarantine acquisition. |
 | `api.github.com/repos/{owner}/{repo}/releases/tags/{tag}` | Specific release metadata | `UnlockerService` generic fixed-tag / history lookup; owner/repo derive from the compiled mode definitions. No current mode has a non-null fixed tag. |
 | `api.github.com/repos/{owner}/{repo}/releases?per_page=100` | Release list | `UnlockerService` prior matching build lookup; compiled mode repositories above. |
-| `api.github.com/repos/Selectively11/CloudRedirect/releases/latest` | GUI EXE and/or `cloud_redirect.dll` assets | Original metadata/asset selection retained; CloudRedirect opt-in covers explicit GUI/add-on installation and launch, with receipt integrity checks. |
+| `api.github.com/repos/MRoiban/cloudredirect-moon/releases/latest` | GUI EXE and/or `cloud_redirect.dll` assets | Fork metadata/asset selection; DLL digest verification and opt-in installation remain in place. Cabinet configuration is automatic when connected and the add-on is enabled. |
 | `api.github.com/repos/atom0s/Steamless/releases/latest` | ZIP containing CLI and plugin DLLs | Original first ZIP selection retained; Steamless opt-in and an explicit patch action authorize bundle preparation and CLI use. |
 | `api.github.com/repos/mendy-tools/DepotDownloaderMod/releases/latest` | ZIP containing self-contained depot tool bundle | Original first ZIP selection retained; DepotDownloaderMod opt-in and explicit download action authorize tool preparation/use. Local Steam/lua key extraction remains local. |
 | `api.github.com/repos/SteamAutoCracks/Steam-auto-crack/releases/latest` | ZIP containing SAC GUI bundle, release tag | Throttled metadata-only status retained; explicit first-ZIP acquisition occurs before runtime checks. Status/background jobs never acquire/install artifacts. |

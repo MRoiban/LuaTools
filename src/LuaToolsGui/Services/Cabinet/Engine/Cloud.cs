@@ -31,6 +31,7 @@ using System.Threading;
 using CabinetEngine.Compat;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using LuaToolsGui.Services.Cabinet; // LuaTools: shared pairing input and redemption.
 
 namespace CabinetEngine
 {
@@ -55,8 +56,20 @@ namespace CabinetEngine
         internal static bool Connected { get { return Client.Connected; } }
         internal static string UserName { get { return Client.Connected ? Client.UserName : null; } }
         internal static string Server { get { return Client.Server; } }
+        internal static string Token { get { return Client.Token; } }
+        internal static int ConnectionVersion { get { return Client.ConnectionVersion; } }
         internal static bool Busy { get { return busy; } }
-        internal static void QueueConnect(string url) { string s, t; CloudClient.ParseLink(url.Trim(), out s, out t); connects.Enqueue(url.Trim()); }
+        internal static void QueueConnect(string input) { ValidateConnect(input); connects.Enqueue(input.Trim()); }
+        static void ValidateConnect(string input)
+        { if (CabinetConnectInput.Classify(input) == CabinetConnectInputKind.Invalid) throw new CabinetConnectException(CabinetConnectFailure.InvalidCode); }
+        // LuaTools: Settings awaits authentication and persistence, so failures reach its error label.
+        internal static void Connect(string input, string server)
+        {
+            if (busy) throw new InvalidOperationException("Cabinet Cloud is busy");
+            busy = true;
+            try { Client.Connect(input, server); requested = true; }
+            finally { busy = false; }
+        }
         internal static void RequestSync() { requested = true; }
         internal static void Disconnect() { if (!busy) Client.Disconnect(); }
         public static void Configure(Action<string> log, Func<string, string, int, bool> queueMinutes,
@@ -128,7 +141,9 @@ namespace CabinetEngine
                 ThreadPool.QueueUserWorkItem(delegate
                 {
                     try { Client.Connect(url); message = L.T("Connected to Cabinet Cloud as ", "Connecté à Cabinet Cloud en tant que ") + Client.UserName; requested = true; }
-                    catch (Exception ex) { Log("connection failed: " + ex.Message); }
+                    catch (CabinetConnectException ex) { message = ex.Message; Log("connection failed"); }
+                    catch (WebException ex) { message = ex.Response == null ? LuaToolsGui.Resources.Strings.CabinetCloud_Unreachable : LuaToolsGui.Resources.Strings.CabinetCloud_ConnectError; Log("connection failed"); }
+                    catch { message = LuaToolsGui.Resources.Strings.CabinetCloud_ConnectError; Log("connection failed"); }
                     finally { busy = false; }
                 });
             }
@@ -174,18 +189,20 @@ namespace CabinetEngine
         {
             using (var f = new Form())
             {
-                f.Text = L.T("Connect Cabinet Cloud", "Connecter Cabinet Cloud"); f.Width = 540; f.Height = 180;
+                f.Text = L.T("Connect Cabinet Cloud", "Connecter Cabinet Cloud"); f.Width = 540; f.Height = 210;
                 f.FormBorderStyle = FormBorderStyle.FixedDialog; f.StartPosition = FormStartPosition.CenterScreen; f.MaximizeBox = false; f.MinimizeBox = false;
-                var label = new Label { Left = 12, Top = 12, Width = 500, Text = L.T("Paste your Cabinet Cloud connect link:", "Collez votre lien de connexion Cabinet Cloud :") };
-                var input = new TextBox { Left = 12, Top = 40, Width = 500 };
-                var ok = new Button { Left = 310, Top = 80, Width = 100, Text = L.T("Connect", "Connexion") };
-                var cancel = new Button { Left = 420, Top = 80, Width = 90, Text = L.T("Cancel", "Annuler"), DialogResult = DialogResult.Cancel };
+                var label = new Label { Left = 12, Top = 12, Width = 500, Text = LuaToolsGui.Resources.Strings.CabinetCloud_PairingCode };
+                var input = new TextBox { Left = 12, Top = 40, Width = 500, PlaceholderText = LuaToolsGui.Resources.Strings.CabinetCloud_CodePlaceholder };
+                input.TextChanged += delegate { if (CabinetConnectInput.TryNormalizeCode(input.Text, out string code)) { string formatted = CabinetConnectInput.FormatCode(code); if (input.Text != formatted) { input.Text = formatted; input.SelectionStart = formatted.Length; } } };
+                var help = new Label { Left = 12, Top = 70, Width = 500, Height = 40, Text = LuaToolsGui.Resources.Strings.CabinetCloud_PairingHelp };
+                var ok = new Button { Left = 310, Top = 120, Width = 100, Text = L.T("Connect", "Connexion") };
+                var cancel = new Button { Left = 420, Top = 120, Width = 90, Text = L.T("Cancel", "Annuler"), DialogResult = DialogResult.Cancel };
                 ok.Click += delegate
                 {
-                    try { string s, t; CloudClient.ParseLink(input.Text.Trim(), out s, out t); connects.Enqueue(input.Text.Trim()); f.DialogResult = DialogResult.OK; f.Close(); }
-                    catch { MessageBox.Show(f, L.T("Invalid connect link.", "Lien de connexion invalide."), L.T("Cabinet Cloud", "Cabinet Cloud")); }
+                    try { QueueConnect(input.Text); f.DialogResult = DialogResult.OK; f.Close(); }
+                    catch { MessageBox.Show(f, LuaToolsGui.Resources.Strings.CabinetCloud_InvalidCode, L.T("Cabinet Cloud", "Cabinet Cloud")); }
                 };
-                f.Controls.AddRange(new Control[] { label, input, ok, cancel }); f.AcceptButton = ok; f.CancelButton = cancel; f.ShowDialog();
+                f.Controls.AddRange(new Control[] { label, input, help, ok, cancel }); f.AcceptButton = ok; f.CancelButton = cancel; f.ShowDialog();
             }
         }
     }
@@ -348,11 +365,13 @@ namespace CabinetEngine
         public string UserName { get { return settings.userName ?? settings.deviceName; } }
         public bool Connected { get { return !string.IsNullOrEmpty(settings.token); } }
         public string Server { get { return settings.server; } } // LuaTools: shown in Settings
+        internal string Token { get { return settings.token; } } // LuaTools: CloudRedirect only.
+        internal int ConnectionVersion { get; private set; }
         internal string Device { get { return settings.deviceId; } }
         internal CloudClient(string data, string root, Func<string, long> getMinutes, Action<string> logger)
         {
             Data = data; Root = root; minutes = getMinutes; log = logger; Directory.CreateDirectory(Data);
-            settings = new CloudSettings { server = "https://cabinet.mc2.onl", deviceId = Guid.NewGuid().ToString("N"), deviceName = Environment.MachineName };
+            settings = new CloudSettings { server = LuaToolsGui.AppConfig.CabinetDefaultServer, deviceId = Guid.NewGuid().ToString("N"), deviceName = Environment.MachineName };
             string p = Path.Combine(Data, "cloud.json");
             if (File.Exists(p))
             {
@@ -396,9 +415,21 @@ namespace CabinetEngine
             server = origin.GetLeftPart(UriPartial.Authority);
             if (!Regex.IsMatch(token, @"^cab_[A-Za-z0-9_-]{43}$")) throw new FormatException("Invalid token");
         }
-        public void Connect(string link)
+        public void Connect(string input, string pairingServer = null)
         {
-            string server, token; ParseLink(link, out server, out token); var previous = settings; var previousJournal = journal;
+            string server, token;
+            if (CabinetConnectInput.TryNormalizeCode(input, out string code))
+            {
+                server = CabinetConnectInput.NormalizeServer(pairingServer);
+                using (var pairing = new CabinetPairingClient()) token = pairing.RedeemAsync(server, code).GetAwaiter().GetResult();
+            }
+            else { ParseLink(input.Trim(), out server, out token); }
+            ConnectCredentials(server, token);
+        }
+        // LuaTools: links and single-use pairing codes share verification and DPAPI persistence.
+        internal void ConnectCredentials(string server, string token)
+        {
+            var previous = settings; var previousJournal = journal;
             settings = new CloudSettings { server = server, token = token, deviceId = previous.deviceId, deviceName = previous.deviceName };
             try
             {
@@ -413,11 +444,16 @@ namespace CabinetEngine
                     string archive = Path.Combine(Data, "cloud-account-" + Hash(Encoding.UTF8.GetBytes(server + ":" + settings.userId)) + ".json");
                     journal = File.Exists(archive) ? Json.Deserialize<CloudJournal>(File.ReadAllText(archive)) : new CloudJournal();
                 }
-                SaveSettings(); SaveJournal();
+                SaveSettings(); SaveJournal(); ConnectionVersion++;
             }
             catch { settings = previous; journal = previousJournal; throw; }
         }
-        public void Disconnect() { settings.token = null; SaveSettings(); }
+        public void Disconnect()
+        {
+            string token = settings.token; settings.token = null;
+            try { SaveSettings(); ConnectionVersion++; }
+            catch { settings.token = token; throw; }
+        }
         internal static Dictionary<string, object> Map(object obj) { return obj as Dictionary<string, object> ?? new Dictionary<string, object>(); }
         internal static long Num(object obj) { return Convert.ToInt64(obj, CultureInfo.InvariantCulture); }
         internal static long Now() { return (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds; }

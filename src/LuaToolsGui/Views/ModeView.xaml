@@ -256,6 +256,10 @@
                                 Foreground="#9ca3af"
                                 Text="{Binding CloudRedirectStatusText}"
                                 TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0" FontSize="12" Foreground="#9ca3af"
+                                Text="{Binding CloudRedirectCabinetText}" TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0" FontSize="12" Foreground="#7c8593"
+                                Text="{x:Static res:Strings.Mode_CloudRedirect_RestartHint}" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <ui:Button
