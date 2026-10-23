@@ -546,6 +546,10 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
     // meaningful when the Nightly BST mode is active.
 
     private const string CloudRedirectDll = "cloud_redirect.dll";
+
+    internal bool IsCloudRedirectAddonEnabled => settings.IsExecutableWorkflowEnabled("CloudRedirectAddon")
+        && steam.EffectivePath is { } root && steam.IsValid
+        && File.Exists(Path.Combine(root, CloudRedirectDll)) && ReadOpenSteamToolCloudEnabled(root);
     private (GithubRelease release, DateTime fetchedAt)? _crReleaseCache;
 
     private async Task<GithubRelease?> FetchCloudRedirectReleaseAsync(bool forceRefresh, CancellationToken ct)

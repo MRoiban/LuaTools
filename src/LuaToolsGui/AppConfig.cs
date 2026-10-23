@@ -14,6 +14,7 @@ public static class AppConfig
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzYwMzkzNzYsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.f_-K38u3odjltP-g_67FVmG32Vg-_-k-lNBvIaVUVBM";
 
     public const string ApiBaseUrl = "https://lua.tools";
+    public const string CabinetDefaultServer = "https://cabinet.mc2.onl";
 
     // Bot-provisioned (Discord /login placeholder) accounts use this email domain. Detecting it on
     // startup lets the app prompt the user to re-link their full lua.tools account.
@@ -45,7 +46,7 @@ public static class AppConfig
 
     // Original release repositories remain available for inert acquisition; execution requires independent review.
     public const string SteamlessRepo = "atom0s/Steamless";
-    public const string CloudRedirectRepo = "Selectively11/CloudRedirect";
+    public const string CloudRedirectRepo = "MRoiban/cloudredirect-moon";
     public const string SteamAutoCrackRepo = "SteamAutoCracks/Steam-auto-crack";
     public const string DepotDownloaderRepo = "mendy-tools/DepotDownloaderMod";
     public const string ManifestBackendUrl = "";

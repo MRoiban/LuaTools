@@ -676,4 +676,19 @@ public static class Strings
     public static string CabinetCloud_ConnectError => Get(nameof(CabinetCloud_ConnectError));
     public static string CabinetCloud_DisconnectError => Get(nameof(CabinetCloud_DisconnectError));
     public static string CabinetCloud_DebugError => Get(nameof(CabinetCloud_DebugError));
+    public static string CabinetCloud_PairingCode => Get(nameof(CabinetCloud_PairingCode));
+    public static string CabinetCloud_CodePlaceholder => Get(nameof(CabinetCloud_CodePlaceholder));
+    public static string CabinetCloud_PairingHelp => Get(nameof(CabinetCloud_PairingHelp));
+    public static string CabinetCloud_ServerAdvanced => Get(nameof(CabinetCloud_ServerAdvanced));
+    public static string CabinetCloud_ServerPlaceholder => Get(nameof(CabinetCloud_ServerPlaceholder));
+    public static string CabinetCloud_ServerHelp => Get(nameof(CabinetCloud_ServerHelp));
+    public static string CabinetCloud_InvalidCode => Get(nameof(CabinetCloud_InvalidCode));
+    public static string CabinetCloud_TooManyAttempts => Get(nameof(CabinetCloud_TooManyAttempts));
+    public static string CabinetCloud_Unreachable => Get(nameof(CabinetCloud_Unreachable));
+    public static string CabinetCloud_NotHttps => Get(nameof(CabinetCloud_NotHttps));
+    public static string CabinetCloud_ConfigError => Get(nameof(CabinetCloud_ConfigError));
+    public static string Mode_CloudRedirect_Cabinet => Get(nameof(Mode_CloudRedirect_Cabinet));
+    public static string Mode_CloudRedirect_CabinetReady => Get(nameof(Mode_CloudRedirect_CabinetReady));
+    public static string Mode_CloudRedirect_ConnectCabinet => Get(nameof(Mode_CloudRedirect_ConnectCabinet));
+    public static string Mode_CloudRedirect_RestartHint => Get(nameof(Mode_CloudRedirect_RestartHint));
 }

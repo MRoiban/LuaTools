@@ -581,11 +581,16 @@
                     <StackPanel Margin="14,12" Visibility="{Binding CloudConnected, Converter={StaticResource InverseBoolToVis}}">
                         <TextBlock FontWeight="Medium" Text="{x:Static res:Strings.CabinetCloud_NotConnected}"/>
                         <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_SharingHint}"/>
+                        <TextBlock Margin="0,10,0,0" Text="{x:Static res:Strings.CabinetCloud_PairingCode}"/>
                         <Grid Margin="0,10,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <ui:TextBox Text="{Binding CloudConnectLink, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Static res:Strings.CabinetCloud_LinkPlaceholder}" AutomationProperties.Name="{x:Static res:Strings.CabinetCloud_LinkPlaceholder}"/>
+                            <ui:TextBox Text="{Binding CloudPairingCode, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Static res:Strings.CabinetCloud_CodePlaceholder}" AutomationProperties.Name="{x:Static res:Strings.CabinetCloud_PairingCode}"/>
                             <ui:Button Grid.Column="1" Margin="8,0,0,0" Appearance="Primary" Content="{x:Static res:Strings.CabinetCloud_Connect}" Command="{Binding ConnectCloudCommand}"/>
                         </Grid>
+                        <TextBlock Margin="0,6,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_PairingHelp}"/>
+                        <TextBlock Margin="0,10,0,4" Text="{x:Static res:Strings.CabinetCloud_ServerAdvanced}"/>
+                        <ui:TextBox Text="{Binding CloudServer, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{x:Static res:Strings.CabinetCloud_ServerPlaceholder}" AutomationProperties.Name="{x:Static res:Strings.CabinetCloud_ServerAdvanced}"/>
+                        <TextBlock Margin="0,6,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_ServerHelp}"/>
                     </StackPanel>
                     <Grid Margin="14,12" Visibility="{Binding CloudConnected, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -596,6 +601,7 @@
                         <ui:Button Grid.Column="1" Margin="12,0,0,0" Content="{x:Static res:Strings.CabinetCloud_Disconnect}" Command="{Binding DisconnectCloudCommand}"/>
                     </Grid>
                     <TextBlock Margin="14,0,14,12" FontSize="12" Foreground="#f87171" TextWrapping="Wrap" Text="{Binding CloudError}" Visibility="{Binding CloudError, Converter={StaticResource NullToCollapsed}}"/>
+                    <TextBlock Margin="14,0,14,12" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.Mode_CloudRedirect_RestartHint}"/>
                     <Border Style="{StaticResource RowDivider}"/>
                     <Grid Margin="14,12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

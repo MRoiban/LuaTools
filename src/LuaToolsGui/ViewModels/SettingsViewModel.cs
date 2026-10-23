@@ -75,9 +75,18 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnFastFetchChanged(bool value) => _settings.FastFetch = value;
 
-    [ObservableProperty] private string _cloudConnectLink = "";
+    [ObservableProperty] private string _cloudPairingCode = "";
+    [ObservableProperty] private string _cloudServer = "";
     [ObservableProperty] private string? _cloudError;
     [ObservableProperty] private bool _cloudBusy;
+    partial void OnCloudPairingCodeChanged(string value)
+    {
+        if (CabinetConnectInput.TryNormalizeCode(value, out var code))
+        {
+            string formatted = CabinetConnectInput.FormatCode(code);
+            if (value != formatted) CloudPairingCode = formatted;
+        }
+    }
     public bool CloudConnected => _cloud?.Status.Connected == true;
     public bool CloudFriendsEnabled => CabinetEnabled && CloudConnected && !CloudBusy;
     public string CloudIdentity => string.Format(Resources.Strings.CabinetCloud_ConnectedAs, _cloud?.Status.UserName);
@@ -104,7 +113,8 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_cloud is null || !CabinetEnabled || CloudBusy) return;
         CloudBusy = true; CloudError = null;
-        try { await _cloud.ConnectAsync(CloudConnectLink.Trim()); CloudConnectLink = ""; }
+        try { await _cloud.ConnectAsync(CloudPairingCode.Trim(), CloudServer); CloudPairingCode = ""; }
+        catch (CabinetConnectException ex) { CloudError = ex.Message; }
         catch (FormatException) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; }
         catch { CloudError = Resources.Strings.CabinetCloud_ConnectError; }
         finally { CloudBusy = false; RefreshCloud(); }
