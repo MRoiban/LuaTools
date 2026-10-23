@@ -22,6 +22,12 @@ Automatic executable installation, background executable/plugin updates and auto
 
 The Steam plugin setting covers its loader/archive and frontend, including external polyfills. Its runtime starts after a successful explicit install, stops when disabled, and never activates at app startup. The local bridge requires an ephemeral per-process token and rejects browser Origin headers. The injector uses exact receipt-verified frontend bytes; its built-in polyfill is application source. CloudRedirect or another external program may change itself after launch: changed files fail this application's next receipt check, but the application cannot constrain an external program's behavior after it starts.
 
+## Managed archive parsing
+
+SharpCompress is a managed archive library pinned to **0.50.7** under the MIT license, with no transitive dependencies on .NET 8. The Online-Fix.me provider needs its RAR5/AES support to read password-protected fix archives. ZIP-only support cannot read the observed RAR uploads. Launching user-installed 7-Zip or WinRAR would add an external executable workflow, depend on a separately installed native tool and delegate extraction paths to that tool.
+
+SharpCompress only parses untrusted archive data; it never executes archive content. Application code validates every path, rejects links and multi-volume input, bounds actual decompressed bytes and rebuilds a ZIP for the existing executable-fix validation and consent path. The library does not establish publisher authenticity, benign content or independent approval of any fix.
+
 ## Review required before approval
 
 Before adding any independent allowlist entry, separately audit the complete pinned source revision, build inputs, transitive dependencies and produced binaries/scripts. Record the reviewer, exact source revision, reproducible build or independent provenance, artifact hashes and scope of findings here. Populate per-file entries (`component/relative-path`) and the reviewed archive (`component/archive.zip`) only after that review. Do not treat a digest obtained from the same release API, download manifest or local consent receipt as independent evidence. The explicit consent path stays distinct from this reviewed-hash policy.
