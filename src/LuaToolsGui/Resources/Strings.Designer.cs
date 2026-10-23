@@ -688,6 +688,7 @@ public static class Strings
     public static string CabinetCloud_NotHttps => Get(nameof(CabinetCloud_NotHttps));
     public static string CabinetCloud_ConfigError => Get(nameof(CabinetCloud_ConfigError));
     public static string Mode_CloudRedirect_Cabinet => Get(nameof(Mode_CloudRedirect_Cabinet));
+    public static string Mode_CloudRedirect_CabinetReady => Get(nameof(Mode_CloudRedirect_CabinetReady));
     public static string Mode_CloudRedirect_ConnectCabinet => Get(nameof(Mode_CloudRedirect_ConnectCabinet));
     public static string Mode_CloudRedirect_RestartHint => Get(nameof(Mode_CloudRedirect_RestartHint));
 }

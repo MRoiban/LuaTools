@@ -158,7 +158,9 @@ public partial class ModeViewModel : ObservableObject
             var cabinet = new CloudRedirectCabinetConfig().Status();
             CloudRedirectCabinetText = cabinet.Configured && cabinet.Server is { } server
                 ? string.Format(Resources.Strings.Mode_CloudRedirect_Cabinet, new Uri(server).Host)
-                : Resources.Strings.Mode_CloudRedirect_ConnectCabinet;
+                : _cabinet?.Status.Cloud is { Connected: true, ServerHost: { } host }
+                    ? string.Format(Resources.Strings.Mode_CloudRedirect_CabinetReady, host)
+                    : Resources.Strings.Mode_CloudRedirect_ConnectCabinet;
         }
         catch { CloudRedirectCabinetText = Resources.Strings.CabinetCloud_ConfigError; }
     }

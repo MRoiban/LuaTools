@@ -743,6 +743,7 @@ Cancel - keep downloading</value></data>
   <data name="CabinetCloud_NotHttps" xml:space="preserve"><value>The Cabinet server must use HTTPS.</value></data>
   <data name="CabinetCloud_ConfigError" xml:space="preserve"><value>Cabinet is connected, but CloudRedirect could not be configured. Check access to its settings and try enabling the add-on again.</value></data>
   <data name="Mode_CloudRedirect_Cabinet" xml:space="preserve"><value>Saves go to Cabinet ({0})</value></data>
+  <data name="Mode_CloudRedirect_CabinetReady" xml:space="preserve"><value>Cabinet is connected ({0}): saves go there once this add-on is enabled</value></data>
   <data name="Mode_CloudRedirect_ConnectCabinet" xml:space="preserve"><value>Connect Cabinet in Settings to store saves</value></data>
   <data name="Mode_CloudRedirect_RestartHint" xml:space="preserve"><value>Restart Steam after changing CloudRedirect or its Cabinet connection.</value></data>
 </root>

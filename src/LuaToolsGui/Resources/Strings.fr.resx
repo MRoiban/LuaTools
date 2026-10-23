@@ -708,6 +708,7 @@ Annuler - continuer le téléchargement</value></data>
   <data name="CabinetCloud_NotHttps" xml:space="preserve"><value>Le serveur Cabinet doit utiliser HTTPS.</value></data>
   <data name="CabinetCloud_ConfigError" xml:space="preserve"><value>Cabinet est connecté, mais CloudRedirect n’a pas pu être configuré. Vérifiez l’accès à ses paramètres, puis réactivez le module.</value></data>
   <data name="Mode_CloudRedirect_Cabinet" xml:space="preserve"><value>Sauvegardes stockées dans Cabinet ({0})</value></data>
+  <data name="Mode_CloudRedirect_CabinetReady" xml:space="preserve"><value>Cabinet est connecté ({0}) : vos sauvegardes y seront stockées une fois ce module activé</value></data>
   <data name="Mode_CloudRedirect_ConnectCabinet" xml:space="preserve"><value>Connectez Cabinet dans les paramètres pour stocker vos sauvegardes</value></data>
   <data name="Mode_CloudRedirect_RestartHint" xml:space="preserve"><value>Redémarrez Steam après avoir modifié CloudRedirect ou sa connexion à Cabinet.</value></data>
 </root>
