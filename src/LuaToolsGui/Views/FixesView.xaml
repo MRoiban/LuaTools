@@ -401,6 +401,30 @@
                                   DataContext="{Binding DataContext, ElementName=Root}">
                         <!-- Right margin keeps the scrollbar in its own lane instead of sitting on the rows. -->
                         <StackPanel Margin="0,0,12,0">
+                            <TextBlock
+                                Margin="0,0,0,8"
+                                FontSize="11.5"
+                                Foreground="#9ca3af"
+                                Text="{Binding OnlineFixMeStatus}"
+                                TextWrapping="Wrap"
+                                Visibility="{Binding HasOnlineFixMeStatus, Converter={StaticResource BoolToVis}}" />
+                            <Grid Margin="0,0,0,12"
+                                  Visibility="{Binding ShowOnlineFixMeFolderInput, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox
+                                    Margin="0,0,8,0"
+                                    PlaceholderText="{x:Static res:Strings.Fixes_OnlineFixMe_FolderPlaceholder}"
+                                    ToolTip="{x:Static res:Strings.Fixes_OnlineFixMe_FolderPlaceholder}"
+                                    Text="{Binding OnlineFixMeFolderUrl, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:Button
+                                    Grid.Column="1"
+                                    Padding="10,7"
+                                    Command="{Binding LookupOnlineFixMeCommand}"
+                                    Content="{x:Static res:Strings.Fixes_OnlineFixMe_Lookup}" />
+                            </Grid>
                             <!-- Loading fixes -->
                             <StackPanel
                                 Margin="0,8,0,0"
@@ -466,7 +490,7 @@
                                             CornerRadius="8">
                                             <StackPanel>
                                                 <TextBlock FontSize="13.5" FontWeight="SemiBold" Foreground="#e5e7eb"
-                                                           Text="{Binding Title, StringFormat={x:Static res:Strings.Fixes_Build}}" TextWrapping="Wrap" />
+                                                           Text="{Binding DisplayTitle}" TextWrapping="Wrap" />
                                                 <TextBlock Margin="0,2,0,0" FontSize="11" Foreground="#6b7280" Text="{Binding DateLabel}" />
 
                                                 <!-- Tag chips -->

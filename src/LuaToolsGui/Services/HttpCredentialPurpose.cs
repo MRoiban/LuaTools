@@ -2,7 +2,7 @@ using System.Net.Http;
 
 namespace LuaToolsGui.Services;
 
-public enum HttpCredentialPurpose { LuaToolsApi, Supabase, Hubcap }
+public enum HttpCredentialPurpose { LuaToolsApi, Supabase, Hubcap, OnlineFixMe }
 
 public static class HttpCredentialPurposeExtensions
 {
@@ -35,6 +35,14 @@ public static class HttpCredentialPurposeExtensions
                     || path.StartsWith("/api/v1/manifest/", StringComparison.Ordinal)
                     && IsDigits(path["/api/v1/manifest/".Length..]))
                 && !request.Headers.Contains("apikey") && !request.Headers.Contains("Cookie"),
+            HttpCredentialPurpose.OnlineFixMe => get && uri.Scheme == Uri.UriSchemeHttps
+                && uri.IdnHost == "uploads.online-fix.me" && uri.Port == 2053
+                && uri.UserInfo.Length == 0 && uri.Query.Length == 0 && uri.Fragment.Length == 0
+                && path.Split('/') is ["", "uploads", var folder, "Fix%20Repair", var file]
+                && OnlineFixMe.OnlineFixMeListing.DecodeSegment(folder) is not null
+                && OnlineFixMe.OnlineFixMeListing.DecodeSegment(file) is not null
+                && request.Headers.Contains("Cookie")
+                && request.Headers.Authorization is null && !request.Headers.Contains("apikey"),
             _ => false
         };
         if (!allowed) throw new HttpRequestException("Credentials are not permitted for this request purpose and route.");

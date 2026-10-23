@@ -358,6 +358,11 @@
         "resolved": "13.0.1",
         "contentHash": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A=="
       },
+      "SharpCompress": {
+        "type": "Transitive",
+        "resolved": "0.50.7",
+        "contentHash": "amxjOlPKUFb33ohAVahPCCBHLtToYOOb6JGyM40q8DnT6KYoBLW1TtW6uLEXbv40S7ej6ikf6VmAXGBaFL6Klg=="
+      },
       "System.Diagnostics.DiagnosticSource": {
         "type": "Transitive",
         "resolved": "10.0.9",
@@ -466,6 +471,7 @@
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Markdig.Wpf": "[0.5.0.1, )",
           "Microsoft.Extensions.Hosting": "[10.0.9, )",
+          "SharpCompress": "[0.50.7, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.9, )",
           "Velopack": "[1.2.0, )",
           "VirtualizingWrapPanel": "[2.5.1, )",

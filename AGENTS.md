@@ -18,6 +18,10 @@ Default branch **`security-hardened`**. A push to it runs `.github/workflows/bui
 - Tests can't run on Linux (no Microsoft.WindowsDesktop.App); they only compile. Use `scripts/verify --ci`.
 - Cabinet (Bedrock) rejects writes from non-browser clients without an `Origin: <server>` header (403 FORBIDDEN).
 - Live Windows checks are done by the integrator on a real Windows 11 PC (not available to agents).
+- `DOTNET_SYSTEM_NET_DISABLEIPV6=1` is needed at RUN time too (any net8 harness hitting the network): hosts
+  with AAAA records (e.g. uploads.online-fix.me) otherwise hang until the response budget and look "Unavailable".
+- To exercise WPF-free service code for real on Linux, build a throwaway net8.0 console in /tmp that
+  `<Compile Include=...>`s the needed src files (stub the few WPF-bound types); see design/onlinefix-provider.
 - Adding a NuGet package changes `packages.lock.json` (restore with `--use-lock-file`, then commit
   the lock) and needs an entry in `DEPENDENCY_TRUST.md`; prefer the BCL.
 

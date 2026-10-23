@@ -691,4 +691,14 @@ public static class Strings
     public static string Mode_CloudRedirect_CabinetReady => Get(nameof(Mode_CloudRedirect_CabinetReady));
     public static string Mode_CloudRedirect_ConnectCabinet => Get(nameof(Mode_CloudRedirect_ConnectCabinet));
     public static string Mode_CloudRedirect_RestartHint => Get(nameof(Mode_CloudRedirect_RestartHint));
+
+    public static string Fixes_OnlineFixMe_Provider => Get(nameof(Fixes_OnlineFixMe_Provider));
+    public static string Fixes_OnlineFixMe_NoInstalledGames => Get(nameof(Fixes_OnlineFixMe_NoInstalledGames));
+    public static string Fixes_OnlineFixMe_Searching => Get(nameof(Fixes_OnlineFixMe_Searching));
+    public static string Fixes_OnlineFixMe_NotFound => Get(nameof(Fixes_OnlineFixMe_NotFound));
+    public static string Fixes_OnlineFixMe_Unavailable => Get(nameof(Fixes_OnlineFixMe_Unavailable));
+    public static string Fixes_OnlineFixMe_InvalidFolder => Get(nameof(Fixes_OnlineFixMe_InvalidFolder));
+    public static string Fixes_OnlineFixMe_FolderPlaceholder => Get(nameof(Fixes_OnlineFixMe_FolderPlaceholder));
+    public static string Fixes_OnlineFixMe_Lookup => Get(nameof(Fixes_OnlineFixMe_Lookup));
+    public static string Fixes_OnlineFixMe_ArchiveDescription => Get(nameof(Fixes_OnlineFixMe_ArchiveDescription));
 }

@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using LuaToolsGui.Models;
+using LuaToolsGui.Services.OnlineFixMe;
 
 namespace LuaToolsGui.Services.Downloads;
 
@@ -25,7 +26,8 @@ public class ManifestJobFactory(
     DepotDownloaderService depotTool,
     SteamDepotInfo depotInfo,
     SteamAutoCrackService sac,
-    AppliedFixIndexService fixIndex)
+    AppliedFixIndexService fixIndex,
+    OnlineFixMeClient onlineFixMe)
 {
     // ── Job builders ─────────────────────────────────────────────────
 
@@ -110,6 +112,56 @@ public class ManifestJobFactory(
                 : ApplyDenuvoFix(file, appId, fixId, gameName)),
             ConfirmAsync: null,
             OnFinished: onFinished);
+    }
+
+    /// <summary>An executable Fix Repair archive, using the existing fix apply and undo contract.</summary>
+    public DownloadJob CreateOnlineFixMeJob(
+        Uri folder, string archiveName, long appId, string gameName,
+        Action<DownloadItem, JobResult?>? onFinished = null)
+    {
+        string fixId = OnlineFixMeFixIds.ForArchive(archiveName);
+        return new DownloadJob(
+            DownloadKind.DenuvoFix,
+            $"onlinefixme:{appId}:{fixId}",
+            appId, gameName, archiveName, covers.GetLocalPath(appId),
+            (_, progress, ct) =>
+            {
+                ExecutableFixPolicy.RequireEnabled(settings);
+                if (library.GetInstallDir(appId) is null)
+                    throw new DownloadAbortedException(
+                        string.Format(Resources.Strings.Fixes_Toast_GameNotFound_Body, gameName));
+                return onlineFixMe.DownloadArchiveAsync(folder, archiveName, progress, ct);
+            },
+            (file, _, ct) => Task.FromResult(ApplyOnlineFixMe(file, appId, fixId, gameName, ct)),
+            OnFinished: onFinished);
+    }
+
+    internal static string GetOnlineFixMeConvertedZipPath(string archivePath) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(archivePath))!, "converted.zip");
+
+    private JobResult ApplyOnlineFixMe(DownloadedFile file, long appId, string fixId, string gameName, CancellationToken ct)
+    {
+        string? convertedPath = null;
+        try
+        {
+            convertedPath = GetOnlineFixMeConvertedZipPath(file.FilePath);
+            OnlineFixMeArchiveConverter.ConvertToZip(file.FilePath, AppConfig.OnlineFixMeArchivePassword, convertedPath, ct);
+            File.Delete(file.FilePath);
+            ct.ThrowIfCancellationRequested();
+            return ApplyDenuvoFix(new DownloadedFile(convertedPath, "converted.zip"), appId, fixId, gameName);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            toast.Show(Resources.Strings.Fixes_Toast_CouldntApply, ex.Message, error: true);
+            return new JobResult(false, ex.Message);
+        }
+        finally
+        {
+            // DeleteStaged removes one file, not its directory or siblings.
+            DeleteStaged(file.FilePath);
+            if (convertedPath is not null) DeleteStaged(convertedPath);
+        }
     }
 
     /// <summary>

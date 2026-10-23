@@ -20,7 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LuaToolsGui\LuaToolsGui.csproj" />
-    <None Update="Fixtures\cloudredirect-config.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Fixtures\OnlineFixMe\*.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

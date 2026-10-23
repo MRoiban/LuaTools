@@ -746,4 +746,13 @@ Cancel - keep downloading</value></data>
   <data name="Mode_CloudRedirect_CabinetReady" xml:space="preserve"><value>Cabinet is connected ({0}): saves go there once this add-on is enabled</value></data>
   <data name="Mode_CloudRedirect_ConnectCabinet" xml:space="preserve"><value>Connect Cabinet in Settings to store saves</value></data>
   <data name="Mode_CloudRedirect_RestartHint" xml:space="preserve"><value>Restart Steam after changing CloudRedirect or its Cabinet connection.</value></data>
+  <data name="Fixes_OnlineFixMe_Provider" xml:space="preserve"><value>Online-Fix.me</value></data>
+  <data name="Fixes_OnlineFixMe_NoInstalledGames" xml:space="preserve"><value>No installed Steam games found. Install a game or check your Steam folder in Settings.</value></data>
+  <data name="Fixes_OnlineFixMe_Searching" xml:space="preserve"><value>Online-Fix.me: searching…</value></data>
+  <data name="Fixes_OnlineFixMe_NotFound" xml:space="preserve"><value>Online-Fix.me: no Fix Repair archive found under “{0}”.</value></data>
+  <data name="Fixes_OnlineFixMe_Unavailable" xml:space="preserve"><value>Online-Fix.me is unavailable. Try again later.</value></data>
+  <data name="Fixes_OnlineFixMe_InvalidFolder" xml:space="preserve"><value>Invalid folder URL. Paste this game’s uploads.online-fix.me folder URL.</value></data>
+  <data name="Fixes_OnlineFixMe_FolderPlaceholder" xml:space="preserve"><value>Paste the game’s Online-Fix.me uploads folder URL</value></data>
+  <data name="Fixes_OnlineFixMe_Lookup" xml:space="preserve"><value>Look up</value></data>
+  <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Fix Repair archive</value></data>
 </root>

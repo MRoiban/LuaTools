@@ -74,6 +74,7 @@ public partial class App : Application
                 services.AddTransient<DropInstallViewModel>(); // one per page (Home, Add)
                 services.AddSingleton<AuthService>();
                 services.AddSingleton<LuaToolsApiClient>();
+                services.AddSingleton<Services.OnlineFixMe.OnlineFixMeClient>();
                 services.AddSingleton<HubcapService>();
                 // Central download queue. Singleton + hosted service (same pattern as HttpServerService
                 // below): the hosted lifetime runs the scheduler pump, and view models resolve the same
