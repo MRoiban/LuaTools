@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Build, check and test LuaTools. On Linux the WPF test host cannot run, so tests
+# are compiled but only executed with --ci (Windows GitHub runner) or on Windows.
+#   scripts/verify        local: restore, build, i18n, plugin tests
+#   scripts/verify --ci   also push the current branch and run build.yml on windows-2022
+set -uo pipefail
+cd "$(dirname "$0")/.."
+export PATH="$HOME/.dotnet:$PATH" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+# IPv6 to api.nuget.org hangs on this network.
+export DOTNET_SYSTEM_NET_DISABLEIPV6=1
+fail=() ; log=$(mktemp)
+step() { local name=$1; shift; if "$@" >"$log" 2>&1; then echo "ok   $name"; else echo "FAIL $name"; tail -25 "$log"; fail+=("$name"); fi; }
+win=""; [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || -n "${WINDIR:-}" ]] && win=1
+props=(-p:EnableWindowsTargeting=true)
+step restore dotnet restore LuaToolsGui.sln --locked-mode "${props[@]}"
+step build   dotnet build LuaToolsGui.sln -c Release --no-restore "${props[@]}" -warnaserror:CS8600,CS8602,CS8603,CS8604
+step i18n    python3 -I scripts/check-i18n.py
+step plugin  node --test src/LuaToolsGui/Plugin/steam-plugin.test.cjs
+if [[ -n $win ]]; then
+  step test dotnet test LuaToolsGui.sln -c Release --no-build --no-restore
+elif [[ "${1:-}" == --ci ]]; then
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  if [[ $branch == security-hardened ]]; then echo "FAIL ci: refusing to dispatch on security-hardened (it releases)"; fail+=(ci)
+  else
+    step push git push -q -f origin "HEAD:refs/heads/$branch"
+    sha=$(git rev-parse HEAD)
+    gh workflow run build.yml -R MRoiban/LuaTools --ref "$branch" >/dev/null && sleep 8
+    id=$(gh run list -R MRoiban/LuaTools -w build.yml -b "$branch" -L 5 --json databaseId,headSha -q "[.[]|select(.headSha==\"$sha\")][0].databaseId")
+    if [[ -z $id ]]; then echo "FAIL ci: run not found"; fail+=(ci)
+    elif gh run watch -R MRoiban/LuaTools "$id" --exit-status >/dev/null 2>&1; then echo "ok   ci (windows tests, run $id)"
+    else echo "FAIL ci (run $id)"; gh run view -R MRoiban/LuaTools "$id" --log-failed 2>/dev/null | grep -E "error|Failed|FAIL|Assert" | head -30; fail+=(ci); fi
+  fi
+else
+  echo "skip tests (WPF test host needs Windows; run scripts/verify --ci)"
+fi
+rm -f "$log"
+if ((${#fail[@]})); then echo "VERIFY FAIL: ${fail[*]}"; exit 1; else echo "VERIFY PASS"; fi
