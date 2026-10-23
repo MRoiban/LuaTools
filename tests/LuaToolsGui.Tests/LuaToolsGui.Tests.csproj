@@ -20,6 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LuaToolsGui\LuaToolsGui.csproj" />
+    <EmbeddedResource Include="Fixtures\OnlineFixMe\*.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -9,6 +9,49 @@ namespace LuaToolsGui.Tests;
 public class OutboundNetworkPolicyTests
 {
     [Theory]
+    [InlineData("https://uploads.online-fix.me:2053/uploads/")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads/Raft/Fix%20Repair/")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads/Raft/Fix%20Repair/Raft_Fix_Repair_Steam.rar")]
+    public async Task OnlineFixPortIsAllowedForItsUploadsPath(string url)
+    {
+        var handler = new Stub(_ => new(HttpStatusCode.OK));
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), handler);
+        using var response = await http.GetAsync(url);
+        Assert.Equal(new Uri(url), Assert.Single(handler.Uris));
+    }
+
+    [Theory]
+    [InlineData("https://lua.tools:2053/uploads/Raft/")]
+    [InlineData("https://evil.example:2053/uploads/Raft/")]
+    [InlineData("https://uploads.online-fix.me.evil.example:2053/uploads/Raft/")]
+    [InlineData("https://uploads.online-fix.me:2053/")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads")]
+    [InlineData("https://uploads.online-fix.me:2053/Uploads/Raft/")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads-other/Raft/")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads/Raft/?x=1")]
+    [InlineData("https://uploads.online-fix.me:2053/uploads/Raft/#fragment")]
+    [InlineData("https://user@uploads.online-fix.me:2053/uploads/Raft/")]
+    [InlineData("https://uploads.online-fix.me:443/uploads/Raft/")]
+    [InlineData("https://uploads.online-fix.me:8443/uploads/Raft/")]
+    [InlineData("http://uploads.online-fix.me:2053/uploads/Raft/")]
+    public async Task OnlineFixPortDoesNotBroadenOtherOriginsPathsOrClients(string url)
+    {
+        var handler = new Stub(_ => new(HttpStatusCode.OK));
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => http.GetAsync(url));
+        Assert.Empty(handler.Uris);
+        Assert.Throws<HttpRequestException>(() => new OutboundNetworkPolicy(dns: true).Validate(new Uri(url)));
+    }
+
+    [Fact]
+    public void OnlineFixIsNotAllowedOnDnsOrLoopbackOnlyClients()
+    {
+        var uri = new Uri("https://uploads.online-fix.me:2053/uploads/Raft/");
+        Assert.Throws<HttpRequestException>(() => new OutboundNetworkPolicy(dns: true).Validate(uri));
+        Assert.Throws<HttpRequestException>(() => new OutboundNetworkPolicy([8080]).Validate(uri));
+    }
+
+    [Theory]
     [InlineData("http://167.235.229.108/check_apis")]
     [InlineData("http://lua.tools/")]
     [InlineData("https://lua.tools.evil.example/")]

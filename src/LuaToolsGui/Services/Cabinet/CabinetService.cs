@@ -16,6 +16,10 @@ namespace LuaToolsGui.Services.Cabinet;
 public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedService, IDisposable
 {
     private readonly ICabinetSettings _settings;
+    private readonly UnlockerService? _unlocker;
+    private readonly CloudRedirectCabinetConfig _cloudRedirectConfig = new();
+    private int _cloudRedirectVersion = -1;
+    private bool _cloudRedirectEnabled;
     private readonly AutoResetEvent _wake = new(false);
     private readonly ConcurrentQueue<Action> _work = new();
     private readonly CancellationTokenSource _stop = new();
@@ -33,7 +37,8 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedServ
     private static string StatePath => Path.Combine(CabinetApp.DataDir, "state.txt");
     private static string SyncTimesPath => Path.Combine(CabinetApp.DataDir, "sync-times.txt");
 
-    public CabinetService(ICabinetSettings settings) { _settings = settings; }
+    public CabinetService(ICabinetSettings settings, UnlockerService? unlocker = null)
+    { _settings = settings; _unlocker = unlocker; }
 
     public CabinetStatus Status => Volatile.Read(ref _status);
     public event EventHandler<CabinetStatus>? StatusChanged;
@@ -78,14 +83,62 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedServ
         set { if (value && !CabinetEngine.FriendLabels.DebugEnabled() && !CabinetEngine.FriendLabels.EnableDebug()) throw new IOException("Steam debugging marker not created"); }
     }
 
-    public Task ConnectAsync(string link, CancellationToken cancellationToken = default)
+    public Task ConnectAsync(string input, string? server = null, CancellationToken cancellationToken = default)
     {
-        try { CloudClient.ParseLink(link.Trim(), out _, out _); }
-        catch (Exception ex) { throw new FormatException("Invalid Cabinet Cloud link", ex); }
-        return OnEngine(() => CloudSync.QueueConnect(link));
+        string origin = CabinetConnectInput.NormalizeServer(server);
+        if (CabinetConnectInput.Classify(input) == CabinetConnectInputKind.Invalid)
+            throw new CabinetConnectException(CabinetConnectFailure.InvalidCode);
+        return OnEngine(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_instance is null) throw new InvalidOperationException("Cabinet engine is not active");
+            try { CloudSync.Connect(input.Trim(), origin); }
+            catch (System.Net.WebException ex)
+            {
+                throw new CabinetConnectException(ex.Response is null
+                    ? CabinetConnectFailure.Unreachable : CabinetConnectFailure.Server);
+            }
+            try { ReconcileCloudRedirect(); }
+            catch { throw new CabinetConnectException(CabinetConnectFailure.Config); }
+            finally { PublishCloudSnapshot(); }
+        });
     }
 
-    public Task DisconnectAsync(CancellationToken cancellationToken = default) => OnEngine(CloudSync.Disconnect);
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => OnEngine(() =>
+    {
+        if (CloudSync.Busy) throw new InvalidOperationException("Cabinet Cloud is busy");
+        CloudSync.Disconnect();
+        try { _cloudRedirectConfig.Remove(); _cloudRedirectVersion = CloudSync.ConnectionVersion; }
+        finally { PublishCloudSnapshot(); }
+    });
+
+    // Called after the add-on is enabled. Credentials stay on the engine thread.
+    internal Task ConfigureCloudRedirectAsync() => OnEngine(() => ReconcileCloudRedirect(force: true));
+
+    private void ReconcileCloudRedirect(bool force = false)
+    {
+        if (CloudSync.Busy) return;
+        bool enabled = _unlocker?.IsCloudRedirectAddonEnabled == true;
+        if (!force && _cloudRedirectVersion == CloudSync.ConnectionVersion && _cloudRedirectEnabled == enabled) return;
+        if (CloudSync.Connected && enabled) _cloudRedirectConfig.Apply(CloudSync.Server, CloudSync.Token);
+        else if (!CloudSync.Connected) _cloudRedirectConfig.Remove();
+        _cloudRedirectVersion = CloudSync.ConnectionVersion;
+        _cloudRedirectEnabled = enabled;
+    }
+
+    private CabinetCloudStatus ReadCloudStatus()
+    {
+        string? server = CloudSync.Server;
+        string? host = Uri.TryCreate(server, UriKind.Absolute, out var uri) ? uri.Host : server;
+        return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
+    }
+
+    private void PublishCloudSnapshot()
+    {
+        var cloud = ReadCloudStatus();
+        Publish(Status with { Cloud = cloud });
+        try { CloudStatusChanged?.Invoke(this, cloud); } catch { }
+    }
 
     Task ICabinetCloud.SyncNowAsync(CancellationToken cancellationToken) => OnEngine(CloudSync.RequestSync);
 
@@ -192,6 +245,8 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedServ
             var schemaMsg = _schemas?.Tick(running.Count > 0 || (_shadows?.HasChildren ?? false), false);
             if (_shadows is not null) foreach (var id in _shadows.Tick(running, account)) _state.Remove(id);
             var cloudMsg = CloudSync.Tick(running.Count > 0 || (_shadows?.HasChildren ?? false) || (_schemas?.HasChild ?? false) || Shadows.AnyHelper(), running);
+            try { ReconcileCloudRedirect(); }
+            catch { CabinetApp.Log("CloudRedirect Cabinet configuration could not be saved"); }
             if (cloudMsg != null) Message(cloudMsg);
             if (schemaMsg != null) Message(schemaMsg);
             if (msg != null) Message(msg);
@@ -252,9 +307,7 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedServ
         CabinetCloudStatus cloud;
         try
         {
-            string? server = CloudSync.Server;
-            string? host = Uri.TryCreate(server, UriKind.Absolute, out var uri) ? uri.Host : server;
-            cloud = CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
+            cloud = ReadCloudStatus();
         }
         catch { cloud = CabinetCloudStatus.Disconnected; }
         bool cloudChanged = cloud != Status.Cloud;

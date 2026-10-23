@@ -14,6 +14,7 @@ public static class AppConfig
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3NzYwMzkzNzYsImV4cCI6MTg5MzQ1NjAwMCwicm9sZSI6ImFub24iLCJpc3MiOiJzdXBhYmFzZSJ9.f_-K38u3odjltP-g_67FVmG32Vg-_-k-lNBvIaVUVBM";
 
     public const string ApiBaseUrl = "https://lua.tools";
+    public const string CabinetDefaultServer = "https://cabinet.mc2.onl";
 
     // Bot-provisioned (Discord /login placeholder) accounts use this email domain. Detecting it on
     // startup lets the app prompt the user to re-link their full lua.tools account.
@@ -45,7 +46,7 @@ public static class AppConfig
 
     // Original release repositories remain available for inert acquisition; execution requires independent review.
     public const string SteamlessRepo = "atom0s/Steamless";
-    public const string CloudRedirectRepo = "Selectively11/CloudRedirect";
+    public const string CloudRedirectRepo = "MRoiban/cloudredirect-moon";
     public const string SteamAutoCrackRepo = "SteamAutoCracks/Steam-auto-crack";
     public const string DepotDownloaderRepo = "mendy-tools/DepotDownloaderMod";
     public const string ManifestBackendUrl = "";
@@ -58,4 +59,14 @@ public static class AppConfig
     public static readonly string[] GithubApiMirrors = ["https://lua.tools/api/gh/"];
     public static readonly string[] GithubDownloadMirrors =
         ["https://ghproxy.net/", "https://ghfast.top/", "https://gh.ddlc.top/"];
+
+    // ── Online-Fix.me fix provider ──────────────────────────────────
+    // Public "Fix Repair" archives only; full-game uploads are never listed or downloaded. The host serves
+    // on port 2053, which OutboundNetworkPolicy allows for this origin and the /uploads/ path alone.
+    public const string OnlineFixMeUploadsBase = "https://uploads.online-fix.me:2053/uploads/";
+    public const string OnlineFixMeFixRepairFolder = "Fix Repair";
+    // Public archive password published by the site; not a credential.
+    public const string OnlineFixMeArchivePassword = "online-fix.me";
+    // Same User-Agent the Linux provider (Luamoon) ships with; the live listing check used it.
+    public const string OnlineFixMeUserAgent = "LuaTools-Fixes/0.2";
 }

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services;
+using LuaToolsGui.Services.Cabinet;
 
 namespace LuaToolsGui.ViewModels;
 
@@ -49,6 +50,7 @@ public partial class ModeViewModel : ObservableObject
     private readonly ToastService _toast;
     private readonly SteamService _steam;
     private readonly CloudRedirectService _cloudRedirect;
+    private readonly CabinetService? _cabinet;
 
     public ObservableCollection<ModeCardViewModel> Cards { get; } = [];
 
@@ -67,12 +69,13 @@ public partial class ModeViewModel : ObservableObject
     private ModeCardViewModel? _pendingCard;
 
     public ModeViewModel(UnlockerService unlocker, ToastService toast, SteamService steam,
-        CloudRedirectService cloudRedirect)
+        CloudRedirectService cloudRedirect, CabinetService? cabinet = null)
     {
         _unlocker = unlocker;
         _toast = toast;
         _steam = steam;
         _cloudRedirect = cloudRedirect;
+        _cabinet = cabinet;
     }
 
     /// <summary>CloudRedirect "Manage" (add-on panel): download (cache) the CloudRedirect GUI and launch it.</summary>
@@ -127,6 +130,7 @@ public partial class ModeViewModel : ObservableObject
     private bool _cloudRedirectUpdateAvailable;
 
     [ObservableProperty] private string _cloudRedirectStatusText = "";
+    [ObservableProperty] private string _cloudRedirectCabinetText = "";
 
     public string CloudRedirectToggleText => CloudRedirectEnabled
         ? Resources.Strings.Mode_CloudRedirect_Disable
@@ -149,6 +153,16 @@ public partial class ModeViewModel : ObservableObject
             : s.UpdateAvailable ? Resources.Strings.Mode_CloudRedirect_Status_UpdateAvailable
             : s.Enabled ? Resources.Strings.Mode_CloudRedirect_Status_Enabled
             : Resources.Strings.Mode_CloudRedirect_Status_Disabled;
+        try
+        {
+            var cabinet = new CloudRedirectCabinetConfig().Status();
+            CloudRedirectCabinetText = cabinet.Configured && cabinet.Server is { } server
+                ? string.Format(Resources.Strings.Mode_CloudRedirect_Cabinet, new Uri(server).Host)
+                : _cabinet?.Status.Cloud is { Connected: true, ServerHost: { } host }
+                    ? string.Format(Resources.Strings.Mode_CloudRedirect_CabinetReady, host)
+                    : Resources.Strings.Mode_CloudRedirect_ConnectCabinet;
+        }
+        catch { CloudRedirectCabinetText = Resources.Strings.CabinetCloud_ConfigError; }
     }
 
     /// <summary>Enable/disable the add-on (edits opensteamtool.toml; first enable also downloads the dll).
@@ -172,6 +186,12 @@ public partial class ModeViewModel : ObservableObject
             var result = enabling
                 ? await _unlocker.EnableCloudRedirectAsync(prog)
                 : _unlocker.DisableCloudRedirect();
+
+            if (result.Success && enabling && _cabinet is not null)
+            {
+                try { await _cabinet.ConfigureCloudRedirectAsync(); }
+                catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
+            }
 
             if (result.Success)
                 _toast.Show(CloudRedirectTitle, enabling
