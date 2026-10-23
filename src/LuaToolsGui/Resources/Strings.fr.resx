@@ -696,4 +696,13 @@ Annuler - continuer le téléchargement</value></data>
   <data name="CabinetCloud_ConnectError" xml:space="preserve"><value>Connexion impossible. Vérifiez le lien et le serveur, puis réessayez.</value></data>
   <data name="CabinetCloud_DisconnectError" xml:space="preserve"><value>Impossible d’enregistrer la déconnexion. Réessayez.</value></data>
   <data name="CabinetCloud_DebugError" xml:space="preserve"><value>Impossible d’activer le débogage de Steam. Vérifiez l’accès au dossier Steam.</value></data>
+  <data name="Fixes_OnlineFixMe_Provider" xml:space="preserve"><value>Online-Fix.me</value></data>
+  <data name="Fixes_OnlineFixMe_NoInstalledGames" xml:space="preserve"><value>Aucun jeu Steam installé trouvé. Installez un jeu ou vérifiez le dossier Steam dans les paramètres.</value></data>
+  <data name="Fixes_OnlineFixMe_Searching" xml:space="preserve"><value>Online-Fix.me : recherche en cours…</value></data>
+  <data name="Fixes_OnlineFixMe_NotFound" xml:space="preserve"><value>Online-Fix.me : aucune archive Fix Repair trouvée sous « {0} ».</value></data>
+  <data name="Fixes_OnlineFixMe_Unavailable" xml:space="preserve"><value>Online-Fix.me est indisponible. Réessayez plus tard.</value></data>
+  <data name="Fixes_OnlineFixMe_InvalidFolder" xml:space="preserve"><value>URL de dossier invalide. Collez l’URL du dossier de ce jeu sur uploads.online-fix.me.</value></data>
+  <data name="Fixes_OnlineFixMe_FolderPlaceholder" xml:space="preserve"><value>Collez l’URL du dossier du jeu sur Online-Fix.me</value></data>
+  <data name="Fixes_OnlineFixMe_Lookup" xml:space="preserve"><value>Rechercher</value></data>
+  <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Archive Fix Repair</value></data>
 </root>

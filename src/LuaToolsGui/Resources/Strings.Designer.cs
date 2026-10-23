@@ -676,4 +676,14 @@ public static class Strings
     public static string CabinetCloud_ConnectError => Get(nameof(CabinetCloud_ConnectError));
     public static string CabinetCloud_DisconnectError => Get(nameof(CabinetCloud_DisconnectError));
     public static string CabinetCloud_DebugError => Get(nameof(CabinetCloud_DebugError));
+
+    public static string Fixes_OnlineFixMe_Provider => Get(nameof(Fixes_OnlineFixMe_Provider));
+    public static string Fixes_OnlineFixMe_NoInstalledGames => Get(nameof(Fixes_OnlineFixMe_NoInstalledGames));
+    public static string Fixes_OnlineFixMe_Searching => Get(nameof(Fixes_OnlineFixMe_Searching));
+    public static string Fixes_OnlineFixMe_NotFound => Get(nameof(Fixes_OnlineFixMe_NotFound));
+    public static string Fixes_OnlineFixMe_Unavailable => Get(nameof(Fixes_OnlineFixMe_Unavailable));
+    public static string Fixes_OnlineFixMe_InvalidFolder => Get(nameof(Fixes_OnlineFixMe_InvalidFolder));
+    public static string Fixes_OnlineFixMe_FolderPlaceholder => Get(nameof(Fixes_OnlineFixMe_FolderPlaceholder));
+    public static string Fixes_OnlineFixMe_Lookup => Get(nameof(Fixes_OnlineFixMe_Lookup));
+    public static string Fixes_OnlineFixMe_ArchiveDescription => Get(nameof(Fixes_OnlineFixMe_ArchiveDescription));
 }

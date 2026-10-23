@@ -6,18 +6,21 @@ using CommunityToolkit.Mvvm.Input;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services;
 using LuaToolsGui.Services.Downloads;
+using LuaToolsGui.Services.OnlineFixMe;
 
 namespace LuaToolsGui.ViewModels;
 
 /// <summary>A game card in the Fixes grid.</summary>
-public partial class FixGameCardVm(DenuvoGameListing g) : ObservableObject
+public partial class FixGameCardVm(DenuvoGameListing g, bool isSynthetic = false) : ObservableObject
 {
+    public bool IsSynthetic { get; } = isSynthetic;
     public string AppId { get; } = g.AppId;
     public string Name { get; } = g.Name;
     public string? HeaderImage { get; } = g.HeaderImage;
     public int FixCount { get; } = g.FixCount;
     public IReadOnlyList<string> TagIds { get; } = g.Tags.Select(t => t.Id).ToList();
-    public string FixCountLabel => string.Format(Resources.Strings.Fixes_Count, FixCount);
+    public string FixCountLabel => IsSynthetic ? Resources.Strings.Fixes_OnlineFixMe_Provider
+        : string.Format(Resources.Strings.Fixes_Count, FixCount);
 
     /// <summary>Local cached cover path (set after CoverCache resolves it); bound via ImagePathToSource.</summary>
     [ObservableProperty] private string? _cover;
@@ -50,8 +53,11 @@ public partial class TagPillVm(DenuvoTag t) : ObservableObject
 }
 
 /// <summary>One fix (release) in the per-game flyout.</summary>
-public partial class FixItemVm(DenuvoFix f) : ObservableObject
+public partial class FixItemVm(DenuvoFix f, Uri? onlineFixMeFolder = null) : ObservableObject
 {
+    public Uri? OnlineFixMeFolder { get; } = onlineFixMeFolder;
+    public string DisplayTitle => OnlineFixMeFolder is not null ? Title
+        : string.Format(Resources.Strings.Fixes_Build, Title);
     public string Id { get; } = f.Id;
     public string Title { get; } = f.Title;
     public string? Description { get; } = f.Description;
@@ -106,7 +112,7 @@ public partial class FixItemVm(DenuvoFix f) : ObservableObject
 /// <summary>
 /// "Fixes" page: browse games with Denuvo fixes (grid + search + tag filter), open a game to see its
 /// fixes, and download a fix's manifest (force-locked lua install) or fix zip (extract into the game
-/// folder if installed). Downloads are auth-gated and count toward the 25/day limit (server-side).
+/// folder if installed). Lua.tools downloads are auth-gated; Online-Fix.me uses its public archives.
 /// </summary>
 public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 {
@@ -119,11 +125,18 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     private readonly ManifestJobFactory jobs;
     private readonly SteamLibraryService library;
     private readonly SteamService steam;
+    private readonly OnlineFixMeClient onlineFixMe;
+
+    internal const string OnlineFixMeTagId = "provider:online-fix.me";
+    private static DenuvoTag OnlineFixMeTag => new()
+    {
+        Id = OnlineFixMeTagId, Name = Resources.Strings.Fixes_OnlineFixMe_Provider,
+    };
 
     public FixesViewModel(
         LuaToolsApiClient api, AuthService auth, CoverCache covers, ToastService toast,
         SettingsService settings, DownloadQueue queue, ManifestJobFactory jobs,
-        SteamLibraryService library, SteamService steam)
+        SteamLibraryService library, SteamService steam, OnlineFixMeClient onlineFixMe)
     {
         this.api = api;
         this.auth = auth;
@@ -134,6 +147,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         this.jobs = jobs;
         this.library = library;
         this.steam = steam;
+        this.onlineFixMe = onlineFixMe;
         InitPageSize(settings.FixesPageSize);
     }
 
@@ -142,6 +156,8 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 
     // The master list; the displayed page slice lives in the base's Items collection.
     private List<FixGameCardVm> _allGames = [];
+    private List<FixGameCardVm> _onlineFixMeGames = [];
+    private bool _listingUnavailable;
 
     public ObservableCollection<TagPillVm> Tags { get; } = [];
 
@@ -170,7 +186,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     private bool _loaded;
 
     /// <summary>Gates the filter pills ("my games" + tags) behind a finished, non-empty listing.</summary>
-    public bool CanFilter => Loaded && _allGames.Count > 0;
+    public bool CanFilter => Loaded && Tags.Count > 0;
 
     /// <summary>Only show fix games the user has added (a lua in stplug-in). Mirrors Manage's "my games".</summary>
     [ObservableProperty]
@@ -217,6 +233,25 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     public ObservableCollection<FixItemVm> Fixes { get; } = [];
     [ObservableProperty] private bool _isLoadingFixes;
 
+    private int _detailVersion;
+    private int _onlineFixMeLookupVersion;
+    private string _onlineFixMeTitle = "";
+    private string? _detailInstallDir;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOnlineFixMeStatus))]
+    private string _onlineFixMeStatus = "";
+    public bool HasOnlineFixMeStatus => OnlineFixMeStatus.Length > 0;
+    [ObservableProperty] private bool _showOnlineFixMeFolderInput;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LookupOnlineFixMeCommand))]
+    private string _onlineFixMeFolderUrl = "";
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LookupOnlineFixMeCommand))]
+    private bool _isLookingUpOnlineFixMe;
+    private bool CanLookupOnlineFixMe => SelectedGame is not null && _detailInstallDir is not null
+        && !IsLookingUpOnlineFixMe && !string.IsNullOrWhiteSpace(OnlineFixMeFolderUrl);
+
     // Per-game tag filter (only meaningful when this game's fixes span multiple tags).
     private List<FixItemVm> _allFixes = [];
     public ObservableCollection<TagPillVm> FixTags { get; } = [];
@@ -234,20 +269,22 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     /// listing loads once per session.</param>
     public async Task LoadAsync(bool force = false)
     {
-        if (!force && _allGames.Count > 0) return; // load once per session
+        if (!force && Loaded) return; // load once per session
         IsLoading = true;
         try
         {
-            var data = await api.GetDenuvoListingsAsync();
-            if (data is null)
-            {
-                EmptyMessage = Resources.Strings.Fixes_Err_Load;
-                return;
-            }
-
-            _allGames = data.Games.Select(g => new FixGameCardVm(g)).ToList();
+            var installedTask = Task.Run(() => library.EnumerateInstalled().ToList());
+            DenuvoListingsResponse? data;
+            try { data = await api.GetDenuvoListingsAsync(); }
+            catch { data = null; } // The independent provider remains available during an API outage.
+            _listingUnavailable = data is null;
+            _allGames = data?.Games.Select(g => new FixGameCardVm(g)).ToList() ?? [];
+            _onlineFixMeGames = BuildOnlineFixMeCards(_allGames, await installedTask);
             Tags.Clear();
-            foreach (var t in data.Tags) Tags.Add(new TagPillVm(t));
+            if (data is not null)
+                foreach (var t in data.Tags) Tags.Add(new TagPillVm(t));
+            Tags.Add(new TagPillVm(OnlineFixMeTag));
+            foreach (var pill in Tags) pill.IsSelected = pill.Id == SelectedTagId;
 
             // "My games" filter source: the same stplug-in scan the Manage page uses, so the toggle
             // shows only games the user actually added. Scanned once per listing load.
@@ -257,7 +294,6 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
             OnPropertyChanged(nameof(MyGamesHint));
 
             ApplyFilter();
-            if (_allGames.Count == 0) EmptyMessage = Resources.Strings.Fixes_Empty_None;
         }
         catch
         {
@@ -267,6 +303,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         {
             IsLoading = false;
             Loaded = true; // gates the filter pills: they appear only once the listing settled
+            OnPropertyChanged(nameof(CanFilter));
         }
     }
 
@@ -292,16 +329,46 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 
     private void ApplyFilter()
     {
-        string q = SearchText.Trim();
-        IEnumerable<FixGameCardVm> shown = _allGames;
-        if (SelectedTagId is { } tag) shown = shown.Where(g => g.TagIds.Contains(tag));
-        if (MyGamesOnly) shown = shown.Where(g => long.TryParse(g.AppId, out long id) && _installedAppIds.Contains(id));
-        if (q.Length > 0) shown = shown.Where(g => g.Matches(q));
+        var shown = FilterGameCards(_allGames, _onlineFixMeGames, SelectedTagId, MyGamesOnly,
+            _installedAppIds, SearchText);
+        EmptyMessage = SelectedTagId == OnlineFixMeTagId && _onlineFixMeGames.Count == 0
+            ? Resources.Strings.Fixes_OnlineFixMe_NoInstalledGames
+            : _listingUnavailable && SelectedTagId != OnlineFixMeTagId
+                ? Resources.Strings.Fixes_Err_Load : Resources.Strings.Fixes_Empty_None;
 
         // Hand the filtered list to the base: it slices the visible page and (via OnPageSliced) warms
         // that page's covers.
         SetFiltered(shown);
     }
+
+    internal static IEnumerable<FixGameCardVm> FilterGameCards(
+        IReadOnlyList<FixGameCardVm> listing, IReadOnlyList<FixGameCardVm> installedCards,
+        string? tagId, bool myGamesOnly, IReadOnlySet<long> addedAppIds, string query)
+    {
+        IEnumerable<FixGameCardVm> shown = tagId == OnlineFixMeTagId ? installedCards : listing;
+        if (tagId is not null && tagId != OnlineFixMeTagId)
+            shown = shown.Where(g => g.TagIds.Contains(tagId));
+        if (myGamesOnly)
+            shown = shown.Where(g => long.TryParse(g.AppId, out long id) && addedAppIds.Contains(id));
+        string q = query.Trim();
+        return q.Length > 0 ? shown.Where(g => g.Matches(q)) : shown;
+    }
+
+    internal static List<FixGameCardVm> BuildOnlineFixMeCards(
+        IReadOnlyList<FixGameCardVm> listing, IEnumerable<SteamLibraryService.InstalledGame> installed)
+    {
+        var byId = listing.GroupBy(g => g.AppId).ToDictionary(g => g.Key, g => g.First());
+        return installed.DistinctBy(g => g.AppId)
+            .Select(g => byId.TryGetValue(g.AppId.ToString(), out var card) ? card : CreateInstalledCard(g))
+            .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static FixGameCardVm CreateInstalledCard(SteamLibraryService.InstalledGame game) => new(new DenuvoGameListing
+    {
+        AppId = game.AppId.ToString(), Name = game.Name,
+        HeaderImage = $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/header.jpg",
+        Tags = [OnlineFixMeTag],
+    }, isSynthetic: true);
 
     // ── Detail flyout ───────────────────────────────────────────────
 
@@ -312,14 +379,21 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     /// </summary>
     public async Task OpenForAppIdAsync(long appId)
     {
-        if (_allGames.Count == 0)
+        if (!Loaded)
             await LoadAsync();
 
         var game = _allGames.FirstOrDefault(g => g.AppId == appId.ToString());
+        if (game is null)
+        {
+            var installed = await Task.Run(() => library.EnumerateInstalled().FirstOrDefault(g => g.AppId == appId));
+            if (installed is not null) game = CreateInstalledCard(installed);
+        }
         if (game is null) return;
 
         SearchText = "";
         SelectedTagId = null;
+        MyGamesOnly = false;
+        foreach (var pill in Tags) pill.IsSelected = false;
         ApplyFilter();
 
         await OpenGame(game);
@@ -351,50 +425,138 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
             string.Format(Resources.Strings.Fixes_Toast_GameNotFound_Body, game.Name), error: true);
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task OpenGame(FixGameCardVm game)
     {
+        int version = ++_detailVersion;
+        ++_onlineFixMeLookupVersion;
         SelectedGame = game;
         _ = game.EnsureCoverAsync(covers); // ensure the flyout header image is cached too
         Fixes.Clear();
         _allFixes = [];
         FixTags.Clear();
         SelectedFixTagId = null;
+        OnPropertyChanged(nameof(HasFixTags));
         IsLoadingFixes = true;
+        _detailInstallDir = null;
+        OnlineFixMeFolderUrl = "";
+        ShowOnlineFixMeFolderInput = false;
+        OnlineFixMeStatus = Resources.Strings.Fixes_OnlineFixMe_Searching;
+        IsLookingUpOnlineFixMe = true;
+        var installedTask = Task.Run(() => long.TryParse(game.AppId, out long appId)
+            ? library.EnumerateInstalled().FirstOrDefault(g => g.AppId == appId) : null);
+        await Task.WhenAll(LoadLuaToolsFixesAsync(game, version, installedTask),
+            LoadOnlineFixMeAsync(game, version, installedTask));
+    }
+
+    private bool IsCurrentDetail(FixGameCardVm game, int version) =>
+        version == _detailVersion && ReferenceEquals(SelectedGame, game);
+
+    private async Task LoadLuaToolsFixesAsync(FixGameCardVm game, int version,
+        Task<SteamLibraryService.InstalledGame?> installedTask)
+    {
         try
         {
-            var data = await api.GetDenuvoFixesAsync(game.AppId);
+            var data = game.IsSynthetic ? null : await api.GetDenuvoFixesAsync(game.AppId);
+            var installed = await installedTask;
+            if (!IsCurrentDetail(game, version)) return;
             if (data is not null)
             {
-                _allFixes = data.Fixes.Select(f => new FixItemVm(f)).ToList();
-
-                // Is the game on disk? GetInstallDir walks libraryfolders.vdf + appmanifest_*.acf, so
-                // it's file I/O — off the UI thread. Resolved once here rather than per fix row.
-                string? installDir = long.TryParse(game.AppId, out long gameAppId)
-                    ? await Task.Run(() => library.GetInstallDir(gameAppId))
-                    : null;
-                foreach (var f in _allFixes)
+                var rows = data.Fixes.Select(f => new FixItemVm(f)).ToList();
+                foreach (var f in rows)
                 {
-                    f.GameInstalled = installDir is not null;
-                    // Whether this specific fix has been applied (its revert record on disk).
-                    f.IsApplied = installDir is not null
-                        && File.Exists(ManifestJobFactory.GetFixRecordPath(installDir, f.Id));
+                    SetInstalledState(f, installed?.InstallDir);
                 }
-
-                // Build the per-game filter pills from the distinct tags across this game's fixes.
-                // But only when there's more than one (a single tag is no filter).
-                var distinct = _allFixes.SelectMany(f => f.Tags)
-                    .GroupBy(t => t.Id).Select(g => g.First())
-                    .OrderBy(t => t.Name).ToList();
-                if (distinct.Count > 1)
-                    foreach (var t in distinct) FixTags.Add(new TagPillVm(t));
-
-                OnPropertyChanged(nameof(HasFixTags));
-                ApplyFixFilter();
+                _allFixes.InsertRange(0, rows);
+                RebuildFixTags();
             }
         }
-        catch { /* leave empty. Flyout shows "no fixes" */ }
-        finally { IsLoadingFixes = false; }
+        catch { /* The other provider can still supply fixes. */ }
+        finally { if (IsCurrentDetail(game, version)) IsLoadingFixes = false; }
+    }
+
+    private async Task LoadOnlineFixMeAsync(FixGameCardVm game, int version,
+        Task<SteamLibraryService.InstalledGame?> installedTask)
+    {
+        var installed = await installedTask;
+        if (!IsCurrentDetail(game, version)) return;
+        _detailInstallDir = installed?.InstallDir;
+        _onlineFixMeTitle = string.IsNullOrWhiteSpace(installed?.Name) ? game.Name : installed.Name;
+        await LookupOnlineFixMeForGameAsync(game, version, null, fresh: false);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanLookupOnlineFixMe))]
+    private async Task LookupOnlineFixMe()
+    {
+        if (SelectedGame is not { } game || _detailInstallDir is null) return;
+        await LookupOnlineFixMeForGameAsync(game, _detailVersion, OnlineFixMeFolderUrl.Trim(), fresh: true);
+    }
+
+    private async Task LookupOnlineFixMeForGameAsync(FixGameCardVm game, int detailVersion, string? folderOverride, bool fresh)
+    {
+        int lookupVersion = ++_onlineFixMeLookupVersion;
+        IsLookingUpOnlineFixMe = true;
+        OnlineFixMeStatus = Resources.Strings.Fixes_OnlineFixMe_Searching;
+        ShowOnlineFixMeFolderInput = false;
+        try
+        {
+            var result = await onlineFixMe.LookupAsync(_onlineFixMeTitle, folderOverride, fresh, CancellationToken.None);
+            if (!IsCurrentDetail(game, detailVersion) || lookupVersion != _onlineFixMeLookupVersion) return;
+            _allFixes.RemoveAll(f => f.OnlineFixMeFolder is not null);
+            if (result.Status == OnlineFixMeLookupStatus.Found && result.FolderUrl is { } folder)
+            {
+                foreach (var archive in result.Archives)
+                {
+                    var row = new FixItemVm(new DenuvoFix
+                    {
+                        Id = OnlineFixMeFixIds.ForArchive(archive.Name), Title = archive.Name,
+                        Description = string.Join(" · ", new[] { archive.SizeLabel, archive.DateLabel,
+                            Resources.Strings.Fixes_OnlineFixMe_ArchiveDescription }.Where(s => !string.IsNullOrWhiteSpace(s))),
+                        Tags = [OnlineFixMeTag], HasManifest = false, HasFix = true, FixFilename = archive.Name,
+                    }, folder);
+                    SetInstalledState(row, _detailInstallDir);
+                    _allFixes.Add(row);
+                }
+            }
+            OnlineFixMeStatus = result.Status switch
+            {
+                OnlineFixMeLookupStatus.Found => "",
+                OnlineFixMeLookupStatus.NotFound => string.Format(Resources.Strings.Fixes_OnlineFixMe_NotFound, _onlineFixMeTitle),
+                OnlineFixMeLookupStatus.InvalidFolder => Resources.Strings.Fixes_OnlineFixMe_InvalidFolder,
+                _ => Resources.Strings.Fixes_OnlineFixMe_Unavailable,
+            };
+            ShowOnlineFixMeFolderInput = _detailInstallDir is not null && result.Status != OnlineFixMeLookupStatus.Found;
+            RebuildFixTags();
+        }
+        catch
+        {
+            if (!IsCurrentDetail(game, detailVersion) || lookupVersion != _onlineFixMeLookupVersion) return;
+            OnlineFixMeStatus = Resources.Strings.Fixes_OnlineFixMe_Unavailable;
+            ShowOnlineFixMeFolderInput = _detailInstallDir is not null;
+        }
+        finally
+        {
+            if (IsCurrentDetail(game, detailVersion) && lookupVersion == _onlineFixMeLookupVersion)
+                IsLookingUpOnlineFixMe = false;
+        }
+    }
+
+    private static void SetInstalledState(FixItemVm fix, string? installDir)
+    {
+        fix.GameInstalled = installDir is not null;
+        fix.IsApplied = installDir is not null && File.Exists(ManifestJobFactory.GetFixRecordPath(installDir, fix.Id));
+    }
+
+    private void RebuildFixTags()
+    {
+        var distinct = _allFixes.SelectMany(f => f.Tags).GroupBy(t => t.Id).Select(g => g.First())
+            .OrderBy(t => t.Name).ToList();
+        if (distinct.Count < 2 || !distinct.Any(t => t.Id == SelectedFixTagId)) SelectedFixTagId = null;
+        FixTags.Clear();
+        if (distinct.Count > 1)
+            foreach (var tag in distinct) FixTags.Add(new TagPillVm(tag) { IsSelected = tag.Id == SelectedFixTagId });
+        OnPropertyChanged(nameof(HasFixTags));
+        ApplyFixFilter();
     }
 
     [RelayCommand]
@@ -414,7 +576,13 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     }
 
     [RelayCommand]
-    private void CloseDetail() => SelectedGame = null;
+    private void CloseDetail()
+    {
+        ++_detailVersion;
+        ++_onlineFixMeLookupVersion;
+        SelectedGame = null;
+        IsLookingUpOnlineFixMe = false;
+    }
 
     // ── Downloads ────────────────────────────────────────────────────
 
@@ -469,7 +637,8 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     /// </summary>
     private async Task RunDownload(FixItemVm fix, string slot)
     {
-        if (await PromptSignInIfGuestAsync(Resources.Strings.Fixes_SignIn)) return;
+        if (slot == "manifest" && !fix.HasManifest) return;
+        if (fix.OnlineFixMeFolder is null && await PromptSignInIfGuestAsync(Resources.Strings.Fixes_SignIn)) return;
         if (SelectedGame is not { } game) return;
         if (!long.TryParse(game.AppId, out long appId)) return;
 
@@ -487,8 +656,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
             ? fix.ManifestFilename ?? $"{game.AppId}.zip"
             : fix.FixFilename ?? $"{game.AppId}_fix.zip";
 
-        var job = jobs.CreateDenuvoJob(fix.Id, slot, fallback, appId, game.Name, fix.Title,
-            onFinished: (item, result) =>
+        Action<DownloadItem, JobResult?> onFinished = (item, result) =>
             {
                 // The factory already toasts success and install failures. A download that never got
                 // that far (network, auth, daily limit) still needs to say something.
@@ -502,7 +670,11 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
                 // A successfully applied fix unlocks the Revert button right away, without closing and
                 // reopening the flyout.
                 if (slot == "fix" && result?.Ok == true) fix.IsApplied = true;
-            });
+            };
+
+        var job = fix.OnlineFixMeFolder is { } folder
+            ? jobs.CreateOnlineFixMeJob(folder, fix.FixFilename!, appId, game.Name, onFinished)
+            : jobs.CreateDenuvoJob(fix.Id, slot, fallback, appId, game.Name, fix.Title, onFinished);
 
         var item = queue.Enqueue(job);
         if (slot == "manifest") fix.ManifestItem = item;

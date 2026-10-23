@@ -45,7 +45,7 @@ public class PluginAddCancellationTests
             var hubcap = new HubcapService(http);
             var covers = new CoverCache(Transport, Path.Combine(directory, "covers"));
             Queue = new DownloadQueue(new CacheService(Path.Combine(directory, "cache.json")), NullLogger<DownloadQueue>.Instance);
-            var jobs = new ManifestJobFactory(null!, hubcap, settings, null!, null!, covers, null!, null!, null!, null!, null!);
+            var jobs = new ManifestJobFactory(null!, hubcap, settings, null!, null!, covers, null!, null!, null!, null!, null!, null!);
             Service = new PluginAddService(null!, hubcap, settings, auth, Queue, jobs);
         }
         public void Dispose()
