@@ -15,7 +15,9 @@ Default branch **`security-hardened`**. A push to it runs `.github/workflows/bui
 ## Environment gotchas (Linux dev box)
 - dotnet lives in `~/.dotnet` (SDK 8.0.426). Builds need `-p:EnableWindowsTargeting=true` (verify sets it).
 - IPv6 to api.nuget.org hangs: export `DOTNET_SYSTEM_NET_DISABLEIPV6=1` (verify sets it).
-- Tests can't run on Linux (no Microsoft.WindowsDesktop.App); they only compile. No Wine here.
+- Tests can't run on Linux (no Microsoft.WindowsDesktop.App); they only compile. Use `scripts/verify --ci`.
+- Cabinet (Bedrock) rejects writes from non-browser clients without an `Origin: <server>` header (403 FORBIDDEN).
+- Live Windows checks are done by the integrator on a real Windows 11 PC (not available to agents).
 - Adding a NuGet package changes `packages.lock.json` (restore with `--use-lock-file`, then commit
   the lock) and needs an entry in `DEPENDENCY_TRUST.md`; prefer the BCL.
 
