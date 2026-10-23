@@ -58,4 +58,14 @@ public static class AppConfig
     public static readonly string[] GithubApiMirrors = ["https://lua.tools/api/gh/"];
     public static readonly string[] GithubDownloadMirrors =
         ["https://ghproxy.net/", "https://ghfast.top/", "https://gh.ddlc.top/"];
+
+    // ── Online-Fix.me fix provider ──────────────────────────────────
+    // Public "Fix Repair" archives only; full-game uploads are never listed or downloaded. The host serves
+    // on port 2053, which OutboundNetworkPolicy allows for this origin and the /uploads/ path alone.
+    public const string OnlineFixMeUploadsBase = "https://uploads.online-fix.me:2053/uploads/";
+    public const string OnlineFixMeFixRepairFolder = "Fix Repair";
+    // Public archive password published by the site; not a credential.
+    public const string OnlineFixMeArchivePassword = "online-fix.me";
+    // Same User-Agent the Linux provider (Luamoon) ships with; the live listing check used it.
+    public const string OnlineFixMeUserAgent = "LuaTools-Fixes/0.2";
 }
