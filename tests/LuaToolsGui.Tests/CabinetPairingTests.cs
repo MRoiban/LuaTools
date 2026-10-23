@@ -96,6 +96,7 @@ public sealed class CabinetPairingTests
             Assert.Equal("application/json", request.Content!.Headers.ContentType!.MediaType);
             Assert.Equal("LuaTools/" + typeof(AppConfig).Assembly.GetName().Version!.ToString(3) + " (Windows)",
                 request.Headers.UserAgent.ToString());
+            Assert.Equal("https://example.com:8443", Assert.Single(request.Headers.GetValues("Origin")));
             Assert.Null(request.Headers.Authorization);
             Assert.False(request.Headers.Contains("Cookie"));
             using var json = JsonDocument.Parse(await request.Content.ReadAsStringAsync());

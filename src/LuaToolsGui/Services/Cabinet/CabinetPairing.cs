@@ -85,6 +85,8 @@ internal sealed class CabinetPairingClient : IDisposable
             throw new CabinetConnectException(CabinetConnectFailure.InvalidCode);
         using var request = new HttpRequestMessage(HttpMethod.Post, server + "/api/pair");
         request.Headers.UserAgent.ParseAdd("LuaTools/" + typeof(AppConfig).Assembly.GetName().Version?.ToString(3) + " (Windows)");
+        // Bedrock rejects writes from non-browser clients without the pebble's Origin.
+        request.Headers.Add("Origin", server);
         request.Content = new StringContent(JsonSerializer.Serialize(new
         {
             code, deviceName = CabinetConnectInput.DeviceName(Environment.MachineName)
