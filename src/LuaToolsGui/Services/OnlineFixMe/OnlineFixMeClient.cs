@@ -45,7 +45,8 @@ public sealed class OnlineFixMeClient
             else
             {
                 (last, _) = await ReadListingAsync(folder, collectCookies: false, ct);
-                _cache[folder.AbsoluteUri] = new(_now(), last);
+                // A transient outage must not hide the provider for the whole cache window.
+                if (last.Status != OnlineFixMeLookupStatus.Unavailable) _cache[folder.AbsoluteUri] = new(_now(), last);
             }
             if (last.Status != OnlineFixMeLookupStatus.NotFound) return last;
         }
