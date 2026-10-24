@@ -369,6 +369,7 @@ public static class Strings
     public static string Add_Err_BaseGame => Get(nameof(Add_Err_BaseGame));
     public static string Add_Err_Generic => Get(nameof(Add_Err_Generic));
     public static string Add_Err_Download => Get(nameof(Add_Err_Download));
+    public static string Add_Err_DownloadReason => Get(nameof(Add_Err_DownloadReason));
     public static string Add_Confirm_Replace => Get(nameof(Add_Confirm_Replace));
     public static string Add_Confirm_NoChanges => Get(nameof(Add_Confirm_NoChanges));
     public static string Add_Status_Cancelled => Get(nameof(Add_Status_Cancelled));

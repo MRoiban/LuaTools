@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.Hosting;
@@ -379,11 +380,9 @@ public class DownloadQueue : IHostedService
         {
             if (file is not null) DeleteStaged(file.FilePath);
             _log.LogDebug(ex, "Download job failed: {Key}", item.Job.DedupeKey);
-            // Both of these carry a message meant for the user; anything else is unexpected, so it gets
-            // the generic text and the detail goes to the log above.
-            string message = ex is ApiException or DownloadAbortedException
-                ? ex.Message
-                : Resources.Strings.Add_Err_Download;
+            // The debug log above goes nowhere on a user's PC; this file is what they can send us.
+            PluginLog.Log($"Download {item.Job.DedupeKey} ({item.Job.SubTitle}) failed: {ex}");
+            string message = FailureMessage(ex);
 
             // Some aborts are not failures — a declined elevation prompt, or a runtime that installed but
             // wants a reboot. Those settle as Cancelled so they don't read as something having broken.
@@ -397,6 +396,25 @@ public class DownloadQueue : IHostedService
         {
             Kick();
         }
+    }
+
+    /// <summary>
+    /// What a failed item tells the user. API, abort and auth errors already carry a message meant for
+    /// them; anything else keeps its own reason, so "Download failed" is never the whole story.
+    /// </summary>
+    internal static string FailureMessage(Exception ex)
+    {
+        if (ex is ApiException or DownloadAbortedException or AuthException) return ex.Message;
+        // The innermost exception names the real cause (the socket error under an HttpRequestException).
+        var root = ex;
+        while (root.InnerException is { } inner) root = inner;
+        string reason = Regex.Replace(root.Message, @"\s+", " ").Trim();
+        // Never echo a query string: signed download links carry their credentials there.
+        reason = Regex.Replace(reason, @"\?\S*", "");
+        if (reason.Length > 200) reason = reason[..200] + "…";
+        return reason.Length == 0
+            ? Resources.Strings.Add_Err_Download
+            : string.Format(Resources.Strings.Add_Err_DownloadReason, reason);
     }
 
     /// <summary>Settle an item into a terminal state and record it. Dispatcher thread only.</summary>
