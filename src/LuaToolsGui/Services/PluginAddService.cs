@@ -21,6 +21,8 @@ public class PluginAddService(
     ManifestJobFactory jobs)
 {
     private const string HubcapSourceName = "Sadie (Morrenus)";
+    /// <summary>The single row a DLC gets: lua.tools generates its unlock lua (no manifest sources).</summary>
+    internal const string DlcSourceName = "lua.tools DLC";
 
     public class SourceRow
     {
@@ -49,6 +51,7 @@ public class PluginAddService(
         public bool InstallFailed;
         public string? Error;
         public bool Busy; // a download+install is running
+        internal string? DlcBaseAppId; // set when the app is DLC: downloads generate an unlock lua
         public bool Cancelled;
         internal DownloadItem? QueueItem;
         internal Task CheckTask = Task.CompletedTask;
@@ -135,10 +138,16 @@ public class PluginAddService(
     {
         try
         {
-            // The game name is only needed later for the "Added {name}" status. If the store page already
-            // supplied it (via Start), skip the lua.tools /details call entirely; otherwise fetch it in
-            // parallel so it never gates the picker behind its own serial round-trip.
-            var nameTask = string.IsNullOrEmpty(state.GameName) ? SafeGetGameNameAsync(appId) : null;
+            // DLC never has manifests of its own on the sources. Mirror DownloadViewModel.FetchAsync,
+            // which branches on the app type before any source lookup.
+            var details = await SafeGetDetailsAsync(appId);
+            if (details?.IsDlc == true)
+            {
+                await CheckDlcAsync(appId, state, details);
+                return;
+            }
+            state.GameName ??= details?.Name;
+
             string? key = settings.HubcapApiKey;
 
             // Hubcap/Sadie is the priority source. When a key is set, check ITS availability first, and in
@@ -165,7 +174,6 @@ public class PluginAddService(
                         NeedsKey = true,
                         Stats = $"{stats.DailyUsage}/{stats.DailyLimit}",
                     };
-                    if (nameTask is not null) state.GameName = await nameTask;
                     if (!PublishSources(state, new List<SourceRow> { hubRow }, appId)) return;
                     await DownloadAsync(appId, state, hubRow);
                     return;
@@ -202,8 +210,6 @@ public class PluginAddService(
             // real lock state from the Hubcap stats call in FillBadgesAsync.
             var keyRows = rows.Where(r => r.NeedsKey).ToList();
             foreach (var r in keyRows) r.Locked = true;
-
-            if (nameTask is not null) state.GameName = await nameTask; // ready before any Pick builds its status
 
             if (state.FastFetch)
             {
@@ -243,6 +249,45 @@ public class PluginAddService(
         }
     }
 
+    /// <summary>DLC route: sign-in, the parent game Steam reports for THIS DLC, then /api/dlc/info.
+    /// Generation is offered when keys exist or nothing is missing, the same rule as the Add page.</summary>
+    private async Task CheckDlcAsync(long appId, AddState state, GameDetails details)
+    {
+        string? error = null;
+        if (auth.IsGuest) error = Resources.Strings.Add_SignIn_Dlc;
+        else if (!ApiContract.IsAppId(details.BaseAppId)) error = Resources.Strings.Add_Err_BaseGame;
+        if (error is not null)
+        {
+            PluginLog.Log($"PluginAdd.Dlc appid={appId} base={(ApiContract.IsAppId(details.BaseAppId) ? details.BaseAppId : "invalid")} rejected guest={auth.IsGuest}");
+            lock (_gate)
+                if (IsCurrent(state)) { state.Checking = false; state.Error = error; }
+            return;
+        }
+
+        string baseAppId = details.BaseAppId!;
+        var info = await api.GetDlcInfoAsync(appId.ToString(), baseAppId);
+        bool canGenerate = info is not null && (info.HaveCount > 0 || info.MissingCount == 0);
+        PluginLog.Log($"PluginAdd.Dlc appid={appId} base={baseAppId} depots={info?.DepotCount} have={info?.HaveCount} missing={info?.MissingCount} canGenerate={canGenerate}");
+
+        state.GameName ??= details.Name;
+        lock (_gate) state.DlcBaseAppId = baseAppId;
+        var row = new SourceRow
+        {
+            Name = DlcSourceName,
+            DisplayName = Resources.Strings.Downloads_Kind_Dlc,
+            Status = canGenerate ? "available" : "unavailable",
+        };
+        if (!PublishSources(state, [row], appId)) return;
+        if (!state.FastFetch) return;
+        if (!canGenerate)
+        {
+            lock (_gate)
+                if (IsCurrent(state)) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
+            return;
+        }
+        await DownloadAsync(appId, state, row);
+    }
+
     private bool PublishSources(AddState state, List<SourceRow> rows, long appId)
     {
         lock (_gate)
@@ -257,9 +302,9 @@ public class PluginAddService(
         return true;
     }
 
-    private async Task<string?> SafeGetGameNameAsync(long appId)
+    private async Task<GameDetails?> SafeGetDetailsAsync(long appId)
     {
-        try { return (await api.GetDetailsAsync(appId.ToString()))?.Name; } catch { return null; }
+        try { return await api.GetDetailsAsync(appId.ToString()); } catch { return null; }
     }
 
     /// <summary>Fill the usage-counter badges on the (already-published) rows, best-effort and
@@ -348,7 +393,9 @@ public class PluginAddService(
                 lock (_gate)
                 {
                     if (!IsCurrent(state)) return null;
-                    var job = jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
+                    var job = state.DlcBaseAppId is { } baseAppId
+                        ? jobs.CreateDlcJob(appId, baseAppId, state.GameName)
+                        : jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
                     return state.QueueItem = queue.Enqueue(job);
                 }
             }

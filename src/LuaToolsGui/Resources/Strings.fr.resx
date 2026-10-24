@@ -524,6 +524,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Api_Err_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement ({0}).</value></data>
   <data name="Api_Err_RequestFailed" xml:space="preserve"><value>Échec de la requête ({0})</value></data>
   <data name="Api_Err_SessionExpired" xml:space="preserve"><value>Session expirée. Reconnecte-toi.</value></data>
+  <data name="Api_Err_InvalidDlcResponse" xml:space="preserve"><value>Réponse DLC invalide.</value></data>
   <data name="Hubcap_Err_InvalidKey" xml:space="preserve"><value>Ta clé Hubcap est invalide ou expirée.</value></data>
   <data name="Hubcap_Err_LimitReached" xml:space="preserve"><value>Ta limite quotidienne Hubcap est atteinte.</value></data>
   <data name="Hubcap_Err_NoManifest" xml:space="preserve"><value>Aucun manifeste Hubcap n'est disponible pour cette app.</value></data>

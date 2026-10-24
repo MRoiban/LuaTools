@@ -80,6 +80,7 @@ public class DlcDepot
 
 public class DlcInfo
 {
+    // The live API echoes the BASE game it resolved here (and its name below), not the DLC id.
     [JsonPropertyName("appid")] public string AppId { get; set; } = "";
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("type")] public string Type { get; set; } = "";

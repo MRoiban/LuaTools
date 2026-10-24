@@ -530,6 +530,7 @@ public static class Strings
     public static string Api_Err_DownloadFailed => Get(nameof(Api_Err_DownloadFailed));
     public static string Api_Err_RequestFailed => Get(nameof(Api_Err_RequestFailed));
     public static string Api_Err_SessionExpired => Get(nameof(Api_Err_SessionExpired));
+    public static string Api_Err_InvalidDlcResponse => Get(nameof(Api_Err_InvalidDlcResponse));
     public static string Hubcap_Err_InvalidKey => Get(nameof(Hubcap_Err_InvalidKey));
     public static string Hubcap_Err_LimitReached => Get(nameof(Hubcap_Err_LimitReached));
     public static string Hubcap_Err_NoManifest => Get(nameof(Hubcap_Err_NoManifest));

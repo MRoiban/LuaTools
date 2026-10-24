@@ -157,12 +157,36 @@ public class LuaToolsApiClient
         ApiContract.RequireAppId(appid);
         ApiContract.RequireAppId(baseAppId);
         using var res = await SendAsync(HttpMethod.Get, $"/api/dlc/info?appid={Uri.EscapeDataString(appid)}&base={Uri.EscapeDataString(baseAppId)}", ct);
-        var data = await ReadJsonAsync<DlcInfo>(res, ct);
-        if (data is null || data.AppId != appid || data.Depots is null || data.Depots.Count > 10000
-            || data.DepotCount < 0 || data.HaveCount < 0 || data.MissingCount < 0
-            || data.Depots.Any(d => !ApiContract.IsAppId(d.DepotId)))
-            throw new ApiException("Invalid DLC response.");
+        string body = await res.Content.ReadAsStringAsync(ct);
+        string? mediaType = res.Content.Headers.ContentType?.MediaType;
+        var (data, reason) = ParseDlcInfo(mediaType, body, appid, baseAppId);
+        if (data is null)
+        {
+            // Sanitized: ids, status, media type and a fixed reason code only. Never the body.
+            PluginLog.Log($"DlcInfo.Invalid appid={appid} base={baseAppId} status={(int)res.StatusCode} type={mediaType} reason={reason}");
+            throw new ApiException(Resources.Strings.Api_Err_InvalidDlcResponse);
+        }
         return data;
+    }
+
+    /// <summary>Validate a <c>/api/dlc/info</c> body. Returns the info, or null plus a reason code.</summary>
+    /// <remarks>The live API identifies the response by the BASE game it resolved, not the DLC:
+    /// <c>appid=1670540&amp;base=1142710</c> answers <c>{"appid":"1142710","name":"Total War: WARHAMMER III",…}</c>.
+    /// So the echo binds the response to this request when it matches either requested id; anything
+    /// else is rejected. Zero depots with zero counts is a valid DLC with no separate content.</remarks>
+    internal static (DlcInfo? Info, string Reason) ParseDlcInfo(string? mediaType, string body, string appid, string baseAppId)
+    {
+        if (mediaType is not null && mediaType != "application/json" && !mediaType.EndsWith("+json", StringComparison.Ordinal))
+            return (null, "content-type");
+        DlcInfo? data;
+        try { data = JsonSerializer.Deserialize<DlcInfo>(body, JsonOpts); }
+        catch (JsonException) { return (null, "malformed-json"); }
+        if (data is null) return (null, "empty");
+        if (data.AppId != appid && data.AppId != baseAppId) return (null, "appid-mismatch");
+        if (data.Depots is null || data.Depots.Count > 10000) return (null, "depots");
+        if (data.DepotCount < 0 || data.HaveCount < 0 || data.MissingCount < 0) return (null, "counts");
+        if (data.Depots.Any(d => !ApiContract.IsAppId(d.DepotId))) return (null, "depot-id");
+        return (data, "");
     }
 
     public Task<DownloadedFile> DownloadManifestAsync(
