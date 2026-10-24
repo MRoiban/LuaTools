@@ -722,4 +722,6 @@ Annuler - continuer le téléchargement</value></data>
   <data name="Fixes_OnlineFixMe_FolderPlaceholder" xml:space="preserve"><value>Collez l’URL du dossier du jeu sur Online-Fix.me</value></data>
   <data name="Fixes_OnlineFixMe_Lookup" xml:space="preserve"><value>Rechercher</value></data>
   <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Archive Fix Repair</value></data>
+  <data name="SteamMl_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement SteamML (HTTP {0}).</value></data>
+  <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML a renvoyé une archive ZIP non valide.</value></data>
 </root>

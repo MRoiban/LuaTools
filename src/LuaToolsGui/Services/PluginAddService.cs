@@ -345,7 +345,7 @@ public class PluginAddService(
             await Task.WhenAll(usageTask, supporterTask);
             var usage = usageTask.Result;
             bool isSupporter = supporterTask.Result?.IsSupporter == true;
-            foreach (var r in rows.Where(r => !r.NeedsKey))
+            foreach (var r in rows.Where(r => !r.NeedsKey && r.Name != SteamMlService.SourceName))
                 if (usage is not null)
                     r.Stats = isSupporter ? $"{usage.Used} / Unlimited" : $"{usage.Used}/{usage.Limit}";
         }

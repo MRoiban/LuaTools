@@ -76,6 +76,22 @@ budget and use the exact name confirmed in the fresh listing, ignoring server-su
 Responses and archives remain untrusted; executable-fix consent and validated conversion govern
 installation. Live listing fixtures captured on 2026-10-23 exercise parsing without live test requests.
 
+## SteamML public manifests
+
+`SteamMlService` uses credential-free HEAD (availability, 10-second timeout) and GET
+(explicit download, 512 MiB / five-minute budget) to
+`https://pub-5b6d3b7c03fd4ac1afb5bd3017850e20.r2.dev/{appid}.zip`.
+This is the CDN URL constructed by https://steamml.ink/'s public generator, verified
+2026-10-24: app 730 returned HTTP 200 and a ZIP containing `730.lua` and depot manifests.
+No key or lua.tools account is required; no daily allowance is advertised or assumed.
+Only canonical UInt32 app IDs are accepted. The dedicated external-data HTTP policy
+pins public DNS addresses, rejects account headers and redirects, and bounds downloads.
+The ordinary outbound policy permits only app-ID ZIP paths on this exact host (not
+the separately advertised SteamML executable). Server filenames are ignored, non-ZIP
+responses are deleted, and installation uses the existing manifest content policy.
+404 means unavailable; other errors/timeouts mean unknown. A failed legacy source lookup
+does not remove SteamML. Add and plugin pickers omit lua.tools usage badges for SteamML.
+
 ## Hubcap API
 
 All rows are source-derived direct HTTPS requests. The app uses the user's Hubcap key, independently of the lua.tools account.

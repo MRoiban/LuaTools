@@ -21,13 +21,15 @@ public class LuaToolsApiClient
     private readonly SteamAppInfoCache appInfo;
     private readonly CoverCache covers;
     private readonly HttpClient _http;
+    private readonly SteamMlService _steamMl;
     private readonly Func<Uri, HttpClient> _externalClient;
 
     public LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers)
         : this(auth, appInfo, covers, AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.ApiBaseUrl))) { }
 
-    internal LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, HttpClient http, Func<Uri, HttpClient>? externalClient = null)
+    internal LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, HttpClient http, Func<Uri, HttpClient>? externalClient = null, SteamMlService? steamMl = null)
     {
+        _steamMl = steamMl ?? new SteamMlService();
         this.auth = auth;
         this.appInfo = appInfo;
         this.covers = covers;
@@ -102,7 +104,7 @@ public class LuaToolsApiClient
 
     /// <summary>Source name → "available" | "unavailable" | other status.</summary>
     public Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default) =>
-        SourceAvailabilityClient.CheckAsync(appid, ct);
+        _steamMl.CheckSourcesAsync(appid, (id, token) => SourceAvailabilityClient.CheckAsync(id, token), ct);
 
     /// <summary>
     /// The standard lua.tools daily download usage (25/day), counted live from the user_downloads
@@ -194,6 +196,8 @@ public class LuaToolsApiClient
         IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
         ApiContract.RequireAppId(appid);
+        if (source == SteamMlService.SourceName)
+            return _steamMl.DownloadManifestAsync(appid, progress, ct);
         if (!ApiContract.ValidText(source, 128)) throw new ArgumentException("Invalid source.");
         string url = $"/api/manifest/download?appid={Uri.EscapeDataString(appid)}&source={Uri.EscapeDataString(source)}";
         if (!string.IsNullOrEmpty(gameName)) url += $"&game_name={Uri.EscapeDataString(gameName)}";

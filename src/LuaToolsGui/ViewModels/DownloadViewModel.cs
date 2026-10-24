@@ -629,12 +629,11 @@ public partial class DownloadViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Refresh the standard "X/25" daily usage badge on every non-Hubcap source row (those count
-    /// toward the lua.tools daily limit; Hubcap sources show their own X/800 instead). Signed-in only.
+    /// Refresh usage for lua.tools sources only. Hubcap has its own quota; SteamML has no usage API.
     /// </summary>
     public async Task RefreshStandardUsageAsync()
     {
-        var standardRows = Sources.Where(s => !s.NeedsKey).ToList();
+        var standardRows = Sources.Where(s => !s.NeedsKey && s.Name != SteamMlService.SourceName).ToList();
         if (standardRows.Count == 0) return;
         if (_auth.IsGuest) return;
 
@@ -672,9 +671,9 @@ public partial class DownloadViewModel : ObservableObject
         if (Details is null) return null;
 
         // Hubcap downloads use the user's OWN key and never touch lua.tools, so a guest with a key
-        // configured can download without signing in. Every other source still needs a lua.tools account.
+        // configured can download without signing in. SteamML is public; lua.tools sources need an account.
         bool hubcapWithKey = source.NeedsKey && !string.IsNullOrEmpty(_settings.HubcapApiKey);
-        if (!hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
+        if (source.Name != SteamMlService.SourceName && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
 
         Error = null;
         LastDownload = null;
