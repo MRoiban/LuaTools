@@ -78,11 +78,18 @@ public class AuthService
             AuthStateChanged?.Invoke();
             return true;
         }
-        catch
+        catch (RefreshRejectedException)
         {
             ClearSession(); // revoked/expired. Fall back to guest
             AuthStateChanged?.Invoke();
             return false;
+        }
+        catch
+        {
+            // Offline or server trouble (e.g. a tray autostart before the network is up): keep the
+            // saved session; GetValidAccessTokenAsync refreshes again on first use.
+            AuthStateChanged?.Invoke();
+            return true;
         }
     }
 
@@ -288,6 +295,9 @@ public class AuthService
 
         using var res = await _http.SendAsync(req);
         string body = await res.Content.ReadAsStringAsync();
+        // Only a 4xx rejection means the refresh token is dead; 408/429/5xx are transient.
+        if (res.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            throw new RefreshRejectedException(string.Format(Resources.Strings.Auth_Err_RefreshFailed, (int)res.StatusCode));
         if (!res.IsSuccessStatusCode)
             throw new AuthException(string.Format(Resources.Strings.Auth_Err_RefreshFailed, (int)res.StatusCode));
 
@@ -414,3 +424,6 @@ public class AuthService
 }
 
 public class AuthException(string message) : Exception(message);
+
+/// <summary>The auth server refused the refresh token (revoked or expired), so the session is gone.</summary>
+internal sealed class RefreshRejectedException(string message) : AuthException(message);
