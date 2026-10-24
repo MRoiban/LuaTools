@@ -209,6 +209,27 @@ namespace CabinetEngine
     // The fake endpoint is deliberately scoped to the self-test and never uses production roots.
     static class CloudSelfTest
     {
+        // LuaTools: one PC's Lua files and Steam stats cache, so the test never touches the real Steam folder.
+        sealed class FakeSteam
+        {
+            internal readonly HashSet<string> Lua = new HashSet<string>();
+            internal readonly Dictionary<string, Dictionary<string, long>> Stats = new Dictionary<string, Dictionary<string, long>>();
+            internal readonly HashSet<string> Schemas = new HashSet<string>();
+            internal CloudClient Wire(CloudClient c)
+            {
+                c.LuaApps = delegate { return Lua.ToArray(); };
+                c.SteamAchievements = delegate(string app)
+                { Dictionary<string, long> s; return !Schemas.Contains(app) ? null : Stats.TryGetValue(app, out s) ? new Dictionary<string, long>(s) : new Dictionary<string, long>(); };
+                c.MergeSteamAchievements = delegate(string app, IDictionary<string, long> unlocks)
+                {
+                    if (!Schemas.Contains(app)) return -1;
+                    Dictionary<string, long> s; if (!Stats.TryGetValue(app, out s)) Stats[app] = s = new Dictionary<string, long>();
+                    int added = 0; foreach (var u in unlocks) if (!s.ContainsKey(u.Key)) { s[u.Key] = u.Value; added++; }
+                    return added;
+                };
+                return c;
+            }
+        }
         static void Check(bool ok, string label)
         { if (!ok) throw new Exception("FAIL: " + label); Console.WriteLine("PASS: " + label); }
         static void Seed(string root, string ach, long timestamp, string save, DateTime date)
@@ -229,10 +250,16 @@ namespace CabinetEngine
                 {
                     string ar = Path.Combine(root, "A", "OnlineFix"), br = Path.Combine(root, "B", "OnlineFix");
                     DateTime date = DateTime.UtcNow.AddHours(-2); Seed(ar, "A", 100, "save-A", date.AddHours(1)); Seed(br, "B", 200, "save-B-old", date);
-                    var errors = new List<string>(); Action<string> log = delegate(string s) { errors.Add(s); Console.WriteLine("LOG: " + s); };
-                    var a = new CloudClient(Path.Combine(root, "A", "data"), ar, delegate { return 12; }, log);
+                    var errors = new List<string>(); Action<string> log = delegate(string s) { if (!s.EndsWith("achievements into Steam")) errors.Add(s); Console.WriteLine("LOG: " + s); };
+                    // A plays Lua game 777 through Steam and has a DLC Lua (888); B has 777's Lua but never played it.
+                    var steamA = new FakeSteam(); steamA.Lua.Add("777"); steamA.Lua.Add("888"); steamA.Schemas.Add("777");
+                    steamA.Stats["777"] = new Dictionary<string, long> { { "LUA_X", 1600000000 } };
+                    var steamBox = new FakeSteam(); steamBox.Lua.Add("777"); steamBox.Schemas.Add("777"); steamBox.Schemas.Add("999");
+                    // 999 is only owned on Steam somewhere else: it must not be written here.
+                    server.AppState("999")["achievements"] = new Dictionary<string, object> { { "OWNED", 1500000000L } };
+                    var a = steamA.Wire(new CloudClient(Path.Combine(root, "A", "data"), ar, delegate { return 12; }, log));
                     long steamB = 7, importedB = 0;
-                    var b = new CloudClient(Path.Combine(root, "B", "data"), br, delegate { return steamB - importedB; }, log);
+                    var b = steamBox.Wire(new CloudClient(Path.Combine(root, "B", "data"), br, delegate { return steamB - importedB; }, log));
                     string url = "cabinet://connect?server=" + Uri.EscapeDataString(server.Origin) + "&token=" + FakeServer.Token;
                     a.Connect(url); b.Connect(server.Origin + "/connect#" + FakeServer.Token);
                     Check(a.Device != b.Device && a.UserName == "Tester", "protocol and browser link connect; independent device IDs");
@@ -246,6 +273,13 @@ namespace CabinetEngine
                     Check(ini.ContainsKey("A") && ini.ContainsKey("B") && ini["B"]["extra"] == "keep", "achievement union preserves INI sections and custom values");
                     Check(File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")).Contains("; retained comment"), "INI comments preserved");
                     Check(Syncer.ReadIni(Path.Combine(br, "123", "Stats", "Stats.ini"))["Stats"]["score"] == "100", "newer stats snapshot applied");
+                    // LuaTools: achievements of games with a Lua file sync through Steam's stats cache.
+                    Check(CloudClient.Map(server.AppState("777")["achievements"]).ContainsKey("LUA_X") && CloudClient.Num(server.AppState("777")["statsUpdatedAt"]) == 0
+                        && CloudClient.Num(server.AppState("777")["playtimeTotal"]) == 0, "Lua game achievements upload from Steam's stats cache, without stats or playtime");
+                    Check(!server.Pushed.Contains("888"), "a Lua file with nothing unlocked (DLC) is not pushed");
+                    Check(steamBox.Stats.ContainsKey("777") && steamBox.Stats["777"]["LUA_X"] == 1600000000, "another PC's Lua unlocks are written into Steam with their original time");
+                    Check(!steamBox.Stats.ContainsKey("999") && !Directory.Exists(Path.Combine(br, "999")) && !Directory.Exists(Path.Combine(br, "777")),
+                        "games without a Lua file or OnlineFix folder here are never written");
                     var receipts = new HashSet<string>(); int added = 0;
                     Func<string, string, int, bool> ledger = delegate(string receipt, string app, int n)
                     { if (receipts.Add(receipt)) { added += n; steamB += n; importedB += n; } return true; };
@@ -254,7 +288,7 @@ namespace CabinetEngine
                     b.Deliver(ledger, idle); Check(added == 12, "remote playtime queued once");
                     // Simulate a crash after ledger commit but before the cloud watermark commit.
                     File.WriteAllText(Path.Combine(b.Data, "cloud-state.json"), before);
-                    b = new CloudClient(b.Data, br, delegate { return steamB - importedB; }, log); b.Deliver(ledger, idle); b.Round(idle); b.Deliver(ledger, idle);
+                    b = steamBox.Wire(new CloudClient(b.Data, br, delegate { return steamB - importedB; }, log)); b.Deliver(ledger, idle); b.Round(idle); b.Deliver(ledger, idle);
                     Check(added == 12, "idempotent receipt replay across restart does not double count");
                     Check(CloudClient.Num(CloudClient.Map(server.App["playtime"])[a.Device]) == 12 && CloudClient.Num(CloudClient.Map(server.App["playtime"])[b.Device]) == 7, "per-device playtime max and own totals retained");
                     Check(steamB == 19 && importedB == 12, "imported playtime is subtracted before the next push");
@@ -266,7 +300,7 @@ namespace CabinetEngine
                     bool denied = false;
                     try { b.Connect(server.Origin + "/connect#cab_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"); } catch (WebException) { denied = true; }
                     Check(denied && b.Connected, "401 connection leaves the prior connection intact");
-                    b.Disconnect(); Check(!new CloudClient(b.Data, br, delegate { return 0; }, log).Connected, "disconnect persists");
+                    b.Disconnect(); Check(!steamBox.Wire(new CloudClient(b.Data, br, delegate { return 0; }, log)).Connected, "disconnect persists");
                     Console.WriteLine("Cabinet Cloud self-test passed (temporary roots only).");
                 }
             }
@@ -278,7 +312,15 @@ namespace CabinetEngine
             readonly HttpListener listener = new HttpListener(); readonly Thread thread;
             readonly JavaScriptSerializer json = new JavaScriptSerializer();
             internal readonly string Origin;
-            internal Dictionary<string, object> App = new Dictionary<string, object> { { "achievements", new Dictionary<string, object>() }, { "stats", new Dictionary<string, object>() }, { "statsUpdatedAt", 0L }, { "playtime", new Dictionary<string, object>() }, { "playtimeTotal", 0L }, { "save", null } };
+            internal readonly Dictionary<string, Dictionary<string, object>> Apps = new Dictionary<string, Dictionary<string, object>>();
+            internal Dictionary<string, object> AppState(string id)
+            {
+                Dictionary<string, object> app;
+                if (!Apps.TryGetValue(id, out app)) Apps[id] = app = new Dictionary<string, object> { { "achievements", new Dictionary<string, object>() }, { "stats", new Dictionary<string, object>() }, { "statsUpdatedAt", 0L }, { "playtime", new Dictionary<string, object>() }, { "playtimeTotal", 0L }, { "save", null } };
+                return app;
+            }
+            internal Dictionary<string, object> App { get { return AppState("123"); } }
+            internal readonly List<string> Pushed = new List<string>();
             internal int SaveRequests, Progress;
             internal FakeServer()
             {
@@ -304,15 +346,16 @@ namespace CabinetEngine
                 if (!c.Request.UserAgent.StartsWith("Cabinet/")) throw new Exception("Missing user agent");
                 string path = c.Request.Url.AbsolutePath;
                 if (path == "/api/me") { Reply(c, new { user = new { id = "test-user", name = "Tester" } }); return; }
-                if (path == "/api/state") { Reply(c, new { apps = new Dictionary<string, object> { { "123", App } } }); return; }
-                if (path == "/api/apps/123/progress" && c.Request.HttpMethod == "POST")
+                if (path == "/api/state") { AppState("123"); Reply(c, new { apps = Apps.ToDictionary(kv => kv.Key, kv => (object)kv.Value) }); return; }
+                var progress = Regex.Match(path, "^/api/apps/([0-9]+)/progress$");
+                if (progress.Success && c.Request.HttpMethod == "POST")
                 {
-                    Progress++; Dictionary<string, object> body;
+                    Progress++; Dictionary<string, object> body; var App = AppState(progress.Groups[1].Value); Pushed.Add(progress.Groups[1].Value);
                     using (var r = new StreamReader(c.Request.InputStream)) body = CloudClient.Map(json.DeserializeObject(r.ReadToEnd()));
                     var ach = CloudClient.Map(App["achievements"]);
                     foreach (var item in CloudClient.Map(body["achievements"]))
                     { object prev; ach[item.Key] = ach.TryGetValue(item.Key, out prev) ? Math.Min(CloudClient.Num(prev), CloudClient.Num(item.Value)) : CloudClient.Num(item.Value); }
-                    if (CloudClient.Num(body["statsUpdatedAt"]) > CloudClient.Num(App["statsUpdatedAt"])) { App["stats"] = body["stats"]; App["statsUpdatedAt"] = body["statsUpdatedAt"]; }
+                    if (body.ContainsKey("statsUpdatedAt") && CloudClient.Num(body["statsUpdatedAt"]) > CloudClient.Num(App["statsUpdatedAt"])) { App["stats"] = body["stats"]; App["statsUpdatedAt"] = body["statsUpdatedAt"]; }
                     var times = CloudClient.Map(App["playtime"]); string device = Convert.ToString(body["deviceId"]); object n;
                     times[device] = Math.Max(times.TryGetValue(device, out n) ? CloudClient.Num(n) : 0, CloudClient.Num(body["playtimeMinutes"])); App["playtimeTotal"] = times.Values.Sum(v => CloudClient.Num(v));
                     Reply(c, App); return;
@@ -346,6 +389,13 @@ namespace CabinetEngine
         internal string Token { get { return settings.token; } } // LuaTools: CloudRedirect only.
         internal int ConnectionVersion { get; private set; }
         internal string Device { get { return settings.deviceId; } }
+        // LuaTools: games with a Lua file sync achievements too, through Steam's own stats cache.
+        // Replaceable so the self-test never reads or writes the real Steam folder.
+        internal Func<IEnumerable<string>> LuaApps = Syncer.LuaAppIds;
+        internal Func<string, Dictionary<string, long>> SteamAchievements = delegate(string app)
+        { string account = Syncer.AccountId(); return account == null ? null : Syncer.ReadSteamAchievements(app, account); };
+        internal Func<string, IDictionary<string, long>, int> MergeSteamAchievements = delegate(string app, IDictionary<string, long> unlocks)
+        { string account = Syncer.AccountId(); return account == null ? -1 : Syncer.MergeSteamAchievements(app, account, unlocks); };
         internal CloudClient(string data, string root, Func<string, long> getMinutes, Action<string> logger)
         {
             Data = data; Root = root; minutes = getMinutes; log = logger; Directory.CreateDirectory(Data);
@@ -497,40 +547,80 @@ namespace CabinetEngine
                 foreach (var s in section) { double n; if (double.TryParse(s.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out n) && !double.IsNaN(n) && !double.IsInfinity(n)) result[s.Key] = n; }
             return result;
         }
+        bool OnlineFix(string id) { return Directory.Exists(Path.Combine(Root, id)); }
         public void Round(Func<string, bool> blocked)
         {
+            // LuaTools: OnlineFix folders plus games with a Lua file; games only owned on Steam are not synced.
+            var lua = new HashSet<string>(LuaApps().Where(AppId), StringComparer.Ordinal);
+            var ids = new SortedSet<string>(lua, StringComparer.Ordinal);
             foreach (string dir in Directory.Exists(Root) ? Directory.GetDirectories(Root) : new string[0])
+            { string id = Path.GetFileName(dir); if (AppId(id)) ids.Add(id); }
+            foreach (string id in ids)
             {
-                string id = Path.GetFileName(dir); if (!AppId(id) || blocked(id)) continue;
-                try { Push(id, blocked); } catch (Exception ex) { log("push " + id + ": " + ex.Message); }
+                if (blocked(id)) continue;
+                try { Push(id, blocked, lua.Contains(id)); } catch (Exception ex) { log("push " + id + ": " + ex.Message); }
             }
             var state = Map(Map(RequestJson("GET", "/api/state", null))["apps"]);
             foreach (var app in state)
             {
                 if (!AppId(app.Key) || blocked(app.Key)) continue;
-                try { Apply(app.Key, Map(app.Value), blocked); } catch (Exception ex) { log("pull " + app.Key + ": " + ex.Message); }
+                try { Apply(app.Key, Map(app.Value), blocked, lua.Contains(app.Key)); } catch (Exception ex) { log("pull " + app.Key + ": " + ex.Message); }
             }
             SaveJournal();
         }
-        void Push(string id, Func<string, bool> blocked)
+        void Push(string id, Func<string, bool> blocked, bool lua)
         {
-            var a = AppJournal(id); var ach = Achievements(id); var stats = Stats(id);
+            bool onlineFix = OnlineFix(id);
+            var a = AppJournal(id); var ach = onlineFix ? Achievements(id) : new Dictionary<string, object>();
+            if (lua)
+            {
+                // LuaTools: unlocks Steam recorded for the Lua game join OnlineFix's; the earliest time wins.
+                var steam = SteamAchievements(id);
+                if (steam != null) foreach (var kv in steam)
+                { object old; ach[kv.Key] = ach.TryGetValue(kv.Key, out old) ? Math.Min(Num(old), kv.Value) : kv.Value; }
+                // DLC unlocks are bare <dlc>.lua files, and unplayed games have nothing to report.
+                if (!onlineFix && ach.Count == 0 && a.progressHash == null) return;
+            }
+            var stats = onlineFix ? Stats(id) : new Dictionary<string, object>();
             string statsHash = Hash(Encoding.UTF8.GetBytes(Json.Serialize(stats)));
             if (statsHash != a.statsHash)
             {
                 a.statsHash = statsHash; string path = StatsPath(id, "Stats.ini");
                 a.statsUpdatedAt = File.Exists(path) ? (long)(File.GetLastWriteTimeUtc(path) - new DateTime(1970, 1, 1)).TotalMilliseconds : 0;
             }
-            a.ownMinutes = Math.Max(a.ownMinutes, minutes(id));
-            var body = new Dictionary<string, object> { { "deviceId", Device }, { "deviceName", settings.deviceName }, { "achievements", ach }, { "stats", stats }, { "statsUpdatedAt", a.statsUpdatedAt }, { "playtimeMinutes", a.ownMinutes } };
+            // LuaTools: Cabinet's playtime ledger covers OnlineFix games only; Steam itself counts Lua games.
+            if (onlineFix) a.ownMinutes = Math.Max(a.ownMinutes, minutes(id));
+            var body = new Dictionary<string, object> { { "deviceId", Device }, { "deviceName", settings.deviceName }, { "achievements", ach }, { "playtimeMinutes", a.ownMinutes } };
+            // LuaTools: stats come only from OnlineFix's Stats.ini.
+            if (onlineFix) { body["stats"] = stats; body["statsUpdatedAt"] = a.statsUpdatedAt; }
             string progress = Hash(Encoding.UTF8.GetBytes(Json.Serialize(body))); if (blocked(id)) return;
             if (progress != a.progressHash) { RequestJson("POST", "/api/apps/" + id + "/progress", body); a.progressHash = progress; SaveJournal(); }
             // LuaTools: saves sync through CloudRedirect (Steam Cloud paths) to this Cabinet server, so the
             // engine no longer uploads or restores the OnlineFix Saves folder.
         }
-        void Apply(string id, Dictionary<string, object> state, Func<string, bool> blocked)
+        void Apply(string id, Dictionary<string, object> state, Func<string, bool> blocked, bool lua)
         {
-            var a = AppJournal(id); string achPath = StatsPath(id, "Achievements.ini"); var local = Syncer.ReadIni(achPath);
+            var a = AppJournal(id);
+            // LuaTools: write only where the game is set up here. OnlineFix INIs are not created for other games
+            // (Cabinet would copy them into Steam), and a Lua-only game gets its unlocks in Steam's stats cache.
+            if (OnlineFix(id)) ApplyOnlineFix(id, state, blocked, a);
+            else if (lua && !blocked(id))
+            {
+                var unlocks = new Dictionary<string, long>();
+                foreach (var ach in Map(state["achievements"])) unlocks[ach.Key] = Num(ach.Value);
+                int added = unlocks.Count == 0 ? 0 : MergeSteamAchievements(id, unlocks);
+                if (added > 0) log("pull " + id + ": +" + added + " achievements into Steam");
+            }
+            foreach (var time in Map(state["playtime"]))
+            {
+                if (time.Key == Device) continue; long previous; a.remote.TryGetValue(time.Key, out previous); long total = Num(time.Value);
+                if (total > previous) a.pending[time.Key] = total;
+            }
+            SaveJournal();
+        }
+        void ApplyOnlineFix(string id, Dictionary<string, object> state, Func<string, bool> blocked, CloudAppJournal a)
+        {
+            string achPath = StatsPath(id, "Achievements.ini"); var local = Syncer.ReadIni(achPath);
             foreach (var ach in Map(state["achievements"]))
             {
                 if (blocked(id)) return; long ts = Num(ach.Value); Dictionary<string, string> sec; string t, yes; long old;
@@ -545,12 +635,6 @@ namespace CabinetEngine
                 EditIni(sp, "Stats", values, true); File.SetLastWriteTimeUtc(sp, new DateTime(1970, 1, 1).AddMilliseconds(statsTime));
                 a.statsUpdatedAt = statsTime; a.statsHash = Hash(Encoding.UTF8.GetBytes(Json.Serialize(Stats(id))));
             }
-            foreach (var time in Map(state["playtime"]))
-            {
-                if (time.Key == Device) continue; long previous; a.remote.TryGetValue(time.Key, out previous); long total = Num(time.Value);
-                if (total > previous) a.pending[time.Key] = total;
-            }
-            SaveJournal();
         }
         public void Deliver(Func<string, string, int, bool> add, Func<string, bool> blocked)
         {
