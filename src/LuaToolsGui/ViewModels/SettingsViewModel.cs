@@ -283,6 +283,51 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Set by App: actually relaunch the app (used after a language change).</summary>
     public Action? RequestRestart { get; set; }
 
+    // ── Updates ─────────────────────────────────────────────────────
+
+    public string AppVersionText => string.Format(Resources.Strings.Settings_Updates_Version, FormatVersion(UpdateService.CurrentVersion));
+    [ObservableProperty] private string? _updateStatus;
+    [ObservableProperty] private bool _isUpdateStaged;
+    [ObservableProperty] [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))] private bool _isCheckingForUpdates;
+
+    /// <summary>Set by App: run a signed-update check now.</summary>
+    public Func<Task<(UpdateCheckResult Result, Version? Staged)>>? RequestUpdateCheck { get; set; }
+    /// <summary>Set by App: approve the staged update and restart into it.</summary>
+    public Action? RequestApplyUpdate { get; set; }
+
+    [RelayCommand(CanExecute = nameof(CanCheckForUpdates))]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (RequestUpdateCheck is null) return;
+        IsCheckingForUpdates = true;
+        UpdateStatus = Resources.Strings.Settings_Updates_Checking;
+        try
+        {
+            var (result, staged) = await RequestUpdateCheck();
+            ShowUpdateResult(result, staged);
+        }
+        catch { ShowUpdateResult(UpdateCheckResult.Unavailable, null); }
+        finally { IsCheckingForUpdates = false; }
+    }
+    private bool CanCheckForUpdates() => !IsCheckingForUpdates;
+
+    [RelayCommand]
+    private void ApplyUpdate() => RequestApplyUpdate?.Invoke();
+
+    public void ShowUpdateResult(UpdateCheckResult result, Version? staged)
+    {
+        IsUpdateStaged = result == UpdateCheckResult.Staged && staged is not null;
+        UpdateStatus = result switch
+        {
+            UpdateCheckResult.Staged when staged is not null => string.Format(Resources.Strings.Settings_Updates_Ready, FormatVersion(staged)),
+            UpdateCheckResult.UpToDate => Resources.Strings.Settings_Updates_UpToDate,
+            UpdateCheckResult.Unsupported => Resources.Strings.Settings_Updates_Unsupported,
+            _ => Resources.Strings.Settings_Updates_Failed,
+        };
+    }
+
+    private static string FormatVersion(Version v) => v.Build < 0 ? $"{v.Major}.{v.Minor}" : $"{v.Major}.{v.Minor}.{v.Build}";
+
     /// <summary>Show the "language changed. Restart now?" toast. Wired here so the VM stays UI-agnostic;
     /// App provides the toast + restart action.</summary>
     public Action? RequestRestartPrompt { get; set; }

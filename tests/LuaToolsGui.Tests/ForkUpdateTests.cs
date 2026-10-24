@@ -107,11 +107,12 @@ public sealed class ForkUpdateTests : IDisposable
     private sealed class Feed((byte[] Json, byte[] Sig, byte[] Zip) release) : HttpMessageHandler
     {
         public List<string> Requests { get; } = [];
+        public (byte[] Json, byte[] Sig, byte[] Zip) Release { get; set; } = release;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             string url = request.RequestUri!.AbsoluteUri;
             Requests.Add(url);
-            var bytes = url.EndsWith("release.json") ? release.Json : url.EndsWith("release.sig") ? release.Sig : release.Zip;
+            var bytes = url.EndsWith("release.json") ? Release.Json : url.EndsWith("release.sig") ? Release.Sig : Release.Zip;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) });
         }
     }
@@ -140,12 +141,71 @@ public sealed class ForkUpdateTests : IDisposable
         var updater = new UpdateService(http, _root, Old, PublicKey);
         int prompts = 0;
         updater.UpdateReady += () => prompts++;
-        await updater.CheckAndStageAsync();
-        await updater.CheckAndStageAsync(); // e.g. the plugin's "Check for updates" after the toast was dismissed
+        Assert.Equal(UpdateCheckResult.Staged, await updater.CheckAndStageAsync());
+        // e.g. the plugin's "Check for updates" after the toast was dismissed
+        Assert.Equal(UpdateCheckResult.Staged, await updater.CheckAndStageAsync());
         Assert.Equal(2, prompts);
-        Assert.Equal(3, feed.Requests.Count); // the second check never touched the network
+        Assert.Equal(5, feed.Requests.Count); // the second check fetched only the signed manifest, not the package
         Assert.Single(Directory.EnumerateDirectories(_root));
         Assert.False(File.Exists(Path.Combine(_root, "approved.txt")));
+        Assert.Equal(new Version(1, 4, 2), updater.StagedVersion);
+    }
+
+    [Fact]
+    public async Task NewerReleaseReplacesAnAlreadyStagedUpdate()
+    {
+        using var feed = new Feed(Release());
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
+        var updater = new UpdateService(http, _root, Old, PublicKey);
+        int prompts = 0;
+        updater.UpdateReady += () => prompts++;
+        await updater.CheckAndStageAsync();
+        feed.Release = Release(version: "1.4.3");
+        Assert.Equal(UpdateCheckResult.Staged, await updater.CheckAndStageAsync(announceStaged: false));
+        Assert.Equal(new Version(1, 4, 3), updater.StagedVersion);
+        Assert.Equal(2, prompts); // a newly staged release is announced even on a background check
+        Assert.EndsWith("/v1.4.3/LuaTools-1.4.3-win-x64.zip", feed.Requests[^1]);
+        Assert.False(File.Exists(Path.Combine(_root, "approved.txt")));
+    }
+
+    [Fact]
+    public async Task BackgroundRecheckOfTheSameStagedReleaseDoesNotReprompt()
+    {
+        using var feed = new Feed(Release());
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
+        var updater = new UpdateService(http, _root, Old, PublicKey);
+        int prompts = 0;
+        updater.UpdateReady += () => prompts++;
+        await updater.CheckAndStageAsync();
+        Assert.Equal(UpdateCheckResult.Staged, await updater.CheckAndStageAsync(announceStaged: false));
+        Assert.Equal(1, prompts);
+    }
+
+    [Fact]
+    public async Task ReportsUpToDateAndUnavailableAsDistinctResults()
+    {
+        using var feed = new Feed(Release(version: "1.4.1"));
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
+        var updater = new UpdateService(http, _root, Old, PublicKey);
+        Assert.Equal(UpdateCheckResult.UpToDate, await updater.CheckAndStageAsync());
+        Assert.Equal(2, feed.Requests.Count);
+        var broken = Release(); broken.Sig[0] ^= 1; feed.Release = broken;
+        Assert.Equal(UpdateCheckResult.Unavailable, await updater.CheckAndStageAsync());
+        Assert.False(updater.HasStagedUpdate);
+        Assert.Null(updater.StagedVersion);
+    }
+
+    [Fact]
+    public async Task CheckIfDueSkipsARecentCheck()
+    {
+        using var feed = new Feed(Release(version: "1.4.1"));
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
+        var updater = new UpdateService(http, _root, Old, PublicKey);
+        await updater.CheckIfDueAsync(TimeSpan.FromMinutes(15));
+        await updater.CheckIfDueAsync(TimeSpan.FromMinutes(15));
+        Assert.Equal(2, feed.Requests.Count);
+        await updater.CheckIfDueAsync(TimeSpan.Zero);
+        Assert.Equal(4, feed.Requests.Count);
     }
 
     [Fact]
@@ -229,7 +289,7 @@ public sealed class ForkUpdateTests : IDisposable
         using var feed = new Feed(Release());
         using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
         var updater = new UpdateService(http, _root, new Version(1, 4, 0), PublicKey);
-        await updater.CheckAndStageAsync();
+        Assert.Equal(UpdateCheckResult.Unsupported, await updater.CheckAndStageAsync());
         Assert.Empty(feed.Requests);
         Assert.False(updater.HasStagedUpdate);
     }

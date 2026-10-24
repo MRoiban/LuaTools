@@ -114,6 +114,15 @@
   <data name="Settings_Dns_Auto" xml:space="preserve"><value>Automatique</value></data>
   <data name="Settings_Dns_Always" xml:space="preserve"><value>Toujours utiliser Cloudflare</value></data>
   <data name="Settings_Dns_Never" xml:space="preserve"><value>Utiliser uniquement le DNS système</value></data>
+  <data name="Settings_Updates" xml:space="preserve"><value>Mises à jour</value></data>
+  <data name="Settings_Updates_Version" xml:space="preserve"><value>Vous utilisez LuaTools {0}. Il recherche les mises à jour au démarrage, toutes les heures et quand vous l'ouvrez depuis la zone de notification.</value></data>
+  <data name="Settings_Updates_Check" xml:space="preserve"><value>Rechercher des mises à jour</value></data>
+  <data name="Settings_Updates_Checking" xml:space="preserve"><value>Recherche de mises à jour…</value></data>
+  <data name="Settings_Updates_UpToDate" xml:space="preserve"><value>LuaTools est à jour.</value></data>
+  <data name="Settings_Updates_Ready" xml:space="preserve"><value>LuaTools {0} est téléchargé et vérifié. Redémarrez pour l'installer.</value></data>
+  <data name="Settings_Updates_Failed" xml:space="preserve"><value>Impossible de rechercher des mises à jour. Vérifiez votre connexion et réessayez.</value></data>
+  <data name="Settings_Updates_Unsupported" xml:space="preserve"><value>Cette version ne se met pas à jour automatiquement.</value></data>
+  <data name="Settings_Updates_Restart" xml:space="preserve"><value>Redémarrer et mettre à jour</value></data>
   <data name="Settings_SteamLocation" xml:space="preserve"><value>Emplacement de Steam</value></data>
   <data name="Settings_Change" xml:space="preserve"><value>Modifier…</value></data>
   <data name="Settings_Open" xml:space="preserve"><value>Ouvrir</value></data>

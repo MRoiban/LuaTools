@@ -110,20 +110,25 @@ public sealed class UpdateService
         zip.ExtractToDirectory(destination, overwriteFiles: false);
     }
 
-    /// <summary>How often a long-running (tray) instance looks for a newer signed release.</summary>
-    public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(4);
+    /// <summary>How often a long-running (tray) instance looks for a newer signed release. A release
+    /// lands on every merge, so this stays short; each check is two sub-kilobyte downloads.</summary>
+    public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
 
-    public async Task CheckAndStageAsync()
+    /// <summary>Version of the staged (verified, not yet approved) update, if any.</summary>
+    public Version? StagedVersion { get; private set; }
+    private DateTimeOffset _lastCheck = DateTimeOffset.MinValue;
+
+    /// <summary>Check unless one finished within <paramref name="maxAge"/> (e.g. on opening the window).</summary>
+    public Task CheckIfDueAsync(TimeSpan maxAge) =>
+        DateTimeOffset.UtcNow - _lastCheck < maxAge ? Task.CompletedTask : CheckAndStageAsync(announceStaged: false);
+
+    /// <summary>Stage the latest signed release when it is newer than this build, the approved package
+    /// and any already-staged update. <paramref name="announceStaged"/> re-raises the prompt when the
+    /// staged update is still the latest; a newly staged release is always announced.</summary>
+    public async Task<UpdateCheckResult> CheckAndStageAsync(bool announceStaged = true)
     {
-        if (_version.Major != 1 || _version.Minor != 4 || _version.Build < 1 || !_gate.Wait(0)) return;
-        if (_pending is not null)
-        {
-            // Already verified and staged: re-raise the prompt (e.g. the plugin's "Check for updates"
-            // after the toast was dismissed) instead of downloading the same release again.
-            _gate.Release();
-            UpdateReady?.Invoke();
-            return;
-        }
+        if (_version.Major != 1 || _version.Minor != 4 || _version.Build < 1) return UpdateCheckResult.Unsupported;
+        await _gate.WaitAsync();
         string? temporary = null;
         try
         {
@@ -143,16 +148,28 @@ public sealed class UpdateService
                 var approved = VerifyPackage(active, TrustKey, new Version(1, 3));
                 if (Version.Parse(approved.Version) > minimum) minimum = Version.Parse(approved.Version);
             }
-            var m = VerifyManifest(ReadBounded(Path.Combine(temporary, "release.json"), 16384), ReadBounded(Path.Combine(temporary, "release.sig"), 64), TrustKey, minimum);
+            // Signature and format first; versions are compared here so "nothing newer" is not a failure.
+            var m = VerifyManifest(ReadBounded(Path.Combine(temporary, "release.json"), 16384), ReadBounded(Path.Combine(temporary, "release.sig"), 64), TrustKey, new Version(1, 4, 0));
+            var offered = Version.Parse(m.Version);
+            if (StagedVersion is not null && offered <= StagedVersion)
+            {
+                if (announceStaged) UpdateReady?.Invoke();
+                return UpdateCheckResult.Staged;
+            }
+            if (offered <= minimum) return UpdateCheckResult.UpToDate;
             await Download($"https://github.com/{Repository}/releases/download/v{m.Version}/{m.Asset}", Path.Combine(temporary, "package.zip"), m.Size);
             VerifyPackage(temporary, TrustKey, minimum);
+            // A newer release supersedes an older staged one; CleanupPackages removes the old folder later.
             _pending = temporary;
+            StagedVersion = offered;
             temporary = null;
             UpdateReady?.Invoke();
+            return UpdateCheckResult.Staged;
         }
-        catch { /* Offline, unsigned and stale releases leave the current app untouched. */ }
+        catch { return UpdateCheckResult.Unavailable; /* Offline, unsigned and stale releases leave the current app untouched. */ }
         finally
         {
+            _lastCheck = DateTimeOffset.UtcNow;
             if (temporary is not null) { try { Directory.Delete(temporary, true); } catch { } }
             _gate.Release();
         }
@@ -276,3 +293,5 @@ public sealed class UpdateService
         catch { return false; }
     }
 }
+
+public enum UpdateCheckResult { UpToDate, Staged, Unavailable, Unsupported }

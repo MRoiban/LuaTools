@@ -116,7 +116,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         Topmost = true;
         Topmost = false;
         Focus();
+        RestoredFromTray?.Invoke();
     }
+
+    /// <summary>The window came back from the tray; App uses it to look for a newer release.</summary>
+    public event Action? RestoredFromTray;
 
     /// <summary>Launch tray-only for a headless install (luatools://install/silent/&lt;id&gt;): show the tray
     /// icon but never surface the window. The app sits in the background and reports via a balloon tip.</summary>
