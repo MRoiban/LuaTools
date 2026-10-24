@@ -63,6 +63,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch { /* fall back to no icon. Tray menu still works */ }
 
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        // Every balloon (update ready, silent install, Cabinet) is about something in the window.
+        _trayIcon.BalloonTipClicked += (_, _) => RestoreFromTray();
 
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add(LuaToolsGui.Resources.Strings.Tray_Open, null, (_, _) => RestoreFromTray());
@@ -133,6 +135,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             "LuaTools",
             message,
             error ? System.Windows.Forms.ToolTipIcon.Error : System.Windows.Forms.ToolTipIcon.Info);
+    }
+
+    /// <summary>A signed update is staged. The restart prompt is a toast inside the window, so a hidden
+    /// (tray / --minimized) instance announces it from the tray; clicking the balloon opens the window.</summary>
+    public void ShowUpdateNotification()
+    {
+        if (IsVisible || _trayIcon is null) return;
+        _trayIcon.Visible = true;
+        _trayIcon.ShowBalloonTip(10000, "LuaTools", LuaToolsGui.Resources.Strings.Update_Ready_Tray,
+            System.Windows.Forms.ToolTipIcon.Info);
     }
 
     /// <summary>Switch to the Add page (used by the Manage page's "Update" action).</summary>
