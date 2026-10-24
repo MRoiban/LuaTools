@@ -164,10 +164,10 @@ public class DlcInfoTests
     }
 
     [Fact]
-    public async Task GuestsAndInvalidParentsNeverReachTheApi()
+    public async Task InvalidParentsNeverReachTheApi()
     {
+        // Signed-out DLC info is answered from SteamML; see GuestModeTests.
         using var f = new Fixture(() => throw new Exception("API was reached"));
-        await Assert.ThrowsAsync<AuthException>(() => f.Api.GetDlcInfoAsync("1670540", "1142710"));
         await f.SignInAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => f.Api.GetDlcInfoAsync("1670540", "0"));
         await Assert.ThrowsAsync<ArgumentException>(() => f.Api.GetDlcInfoAsync("1670540", "../1142710"));
