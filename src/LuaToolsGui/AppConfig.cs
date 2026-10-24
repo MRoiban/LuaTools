@@ -20,6 +20,9 @@ public static class AppConfig
     // startup lets the app prompt the user to re-link their full lua.tools account.
     public const string BotAccountEmailDomain = "@bot.lua.tools";
 
+    // Public app-ID ZIPs used by the steamml.ink generator.
+    public const string SteamMlCdnUrl = "https://pub-5b6d3b7c03fd4ac1afb5bd3017850e20.r2.dev/";
+
     // Hubcap (hubcapmanifest.com): the app talks to this directly with the user's own API key
     // (no lua.tools proxy). Key + stats are managed in Settings; key-gated source downloads hit it.
     public const string HubcapBaseUrl = "https://hubcapmanifest.com";

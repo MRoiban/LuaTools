@@ -70,6 +70,9 @@ public sealed class OutboundNetworkPolicy
                 }
                 if (uri.IdnHost == "lua.tools" && uri.AbsolutePath.StartsWith("/api/gh/", StringComparison.Ordinal))
                     ValidateMirrorTarget(uri, uri.AbsolutePath["/api/gh/".Length..], api: true);
+                if (uri.IdnHost == new Uri(AppConfig.SteamMlCdnUrl).IdnHost
+                    && string.IsNullOrEmpty(uri.Query) && uri.AbsolutePath.EndsWith(".zip", StringComparison.Ordinal)
+                    && ApiContract.IsAppId(uri.AbsolutePath[1..^4])) return;
                 if (Hosts.Contains(uri.IdnHost)) return;
             }
         }

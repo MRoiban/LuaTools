@@ -703,4 +703,6 @@ public static class Strings
     public static string Fixes_OnlineFixMe_FolderPlaceholder => Get(nameof(Fixes_OnlineFixMe_FolderPlaceholder));
     public static string Fixes_OnlineFixMe_Lookup => Get(nameof(Fixes_OnlineFixMe_Lookup));
     public static string Fixes_OnlineFixMe_ArchiveDescription => Get(nameof(Fixes_OnlineFixMe_ArchiveDescription));
+    public static string SteamMl_DownloadFailed => Get(nameof(SteamMl_DownloadFailed));
+    public static string SteamMl_InvalidArchive => Get(nameof(SteamMl_InvalidArchive));
 }

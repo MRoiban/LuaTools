@@ -175,6 +175,7 @@ public static class SourceMeta
 
     public static readonly Dictionary<string, Meta> All = new()
     {
+        ["SteamML"] = new(),
         ["Ryuu"] = new(DiscordUrl: "https://discord.gg/manifests"),
         ["TwentyTwo Cloud"] = new(DiscordUrl: "https://discord.gg/RrukXPyv5b"),
         ["Sushi"] = new(DiscordUrl: "https://discord.gg/hMdv5dQhcN"),

@@ -757,4 +757,6 @@ Cancel - keep downloading</value></data>
   <data name="Fixes_OnlineFixMe_FolderPlaceholder" xml:space="preserve"><value>Paste the game’s Online-Fix.me uploads folder URL</value></data>
   <data name="Fixes_OnlineFixMe_Lookup" xml:space="preserve"><value>Look up</value></data>
   <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Fix Repair archive</value></data>
+  <data name="SteamMl_DownloadFailed" xml:space="preserve"><value>SteamML download failed (HTTP {0}).</value></data>
+  <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML returned an invalid ZIP archive.</value></data>
 </root>
