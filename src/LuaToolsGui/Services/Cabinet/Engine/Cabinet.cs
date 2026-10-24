@@ -282,41 +282,9 @@ namespace CabinetEngine
             var schemaPath = Path.Combine(statsDir, "UserGameStatsSchema_" + appId + ".bin");
             if (!File.Exists(schemaPath)) { r.Skipped = "no Steam schema yet (open the game's page in Steam once)"; return r; }
 
-            var schemaRoot = KV.Read(File.ReadAllBytes(schemaPath));
-            var game = schemaRoot.Children.FirstOrDefault();
-            if (game == null) { r.Skipped = "empty schema"; return r; }
-            var gn = game.Get("gamename");
-            if (gn != null && !string.IsNullOrEmpty(gn.Str())) r.GameName = gn.Str();
-            var stats = game.Get("stats");
-            if (stats == null || stats.Children == null) { r.Skipped = "schema has no stats"; return r; }
-
-            // name -> (statId, bit) for achievements; name -> (statId, type) for stats
-            var achMap = new Dictionary<string, KeyValuePair<string, int>>(StringComparer.OrdinalIgnoreCase);
-            var statMap = new Dictionary<string, KeyValuePair<string, int>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var st in stats.Children)
-            {
-                if (st.Children == null) continue;
-                var bits = st.Get("bits");
-                if (bits != null && bits.Children != null)
-                {
-                    foreach (var b in bits.Children)
-                    {
-                        var nm = b.Get("name");
-                        var bitKv = b.Get("bit");
-                        int bit;
-                        if (nm == null || !int.TryParse(bitKv != null ? bitKv.Str() : b.Key, out bit)) continue;
-                        achMap[nm.Str()] = new KeyValuePair<string, int>(st.Key, bit);
-                    }
-                }
-                else
-                {
-                    var nm = st.Get("name");
-                    var tp = st.Get("type");
-                    int type = tp == null ? 0 : StatType(tp.Str());
-                    if (nm != null && (type == 1 || type == 2))
-                        statMap[nm.Str()] = new KeyValuePair<string, int>(st.Key, type);
-                }
-            }
+            Dictionary<string, KeyValuePair<string, int>> achMap, statMap; string gameName, skipped;
+            if (!LoadSchema(schemaPath, out achMap, out statMap, out gameName, out skipped)) { r.Skipped = skipped; return r; }
+            if (gameName != null) r.GameName = gameName;
 
             var userPath = Path.Combine(statsDir, "UserGameStats_" + accountId + "_" + appId + ".bin");
             KV userRoot;
@@ -400,6 +368,142 @@ namespace CabinetEngine
             File.WriteAllBytes(tmp, userRoot.Write());
             if (File.Exists(userPath)) File.Replace(tmp, userPath, null); else File.Move(tmp, userPath);
             return r;
+        }
+
+        // LuaTools: schema parsing shared by the OnlineFix copy and the Lua-game achievement sync.
+        static bool LoadSchema(string schemaPath, out Dictionary<string, KeyValuePair<string, int>> achMap,
+            out Dictionary<string, KeyValuePair<string, int>> statMap, out string gameName, out string skipped)
+        {
+            achMap = null; statMap = null; gameName = null; skipped = null;
+            var schemaRoot = KV.Read(File.ReadAllBytes(schemaPath));
+            var game = schemaRoot.Children.FirstOrDefault();
+            if (game == null) { skipped = "empty schema"; return false; }
+            var gn = game.Get("gamename");
+            if (gn != null && !string.IsNullOrEmpty(gn.Str())) gameName = gn.Str();
+            var stats = game.Get("stats");
+            if (stats == null || stats.Children == null) { skipped = "schema has no stats"; return false; }
+
+            // name -> (statId, bit) for achievements; name -> (statId, type) for stats
+            achMap = new Dictionary<string, KeyValuePair<string, int>>(StringComparer.OrdinalIgnoreCase);
+            statMap = new Dictionary<string, KeyValuePair<string, int>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var st in stats.Children)
+            {
+                if (st.Children == null) continue;
+                var bits = st.Get("bits");
+                if (bits != null && bits.Children != null)
+                {
+                    foreach (var b in bits.Children)
+                    {
+                        var nm = b.Get("name");
+                        var bitKv = b.Get("bit");
+                        int bit;
+                        if (nm == null || !int.TryParse(bitKv != null ? bitKv.Str() : b.Key, out bit)) continue;
+                        achMap[nm.Str()] = new KeyValuePair<string, int>(st.Key, bit);
+                    }
+                }
+                else
+                {
+                    var nm = st.Get("name");
+                    var tp = st.Get("type");
+                    int type = tp == null ? 0 : StatType(tp.Str());
+                    if (nm != null && (type == 1 || type == 2))
+                        statMap[nm.Str()] = new KeyValuePair<string, int>(st.Key, type);
+                }
+            }
+            return true;
+        }
+
+        // LuaTools: Steam reads only config\stplug-in\<appid>.lua; <appid>_<build>.lua files are stored variants.
+        public static IEnumerable<string> LuaAppIds()
+        {
+            var dir = Path.Combine(SteamPath(), "config", "stplug-in");
+            if (!Directory.Exists(dir)) yield break;
+            foreach (var f in Directory.GetFiles(dir, "*.lua"))
+            {
+                var name = Path.GetFileNameWithoutExtension(f);
+                if (name.Length > 0 && name.Length <= 10 && name.All(char.IsDigit)) yield return name;
+            }
+        }
+
+        // LuaTools: unlocked achievements (API name -> unix time) in Steam's own stats cache, where a game run
+        // through Steam (Lua-unlocked or OnlineFix-copied) keeps them. Null when Steam has no schema yet.
+        public static Dictionary<string, long> ReadSteamAchievements(string appId, string accountId, string statsDir = null)
+        {
+            Dictionary<string, KeyValuePair<string, int>> achMap, statMap; string gameName, skipped;
+            statsDir = statsDir ?? StatsDir();
+            var schemaPath = Path.Combine(statsDir, "UserGameStatsSchema_" + appId + ".bin");
+            if (!File.Exists(schemaPath) || !LoadSchema(schemaPath, out achMap, out statMap, out gameName, out skipped)) return null;
+            var result = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var userPath = Path.Combine(statsDir, "UserGameStats_" + accountId + "_" + appId + ".bin");
+            if (!File.Exists(userPath)) return result;
+            byte[] bytes;
+            using (var fs = new FileStream(userPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var ms = new MemoryStream()) { fs.CopyTo(ms); bytes = ms.ToArray(); }
+            var root = KV.Read(bytes);
+            var cache = root.Children == null ? null : root.Children.FirstOrDefault();
+            if (cache == null || cache.Children == null) return result;
+            long fallback = (long)(File.GetLastWriteTimeUtc(userPath) - new DateTime(1970, 1, 1)).TotalSeconds;
+            foreach (var a in achMap)
+            {
+                var stat = cache.Get(a.Value.Key);
+                var dataKv = stat == null ? null : stat.Get("data");
+                if (dataKv == null) continue;
+                long data; try { data = Convert.ToInt64(dataKv.Value); } catch { continue; }
+                if ((data & (1L << a.Value.Value)) == 0) continue;
+                var times = stat.Get("AchievementTimes");
+                var t = times == null ? null : times.Get(a.Value.Value.ToString());
+                long unix = 0; if (t != null) { try { unix = Convert.ToInt64(t.Value); } catch { unix = 0; } }
+                result[a.Key] = unix > 0 ? unix : fallback;
+            }
+            return result;
+        }
+
+        // LuaTools: add unlocks (API name -> unix time) to Steam's stats cache for a Lua game, the same way Sync
+        // copies OnlineFix unlocks. Never clears a bit. Returns the number added; -1 when Steam has no schema yet.
+        public static int MergeSteamAchievements(string appId, string accountId, IDictionary<string, long> unlocks, string statsDir = null, string backupDir = null)
+        {
+            Dictionary<string, KeyValuePair<string, int>> achMap, statMap; string gameName, skipped;
+            statsDir = statsDir ?? StatsDir();
+            var schemaPath = Path.Combine(statsDir, "UserGameStatsSchema_" + appId + ".bin");
+            if (!File.Exists(schemaPath) || !LoadSchema(schemaPath, out achMap, out statMap, out gameName, out skipped)) return -1;
+            var userPath = Path.Combine(statsDir, "UserGameStats_" + accountId + "_" + appId + ".bin");
+            byte[] original = File.Exists(userPath) ? File.ReadAllBytes(userPath) : null;
+            var userRoot = original != null ? KV.Read(original) : new KV(0, "", new List<KV>());
+            if (userRoot.Children.Count == 0)
+            {
+                var c = new KV(0, "cache", new List<KV>());
+                c.SetInt("crc", 0);
+                c.SetInt("PendingChanges", 0);
+                userRoot.Children.Add(c);
+            }
+            var cache = userRoot.Children[0];
+            int added = 0;
+            foreach (var u in unlocks)
+            {
+                KeyValuePair<string, int> loc;
+                if (!achMap.TryGetValue(u.Key, out loc)) continue;
+                var stat = cache.GetOrAddSub(loc.Key);
+                var dataKv = stat.Get("data");
+                int data = dataKv == null ? 0 : Convert.ToInt32(dataKv.Value);
+                int mask = 1 << loc.Value;
+                if ((data & mask) != 0) continue;
+                stat.SetInt("data", data | mask);
+                long unix = u.Value > 0 && u.Value < int.MaxValue ? u.Value : (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds;
+                stat.GetOrAddSub("AchievementTimes").SetInt(loc.Value.ToString(), (int)unix);
+                added++;
+            }
+            if (added == 0) return 0;
+            if (original != null)
+            {
+                var bdir = backupDir ?? Path.Combine(App.DataDir, "backup");
+                Directory.CreateDirectory(bdir);
+                var bpath = Path.Combine(bdir, Path.GetFileName(userPath));
+                if (!File.Exists(bpath)) File.WriteAllBytes(bpath, original);
+            }
+            var tmp = userPath + ".tmp";
+            File.WriteAllBytes(tmp, userRoot.Write());
+            if (File.Exists(userPath)) File.Replace(tmp, userPath, null); else File.Move(tmp, userPath);
+            return added;
         }
     }
 
