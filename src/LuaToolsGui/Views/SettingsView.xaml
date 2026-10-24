@@ -658,6 +658,37 @@
                             Text="{x:Static res:Strings.Settings_Dns_Hint}"
                             TextWrapping="Wrap" />
                     </StackPanel>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <!-- Signed fork updates: version, manual check, restart into a staged update -->
+                    <StackPanel Margin="14,12">
+                        <TextBlock
+                            FontSize="13"
+                            FontWeight="Medium"
+                            Text="{x:Static res:Strings.Settings_Updates}" />
+                        <TextBlock
+                            Margin="0,4,0,0"
+                            FontSize="12"
+                            Foreground="#6b7280"
+                            Text="{Binding AppVersionText}"
+                            TextWrapping="Wrap" />
+                        <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                            <ui:Button
+                                Command="{Binding CheckForUpdatesCommand}"
+                                Content="{x:Static res:Strings.Settings_Updates_Check}" />
+                            <ui:Button
+                                Margin="8,0,0,0"
+                                Appearance="Primary"
+                                Command="{Binding ApplyUpdateCommand}"
+                                Content="{x:Static res:Strings.Settings_Updates_Restart}"
+                                Visibility="{Binding IsUpdateStaged, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="0,8,0,0"
+                            FontSize="12"
+                            Text="{Binding UpdateStatus}"
+                            TextWrapping="Wrap"
+                            Visibility="{Binding UpdateStatus, Converter={StaticResource NullToCollapsed}}" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

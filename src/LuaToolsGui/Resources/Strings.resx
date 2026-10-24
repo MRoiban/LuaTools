@@ -116,6 +116,15 @@
   <data name="Settings_Dns_Auto" xml:space="preserve"><value>Automatic</value></data>
   <data name="Settings_Dns_Always" xml:space="preserve"><value>Always use Cloudflare</value></data>
   <data name="Settings_Dns_Never" xml:space="preserve"><value>Use system DNS only</value></data>
+  <data name="Settings_Updates" xml:space="preserve"><value>Updates</value></data>
+  <data name="Settings_Updates_Version" xml:space="preserve"><value>You're running LuaTools {0}. It looks for updates when it starts, every hour, and when you open it from the tray.</value></data>
+  <data name="Settings_Updates_Check" xml:space="preserve"><value>Check for updates</value></data>
+  <data name="Settings_Updates_Checking" xml:space="preserve"><value>Checking for updates…</value></data>
+  <data name="Settings_Updates_UpToDate" xml:space="preserve"><value>LuaTools is up to date.</value></data>
+  <data name="Settings_Updates_Ready" xml:space="preserve"><value>LuaTools {0} is downloaded and verified. Restart to install it.</value></data>
+  <data name="Settings_Updates_Failed" xml:space="preserve"><value>Couldn't check for updates. Check your connection and try again.</value></data>
+  <data name="Settings_Updates_Unsupported" xml:space="preserve"><value>This build doesn't update itself.</value></data>
+  <data name="Settings_Updates_Restart" xml:space="preserve"><value>Restart and update</value></data>
   <data name="Settings_SteamLocation" xml:space="preserve"><value>Steam location</value></data>
   <data name="Settings_Change" xml:space="preserve"><value>Change…</value></data>
   <data name="Settings_Open" xml:space="preserve"><value>Open</value></data>

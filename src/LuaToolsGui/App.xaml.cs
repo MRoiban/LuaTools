@@ -266,13 +266,18 @@ public partial class App : Application
                     () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } });
             }
             window.ShowUpdateNotification();
+            settingsVm.ShowUpdateResult(UpdateCheckResult.Staged, updates.StagedVersion);
         });
+        settingsVm.RequestUpdateCheck = async () => (await Task.Run(() => updates.CheckAndStageAsync()), updates.StagedVersion);
+        settingsVm.RequestApplyUpdate = () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } };
         _ = updates.CheckAndStageAsync();
         // The app usually lives in the tray for days (autostart --minimized), so a launch-time check alone
-        // misses every release published after boot.
+        // misses every release published after boot. Checks continue after staging so a newer release
+        // replaces the staged one instead of installing an already-outdated build.
         var updateTimer = new DispatcherTimer { Interval = UpdateService.CheckInterval };
-        updateTimer.Tick += (_, _) => { if (!updates.HasStagedUpdate) _ = updates.CheckAndStageAsync(); };
+        updateTimer.Tick += (_, _) => _ = updates.CheckAndStageAsync(announceStaged: false);
         updateTimer.Start();
+        window.RestoredFromTray += () => _ = updates.CheckIfDueAsync(TimeSpan.FromMinutes(15));
 
         // Language changed → persistent toast offering an immediate relaunch.
         settingsVm.RequestRestartPrompt = () => Dispatcher.Invoke(() =>

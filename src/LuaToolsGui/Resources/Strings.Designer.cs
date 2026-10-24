@@ -86,6 +86,15 @@ public static class Strings
     public static string Settings_Dns_Auto => Get(nameof(Settings_Dns_Auto));
     public static string Settings_Dns_Always => Get(nameof(Settings_Dns_Always));
     public static string Settings_Dns_Never => Get(nameof(Settings_Dns_Never));
+    public static string Settings_Updates => Get(nameof(Settings_Updates));
+    public static string Settings_Updates_Version => Get(nameof(Settings_Updates_Version));
+    public static string Settings_Updates_Check => Get(nameof(Settings_Updates_Check));
+    public static string Settings_Updates_Checking => Get(nameof(Settings_Updates_Checking));
+    public static string Settings_Updates_UpToDate => Get(nameof(Settings_Updates_UpToDate));
+    public static string Settings_Updates_Ready => Get(nameof(Settings_Updates_Ready));
+    public static string Settings_Updates_Failed => Get(nameof(Settings_Updates_Failed));
+    public static string Settings_Updates_Unsupported => Get(nameof(Settings_Updates_Unsupported));
+    public static string Settings_Updates_Restart => Get(nameof(Settings_Updates_Restart));
     public static string Settings_SteamLocation => Get(nameof(Settings_SteamLocation));
     public static string Settings_Change => Get(nameof(Settings_Change));
     public static string Settings_Open => Get(nameof(Settings_Open));
