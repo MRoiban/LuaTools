@@ -324,7 +324,7 @@ public class ManifestJobFactory(
             // row mid-pre-flight as though depots were already downloading.
             if (!item.CompletedDepots.Contains(sized.DepotId))
             {
-                sized = sized with { ManifestPath = await EnsureManifestAsync(item, sized, prep, ct) };
+                sized = sized with { ManifestPath = await EnsureManifestAsync(item, appId, sized, prep, ct) };
 
                 // Without a key the tool cannot decrypt a single chunk, and a depot that fails aborts the
                 // whole job below — so refuse here, before anything is written, naming the depot instead
@@ -480,7 +480,7 @@ public class ManifestJobFactory(
     /// it's missing. Never returns null — it throws with a user-facing reason instead.
     /// </summary>
     private async Task<string> EnsureManifestAsync(
-        DownloadItem item, DepotSelection sel, string step, CancellationToken ct)
+        DownloadItem item, long appId, DepotSelection sel, string step, CancellationToken ct)
     {
         // Already on disk (a previous run, a pinned install, or Steam's own copy): no request at all.
         // ResolveManifestPath only accepts a file that actually parses as this depot's manifest.
@@ -490,20 +490,35 @@ public class ManifestJobFactory(
         // before the fetch, or InstallManifestFile will skip the copy and hand the bad file straight back.
         depotTool.DiscardCachedManifest(sel.DepotId, sel.ManifestId!);
 
-        if (!depotTool.CanFetchManifests)
-            throw new DownloadAbortedException(Resources.Strings.Depot_Err_SignIn);
-
         OnUi(() => item.Detail = $"{step} · {Resources.Strings.Downloads_Depot_FetchingManifest}");
 
         DownloadedFile staged;
-        try
+        if (depotTool.IsGuest)
         {
-            staged = await api.DownloadDepotManifestAsync(sel.DepotId, sel.ManifestId!, null, ct);
+            // Signed out: the owning app's SteamML archive carries its depots' manifests. Only the exact
+            // version requested is usable; SteamML usually has the current one.
+            long owner = sel.FromAppId ?? appId;
+            SteamMlArchive? archive;
+            try { archive = await api.SteamMl.GetArchiveAsync(owner.ToString(), ct); }
+            catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or ApiException or InvalidDataException)
+            { throw new DownloadAbortedException(Resources.Strings.SteamMl_NoArchive); }
+            string dir = Path.Combine(HttpFileDownloader.StagingFolder, Guid.NewGuid().ToString("N"));
+            string? path = archive is null ? null : SteamMlService.ExtractManifest(archive, sel.DepotId, sel.ManifestId!, dir);
+            if (path is null)
+                throw new DownloadAbortedException(string.Format(Resources.Strings.SteamMl_NoManifest, sel.DepotId));
+            staged = new DownloadedFile(path, Path.GetFileName(path));
         }
-        catch (AuthException)
+        else
         {
-            // Signed out between opening the picker and the download starting.
-            throw new DownloadAbortedException(Resources.Strings.Depot_Err_SignIn);
+            try
+            {
+                staged = await api.DownloadDepotManifestAsync(sel.DepotId, sel.ManifestId!, null, ct);
+            }
+            catch (AuthException)
+            {
+                // Signed out between opening the picker and the download starting.
+                throw new DownloadAbortedException(Resources.Strings.Depot_Err_SignIn);
+            }
         }
 
         // The API is expected to serve raw manifest bytes, but has been observed returning them inside
@@ -1035,7 +1050,7 @@ public class ManifestJobFactory(
     /// True if the file starts with Steam's depot-manifest magic (0x71F617D0, little-endian on disk).
     /// A cheap guard against storing something that merely arrived under a .manifest name.
     /// </summary>
-    private static bool IsSteamManifest(string path)
+    internal static bool IsSteamManifest(string path)
     {
         try
         {

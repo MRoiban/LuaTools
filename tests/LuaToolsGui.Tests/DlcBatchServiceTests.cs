@@ -17,7 +17,6 @@ public class DlcBatchServiceTests
 
     private sealed class Fake
     {
-        public bool Guest;
         public GameDetails? GameDetails = new() { AppId = Game, Name = "Total War: WARHAMMER III", Type = "game" };
         public List<long> Declared = [NoDepots, Keyed, Owned, Added, MissingKeys];
         public List<long> Store = [NoDepots, LegacyWh2, NotDlc, Game];
@@ -28,7 +27,6 @@ public class DlcBatchServiceTests
         public Exception? GenerateError;
 
         public DlcBatchService Service() => new(new DlcBatchService.Ports(
-            () => Guest,
             (id, _) => Task.FromResult(id == Game ? GameDetails
                 : id == LegacyWh2 ? new GameDetails { AppId = id, Name = "The Silence & The Fury", Type = "dlc", BaseAppId = Wh2.ToString() }
                 : id == NotDlc ? new GameDetails { AppId = id, Name = "Soundtrack bundle", Type = "music" } : null),
@@ -134,15 +132,10 @@ public class DlcBatchServiceTests
     }
 
     [Fact]
-    public async Task GuestsAndDlcPagesAreRefusedBeforeAnyLookup()
+    public async Task DlcPagesAreRefusedBeforeAnyLookup()
     {
-        var guest = new Fake { Guest = true };
-        var batch = await CheckAsync(guest.Service());
-        Assert.Equal(("failed", LuaToolsGui.Resources.Strings.Add_SignIn_Dlc), (batch.Phase, batch.Error));
-        Assert.Empty(guest.InfoCalls);
-
         var dlcPage = new Fake { GameDetails = new GameDetails { AppId = Game, Name = "x", Type = "dlc", BaseAppId = "1" } };
-        batch = await CheckAsync(dlcPage.Service());
+        var batch = await CheckAsync(dlcPage.Service());
         Assert.Equal(("failed", LuaToolsGui.Resources.Strings.DlcBatch_Err_NotAGame), (batch.Phase, batch.Error));
         Assert.Empty(dlcPage.InfoCalls);
     }

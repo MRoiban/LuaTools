@@ -80,7 +80,7 @@
   <data name="Settings_Section_Community" xml:space="preserve"><value>COMMUNAUTÉ</value></data>
   <data name="Settings_SignOut" xml:space="preserve"><value>Se déconnecter</value></data>
   <data name="Settings_BrowsingAsGuest" xml:space="preserve"><value>Navigation en tant qu'invité</value></data>
-  <data name="Settings_GuestHint" xml:space="preserve"><value>Connectez-vous pour télécharger les manifests et les déblocages de DLC</value></data>
+  <data name="Settings_GuestHint" xml:space="preserve"><value>Facultatif : connectez-vous pour les sources, correctifs et manifestes lua.tools. SteamML et Online-Fix.me fonctionnent sans compte.</value></data>
   <data name="Settings_SignInDiscord" xml:space="preserve"><value>Se connecter avec Discord</value></data>
   <data name="Settings_BotCode_Hint" xml:space="preserve"><value>Vous avez un code ? Lancez /login sur Discord et saisissez-le ici.</value></data>
   <data name="Settings_BotCode_Placeholder" xml:space="preserve"><value>A3X9K2</value></data>
@@ -183,7 +183,7 @@
   <data name="Mode_CloudRedirect_Toast_Disabled" xml:space="preserve"><value>Désactivé — redémarrez Steam pour appliquer.</value></data>
   <data name="Mode_CloudRedirect_Toast_Updated" xml:space="preserve"><value>Mis à jour — redémarrez Steam pour appliquer.</value></data>
   <data name="Onboarding_Title" xml:space="preserve"><value>Bienvenue dans l'application LuaTools !</value></data>
-  <data name="Onboarding_SignIn_Blurb" xml:space="preserve"><value>Connectez-vous pour débloquer l'ajout de jeux et de correctifs.</value></data>
+  <data name="Onboarding_SignIn_Blurb" xml:space="preserve"><value>Sans compte, vous pouvez ajouter des jeux et DLC depuis SteamML et utiliser les correctifs Online-Fix.me. Connectez-vous avec Discord pour les sources et correctifs lua.tools.</value></data>
   <data name="Onboarding_SignedIn" xml:space="preserve"><value>Connecté ✓</value></data>
   <data name="Onboarding_Recommended_Title" xml:space="preserve"><value>Appliquer les paramètres recommandés</value></data>
   <data name="Onboarding_Recommended_Detail" xml:space="preserve"><value>Mode : BetterSteamTools · FastFetch activé</value></data>
@@ -354,7 +354,6 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Add_Generating" xml:space="preserve"><value>Génération…</value></data>
   <data name="Add_DlcHint" xml:space="preserve"><value>Placez le .lua dans steam\config\stplug-in — assurez-vous que le jeu de base est aussi ajouté. Compte dans votre limite quotidienne (25/jour).</value></data>
   <data name="Add_AlreadyHaveFiles" xml:space="preserve"><value>Vous avez déjà les fichiers ?</value></data>
-  <data name="Add_SignIn_Dlc" xml:space="preserve"><value>Connectez-vous avec Discord pour voir les déblocages de DLC.</value></data>
   <data name="Add_SignIn_Download" xml:space="preserve"><value>Connectez-vous avec Discord pour télécharger.</value></data>
   <data name="Add_Err_BaseGame" xml:space="preserve"><value>Impossible de déterminer le jeu de base de ce DLC</value></data>
   <data name="Add_Err_Generic" xml:space="preserve"><value>Une erreur s'est produite — vérifiez votre connexion et réessayez.</value></data>
@@ -586,7 +585,6 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Depot_Err_NoSpace" xml:space="preserve"><value>Espace disque insuffisant : nécessite {0}, seulement {1} libre.</value></data>
   <data name="Builds_Select_SaveTo" xml:space="preserve"><value>Enregistrer dans</value></data>
   <data name="Builds_Select_Space" xml:space="preserve"><value>Nécessite {0} · {1} libre sur {2}</value></data>
-  <data name="Builds_Select_SignIn" xml:space="preserve"><value>Connectez-vous pour télécharger ce dépôt.</value></data>
   <data name="Depot_Err_SignIn" xml:space="preserve"><value>Connectez-vous pour télécharger des dépôts.</value></data>
   <data name="Downloads_Depot_FetchingManifest" xml:space="preserve"><value>récupération du manifest</value></data>
   <data name="Depot_Err_NoManifest" xml:space="preserve"><value>Impossible de récupérer le manifest de ce dépôt.</value></data>
@@ -745,4 +743,6 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Archive Fix Repair</value></data>
   <data name="SteamMl_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement SteamML (HTTP {0}).</value></data>
   <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML a renvoyé une archive ZIP non valide.</value></data>
+  <data name="SteamMl_NoArchive" xml:space="preserve"><value>SteamML n'a pas d'archive pour ce jeu : impossible de l'ajouter sans se connecter.</value></data>
+  <data name="SteamMl_NoManifest" xml:space="preserve"><value>SteamML n'a pas cette version du dépôt {0}. Connectez-vous pour la récupérer depuis lua.tools.</value></data>
 </root>

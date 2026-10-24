@@ -164,10 +164,10 @@ public class DlcInfoTests
     }
 
     [Fact]
-    public async Task GuestsAndInvalidParentsNeverReachTheApi()
+    public async Task InvalidParentsNeverReachTheApi()
     {
+        // Signed-out DLC info is answered from SteamML; see GuestModeTests.
         using var f = new Fixture(() => throw new Exception("API was reached"));
-        await Assert.ThrowsAsync<AuthException>(() => f.Api.GetDlcInfoAsync("1670540", "1142710"));
         await f.SignInAsync();
         await Assert.ThrowsAsync<ArgumentException>(() => f.Api.GetDlcInfoAsync("1670540", "0"));
         await Assert.ThrowsAsync<ArgumentException>(() => f.Api.GetDlcInfoAsync("1670540", "../1142710"));
@@ -240,13 +240,10 @@ public class DlcInfoTests
     }
 
     [Fact]
-    public async Task PluginDlcRequiresSignInAndAParent()
+    public async Task PluginDlcRequiresAParent()
     {
         using var f = new Fixture(() => throw new Exception("API was reached"));
-        f.Details(1670540, "dlc", "1142710");
         f.Details(999999, "dlc", null);
-        var guest = await RunAsync(Plugin(f), 1670540);
-        Assert.Equal(LuaToolsGui.Resources.Strings.Add_SignIn_Dlc, guest.Error);
         await f.SignInAsync();
         var orphan = await RunAsync(Plugin(f), 999999);
         Assert.Equal(LuaToolsGui.Resources.Strings.Add_Err_BaseGame, orphan.Error);

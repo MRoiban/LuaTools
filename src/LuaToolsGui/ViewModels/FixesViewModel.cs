@@ -149,6 +149,14 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         this.steam = steam;
         this.onlineFixMe = onlineFixMe;
         InitPageSize(settings.FixesPageSize);
+        // Signing in or out changes which provider the page shows.
+        auth.AuthStateChanged += () =>
+        {
+            if (!Loaded) return;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) _ = LoadAsync(force: true);
+            else dispatcher.BeginInvoke(() => _ = LoadAsync(force: true));
+        };
     }
 
     /// <summary>Set by App so a guest hitting a download is sent through the Discord sign-in flow.</summary>
@@ -274,16 +282,23 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         try
         {
             var installedTask = Task.Run(() => library.EnumerateInstalled().ToList());
-            DenuvoListingsResponse? data;
-            try { data = await api.GetDenuvoListingsAsync(); }
-            catch { data = null; } // The independent provider remains available during an API outage.
-            _listingUnavailable = data is null;
+            // Signed out, lua.tools fixes can't be downloaded, so only Online-Fix.me is shown: the grid
+            // is the installed games it can look up, without lua.tools' listing or tags.
+            bool guest = auth.IsGuest;
+            DenuvoListingsResponse? data = null;
+            if (!guest)
+            {
+                try { data = await api.GetDenuvoListingsAsync(); }
+                catch { data = null; } // The independent provider remains available during an API outage.
+            }
+            _listingUnavailable = !guest && data is null;
             _allGames = data?.Games.Select(g => new FixGameCardVm(g)).ToList() ?? [];
             _onlineFixMeGames = BuildOnlineFixMeCards(_allGames, await installedTask);
+            if (guest) _allGames = [.. _onlineFixMeGames];
             Tags.Clear();
             if (data is not null)
                 foreach (var t in data.Tags) Tags.Add(new TagPillVm(t));
-            Tags.Add(new TagPillVm(OnlineFixMeTag));
+            if (!guest) Tags.Add(new TagPillVm(OnlineFixMeTag));
             foreach (var pill in Tags) pill.IsSelected = pill.Id == SelectedTagId;
 
             // "My games" filter source: the same stplug-in scan the Manage page uses, so the toggle
@@ -451,7 +466,8 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         IsLookingUpOnlineFixMe = true;
         var installedTask = Task.Run(() => long.TryParse(game.AppId, out long appId)
             ? library.EnumerateInstalled().FirstOrDefault(g => g.AppId == appId) : null);
-        await Task.WhenAll(LoadLuaToolsFixesAsync(game, version, installedTask),
+        if (auth.IsGuest) IsLoadingFixes = false; // lua.tools fixes need an account; Online-Fix.me only
+        await Task.WhenAll(auth.IsGuest ? Task.CompletedTask : LoadLuaToolsFixesAsync(game, version, installedTask),
             LoadOnlineFixMeAsync(game, version, installedTask));
     }
 

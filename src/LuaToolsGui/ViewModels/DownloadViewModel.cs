@@ -512,8 +512,7 @@ public partial class DownloadViewModel : ObservableObject
     private async Task FetchAsync()
     {
         if (Details is null) return;
-        // DLC info is login-only; manifest source checking is public (guests allowed).
-        if (Details.IsDlc && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Dlc)) return;
+        // Signed out, DLC info comes from the base game's SteamML archive instead of lua.tools.
         ResetResults();
         IsChecking = true;
         try
@@ -703,7 +702,6 @@ public partial class DownloadViewModel : ObservableObject
     private async Task GenerateDlcAsync()
     {
         if (Details?.BaseAppId is null) return;
-        if (await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return;
 
         Error = null;
         LastDownload = null;

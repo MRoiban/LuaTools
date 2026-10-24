@@ -1,3 +1,5 @@
+using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -22,14 +24,19 @@ public class LuaToolsApiClient
     private readonly CoverCache covers;
     private readonly HttpClient _http;
     private readonly SteamMlService _steamMl;
+    private readonly SteamDepotInfo _depots;
+    /// <summary>SteamML archives, for signed-out depot downloads.</summary>
+    public SteamMlService SteamMl => _steamMl;
     private readonly Func<Uri, HttpClient> _externalClient;
 
-    public LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers)
-        : this(auth, appInfo, covers, AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.ApiBaseUrl))) { }
+    public LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, SteamDepotInfo depots)
+        : this(auth, appInfo, covers, AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.ApiBaseUrl)), depots: depots) { }
 
-    internal LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, HttpClient http, Func<Uri, HttpClient>? externalClient = null, SteamMlService? steamMl = null)
+    internal LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, HttpClient http, Func<Uri, HttpClient>? externalClient = null, SteamMlService? steamMl = null,
+        SteamDepotInfo? depots = null)
     {
         _steamMl = steamMl ?? new SteamMlService();
+        _depots = depots ?? new SteamDepotInfo();
         this.auth = auth;
         this.appInfo = appInfo;
         this.covers = covers;
@@ -103,8 +110,12 @@ public class LuaToolsApiClient
     }
 
     /// <summary>Source name → "available" | "unavailable" | other status.</summary>
-    public Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default) =>
-        _steamMl.CheckSourcesAsync(appid, (id, token) => SourceAvailabilityClient.CheckAsync(id, token), ct);
+    /// <remarks>Signed out, only sources that need no account are checked: lua.tools sources would
+    /// only fail at download.</remarks>
+    public async Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default) =>
+        auth.IsGuest
+            ? new Dictionary<string, string> { [SteamMlService.SourceName] = await _steamMl.CheckStatusAsync(appid, ct) }
+            : await _steamMl.CheckSourcesAsync(appid, (id, token) => SourceAvailabilityClient.CheckAsync(id, token), ct);
 
     /// <summary>
     /// The standard lua.tools daily download usage (25/day), counted live from the user_downloads
@@ -158,6 +169,7 @@ public class LuaToolsApiClient
     {
         ApiContract.RequireAppId(appid);
         ApiContract.RequireAppId(baseAppId);
+        if (auth.IsGuest) return await GuestDlcInfoAsync(appid, baseAppId, ct);
         using var res = await SendAsync(HttpMethod.Get, $"/api/dlc/info?appid={Uri.EscapeDataString(appid)}&base={Uri.EscapeDataString(baseAppId)}", ct);
         string body = await res.Content.ReadAsStringAsync(ct);
         string? mediaType = res.Content.Headers.ContentType?.MediaType;
@@ -236,9 +248,74 @@ public class LuaToolsApiClient
     {
         ApiContract.RequireAppId(appid);
         ApiContract.RequireAppId(baseAppId);
+        if (auth.IsGuest) return GuestGenerateDlcAsync(appid, baseAppId, ct);
         string url = $"/api/dlc/generate?appid={Uri.EscapeDataString(appid)}&base={Uri.EscapeDataString(baseAppId)}";
         if (!string.IsNullOrEmpty(gameName)) url += $"&game_name={Uri.EscapeDataString(gameName)}";
         return DownloadFileAsync(url, $"{appid}.lua", progress, ct);
+    }
+
+    // ── Signed-out DLC, from the base game's SteamML archive ─────────
+
+    /// <summary>The DLC's depots (from the base game's public app info) and which of them the base
+    /// game's SteamML archive has a key for: the same shape and rule as <c>/api/dlc/info</c>.</summary>
+    private async Task<DlcInfo> GuestDlcInfoAsync(string appid, string baseAppId, CancellationToken ct)
+    {
+        var (depots, keys) = await GuestDlcDepotsAsync(appid, baseAppId, ct);
+        return new DlcInfo
+        {
+            AppId = baseAppId, Type = "dlc", DepotCount = depots.Count,
+            HaveCount = depots.Count(d => keys.ContainsKey(d.Id)),
+            MissingCount = depots.Count(d => !keys.ContainsKey(d.Id)),
+            Depots = depots.Select(d => new DlcDepot
+            {
+                DepotId = d.Id.ToString(), Language = d.Language, OsList = d.Os, Included = keys.ContainsKey(d.Id),
+            }).ToList(),
+        };
+    }
+
+    /// <summary>A <c>&lt;dlc&gt;.lua</c> (plus its depots' manifests when SteamML has them), as
+    /// <c>/api/dlc/generate</c> returns it. A DLC with no content of its own is the one-line lua.</summary>
+    private async Task<DownloadedFile> GuestGenerateDlcAsync(string appid, string baseAppId, CancellationToken ct)
+    {
+        var (depots, keys) = await GuestDlcDepotsAsync(appid, baseAppId, ct);
+        var archive = depots.Count > 0 ? await _steamMl.GetArchiveAsync(baseAppId, ct) : null;
+        var lua = new System.Text.StringBuilder($"addappid({appid})\n");
+        var manifests = new List<string>();
+        string dir = Path.Combine(HttpFileDownloader.StagingFolder, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        foreach (var d in depots)
+        {
+            if (!keys.TryGetValue(d.Id, out var key)) continue;
+            lua.Append($"addappid({d.Id},0,\"{key}\")\n");
+            if (archive?.ManifestIds.TryGetValue(d.Id, out var mid) == true)
+            {
+                lua.Append($"setManifestid({d.Id},\"{mid}\")\n");
+                if (SteamMlService.ExtractManifest(archive, d.Id, mid, dir) is { } path) manifests.Add(path);
+            }
+        }
+        string luaPath = Path.Combine(dir, $"{appid}.lua");
+        await File.WriteAllTextAsync(luaPath, lua.ToString(), ct);
+        if (manifests.Count == 0) return new DownloadedFile(luaPath, $"{appid}.lua");
+        string zipPath = Path.Combine(dir, $"{appid}.zip");
+        using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+        {
+            zip.CreateEntryFromFile(luaPath, $"{appid}.lua");
+            foreach (var m in manifests) zip.CreateEntryFromFile(m, Path.GetFileName(m));
+        }
+        return new DownloadedFile(zipPath, $"{appid}.zip");
+    }
+
+    private async Task<(List<ContentDepot> Depots, IReadOnlyDictionary<long, string> Keys)> GuestDlcDepotsAsync(
+        string appid, string baseAppId, CancellationToken ct)
+    {
+        long dlcId = long.Parse(appid);
+        var info = await _depots.GetAsync(long.Parse(baseAppId), ct)
+            ?? throw new ApiException(Resources.Strings.Add_Err_Generic);
+        var depots = info.Depots.Where(d => d.DlcAppId == dlcId).ToList();
+        if (depots.Count == 0) return (depots, new Dictionary<long, string>());
+        var archive = await _steamMl.GetArchiveAsync(baseAppId, ct)
+            ?? throw new ApiException(Resources.Strings.SteamMl_NoArchive);
+        return (depots, archive.Keys);
     }
 
     // ── Denuvo fixes ────────────────────────────────────────────────
