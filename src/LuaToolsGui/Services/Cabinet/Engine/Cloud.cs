@@ -49,26 +49,6 @@ namespace CabinetEngine
         static bool wasPlaying;
         static DateTime next = DateTime.MinValue;
         static volatile string message;
-        static volatile bool rescan;
-        static DateTime nextScan = DateTime.MinValue;
-        static readonly Queue<Action<CloudClient>> saveActions = new Queue<Action<CloudClient>>();
-        internal static SaveSync Saves { get { return Client.Saves; } }
-        internal static void RequestRescan() { rescan = true; }
-        internal static Func<string, bool> BlockedApp { get { return Blocked; } }
-        // Runs on the cloud worker thread, between rounds; the action reports its own result.
-        internal static void QueueSaveAction(Action<CloudClient> action) { lock (saveActions) saveActions.Enqueue(action); }
-        static bool TakeSaveAction(out Action<CloudClient> action)
-        { lock (saveActions) { action = saveActions.Count > 0 ? saveActions.Dequeue() : null; return action != null; } }
-        static void RunWorker(Action work, string label)
-        {
-            busy = true;
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                try { work(); }
-                catch (Exception ex) { Log(label + " failed: " + ex.Message); }
-                finally { busy = false; }
-            });
-        }
         static readonly Queue<string> connects = new Queue<string>();
         static CloudClient Client { get { if (client == null) client = new CloudClient(App.DataDir, Syncer.OnlineFixDir, LocalMinutes, Log); return client; } }
         static void Log(string s) { if (logger != null) logger("cloud: " + s); }
@@ -107,9 +87,6 @@ namespace CabinetEngine
         }
         public static bool HandleArgs(string[] args)
         {
-            if (SaveCli.Handle(args, App.DataDir, delegate { return SaveEnvironment.Current(Syncer.SteamPath(), Syncer.AccountId(), Syncer.OnlineFixDir); })) return true;
-            if (args.Length == 1 && args[0] == "--saves-selftest")
-            { try { SaveSelfTest.Run(); } catch (Exception ex) { Console.WriteLine(ex); Environment.ExitCode = 1; } return true; }
             if (args.Length == 1 && args[0] == "--cloud-selftest")
             { try { CloudSelfTest.Run(); } catch (Exception ex) { Console.WriteLine(ex); Environment.ExitCode = 1; } return true; }
             string url = args.FirstOrDefault(a => a.StartsWith("cabinet:", StringComparison.OrdinalIgnoreCase));
@@ -145,8 +122,7 @@ namespace CabinetEngine
         public static string Tick(bool anyGameRunning, ICollection<string> runningAppIds)
         {
             lock (Gate) running = new HashSet<string>(runningAppIds ?? new string[0]);
-            // Saves of games Cabinet cannot see running (non-OnlineFix) sync once they exit.
-            if ((wasPlaying && !anyGameRunning) || Client.Saves.DeferredFinished()) requested = true; wasPlaying = anyGameRunning;
+            if (wasPlaying && !anyGameRunning) requested = true; wasPlaying = anyGameRunning;
             string result = message; message = null; FriendLabels.Tick(Client, runningAppIds, Log); if (busy) return result;
             try
             {
@@ -159,7 +135,6 @@ namespace CabinetEngine
                 if (queue != null && Client.Connected) Client.Deliver(queue, Blocked);
             }
             catch (Exception ex) { Log(ex.Message); }
-            Action<CloudClient> action;
             if (connects.Count > 0)
             {
                 string url = connects.Dequeue(); busy = true;
@@ -172,7 +147,6 @@ namespace CabinetEngine
                     finally { busy = false; }
                 });
             }
-            else if (TakeSaveAction(out action)) RunWorker(delegate { action(Client); }, "save action");
             else if (!anyGameRunning && Client.Connected && queue != null && imported != null && (requested || DateTime.UtcNow >= next))
             {
                 var snapshot = new Dictionary<string, long>();
@@ -190,12 +164,6 @@ namespace CabinetEngine
                     catch (Exception ex) { Log("sync failed: " + ex.Message); next = DateTime.UtcNow.AddMinutes(1); }
                     finally { busy = false; }
                 });
-            }
-            else if (!anyGameRunning && (rescan || (!Client.Connected && DateTime.UtcNow >= nextScan)))
-            {
-                // Discovery only: shows save locations even when Cabinet Cloud is not connected.
-                rescan = false; nextScan = DateTime.UtcNow.AddMinutes(30); bool connected = Client.Connected;
-                RunWorker(delegate { Client.ScanSaves(connected); }, "save scan");
             }
             return result;
         }
@@ -250,45 +218,30 @@ namespace CabinetEngine
             File.WriteAllText(Path.Combine(stats, "Achievements.ini"), "; retained comment\r\n[" + ach + "]\r\nachieved=true\r\ntimestamp=" + timestamp + "\r\nextra=keep\r\n");
             File.WriteAllText(Path.Combine(stats, "Stats.ini"), "; stats comment\r\n[Stats]\r\nscore=" + timestamp + "\r\n[Other]\r\nkeep=yes\r\n");
             File.SetLastWriteTimeUtc(Path.Combine(stats, "Stats.ini"), date);
-            // A null save leaves an empty Saves folder, as the OnlineFix emulator does.
-            if (save != null) { File.WriteAllText(Path.Combine(saves, "slot.dat"), save); File.SetLastWriteTimeUtc(Path.Combine(saves, "slot.dat"), date); }
-            Directory.SetLastWriteTimeUtc(saves, date);
+            File.WriteAllText(Path.Combine(saves, "slot.dat"), save); File.SetLastWriteTimeUtc(Path.Combine(saves, "slot.dat"), date); Directory.SetLastWriteTimeUtc(saves, date);
         }
-        // Saves never read the real profile, Steam or OnlineFix folders in the self-test.
-        static void Isolate(CloudClient c, string root, string onlineFix)
-        {
-            string home = Path.Combine(root, "home");
-            c.Saves.EnvironmentProvider = delegate
-            {
-                return new SaveEnvironment { Home = home, OsUserName = "tester", AppData = Path.Combine(home, "AppData", "Roaming"), LocalAppData = Path.Combine(home, "AppData", "Local"), LocalLow = Path.Combine(home, "AppData", "LocalLow"), Documents = Path.Combine(home, "Documents"), OnlineFixRoot = onlineFix };
-            };
-            c.Saves.GameRunning = delegate { return false; };
-        }
-        static void Write(string path, string text) { Directory.CreateDirectory(Path.GetDirectoryName(path)); File.WriteAllText(path, text); File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(-30)); }
         public static void Run()
         {
             string root = Path.Combine(Path.GetTempPath(), "Cabinet-cloud-test-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
-            var fetcher = SaveManifestCache.Fetcher;
-            SaveManifestCache.Fetcher = delegate { throw new System.Net.WebException("offline in self-test"); };
             try
             {
                 using (var server = new FakeServer())
                 {
                     string ar = Path.Combine(root, "A", "OnlineFix"), br = Path.Combine(root, "B", "OnlineFix");
-                    DateTime date = DateTime.UtcNow.AddHours(-2); Seed(ar, "A", 100, "save-A", date.AddHours(1)); Seed(br, "B", 200, null, date);
-                    var errors = new List<string>(); Action<string> log = delegate(string s) { if (!s.StartsWith("save manifest") && !s.StartsWith("saves ") && !s.StartsWith("save backup")) errors.Add(s); Console.WriteLine("LOG: " + s); };
-                    var a = new CloudClient(Path.Combine(root, "A", "data"), ar, delegate { return 12; }, log); Isolate(a, Path.Combine(root, "A"), ar);
+                    DateTime date = DateTime.UtcNow.AddHours(-2); Seed(ar, "A", 100, "save-A", date.AddHours(1)); Seed(br, "B", 200, "save-B-old", date);
+                    var errors = new List<string>(); Action<string> log = delegate(string s) { errors.Add(s); Console.WriteLine("LOG: " + s); };
+                    var a = new CloudClient(Path.Combine(root, "A", "data"), ar, delegate { return 12; }, log);
                     long steamB = 7, importedB = 0;
-                    var b = new CloudClient(Path.Combine(root, "B", "data"), br, delegate { return steamB - importedB; }, log); Isolate(b, Path.Combine(root, "B"), br);
+                    var b = new CloudClient(Path.Combine(root, "B", "data"), br, delegate { return steamB - importedB; }, log);
                     string url = "cabinet://connect?server=" + Uri.EscapeDataString(server.Origin) + "&token=" + FakeServer.Token;
                     a.Connect(url); b.Connect(server.Origin + "/connect#" + FakeServer.Token);
                     Check(a.Device != b.Device && a.UserName == "Tester", "protocol and browser link connect; independent device IDs");
                     Check(!File.ReadAllText(Path.Combine(a.Data, "cloud.json")).Contains(FakeServer.Token), "DPAPI settings contain no plaintext token");
                     Func<string, bool> idle = delegate { return false; };
                     a.Round(idle); b.Round(idle); a.Round(idle);
-                    Check(server.Puts == 1 && server.LegacyPuts == 0, "only the PC with save files uploads; nothing uses the legacy route");
-                    Check(File.ReadAllText(Path.Combine(br, "123", "Saves", "slot.dat")) == "save-A", "cloud save restored into the empty OnlineFix folder");
-                    Check(a.Saves.StatusOf("123").Status == SaveSyncStatus.Synced && b.Saves.StatusOf("123").Status == SaveSyncStatus.Synced, "both PCs report synced only after matching the cloud");
+                    // LuaTools: CloudRedirect owns saves; the engine never uploads or replaces the Saves folder.
+                    Check(server.SaveRequests == 0, "no save upload or download");
+                    Check(File.ReadAllText(Path.Combine(br, "123", "Saves", "slot.dat")) == "save-B-old" && !Directory.Exists(Path.Combine(b.Data, "backup")), "local saves left untouched");
                     var ini = Syncer.ReadIni(Path.Combine(br, "123", "Stats", "Achievements.ini"));
                     Check(ini.ContainsKey("A") && ini.ContainsKey("B") && ini["B"]["extra"] == "keep", "achievement union preserves INI sections and custom values");
                     Check(File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")).Contains("; retained comment"), "INI comments preserved");
@@ -301,47 +254,14 @@ namespace CabinetEngine
                     b.Deliver(ledger, idle); Check(added == 12, "remote playtime queued once");
                     // Simulate a crash after ledger commit but before the cloud watermark commit.
                     File.WriteAllText(Path.Combine(b.Data, "cloud-state.json"), before);
-                    b = new CloudClient(b.Data, br, delegate { return steamB - importedB; }, log); Isolate(b, Path.Combine(root, "B"), br); b.Deliver(ledger, idle); b.Round(idle); b.Deliver(ledger, idle);
+                    b = new CloudClient(b.Data, br, delegate { return steamB - importedB; }, log); b.Deliver(ledger, idle); b.Round(idle); b.Deliver(ledger, idle);
                     Check(added == 12, "idempotent receipt replay across restart does not double count");
                     Check(CloudClient.Num(CloudClient.Map(server.App["playtime"])[a.Device]) == 12 && CloudClient.Num(CloudClient.Map(server.App["playtime"])[b.Device]) == 7, "per-device playtime max and own totals retained");
                     Check(steamB == 19 && importedB == 12, "imported playtime is subtracted before the next push");
                     server.EarlierAchievement(); b.Round(idle);
                     Check(Syncer.ReadIni(Path.Combine(br, "123", "Stats", "Achievements.ini"))["A"]["timestamp"] == "50", "earliest achievement timestamp wins");
-                    string unchanged = File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")); int requests = server.Progress, puts = server.Puts;
-                    Write(Path.Combine(br, "123", "Saves", "slot.dat"), "while-running");
-                    b.Round(delegate { return true; }); Check(server.Progress == requests && server.Puts == puts && unchanged == File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")), "running app is never pushed, uploaded or applied");
-                    Check(b.Saves.StatusOf("123").Status == SaveSyncStatus.Deferred, "running app save sync is deferred");
-
-                    // Divergent changes: nothing is overwritten until the user chooses.
-                    Write(Path.Combine(ar, "123", "Saves", "slot.dat"), "A2"); Write(Path.Combine(br, "123", "Saves", "slot.dat"), "B2");
-                    a.Round(idle); b.Round(idle);
-                    Check(server.Current("123").ContentHash == a.Saves.App("123").contentHash && b.Saves.StatusOf("123").Status == SaveSyncStatus.Conflict, "divergent saves become a conflict");
-                    Check(File.ReadAllText(Path.Combine(br, "123", "Saves", "slot.dat")) == "B2", "conflict leaves local saves untouched");
-                    b.Saves.KeepLocal("123", server.Current("123"), b, idle, b.Saves.EnvironmentProvider());
-                    a.Round(idle);
-                    Check(File.ReadAllText(Path.Combine(ar, "123", "Saves", "slot.dat")) == "B2", "Keep this PC uploads; the other PC restores it");
-                    string backup = Directory.GetFiles(Path.Combine(a.Data, "backup", "saves", "123"), "*.zip").Single();
-                    var backed = SaveArchive.Read(File.ReadAllBytes(backup), "steam:123");
-                    using (var ms = new MemoryStream()) { backed.Extract(backed.Files.Single(), ms); Check(Encoding.UTF8.GetString(ms.ToArray()) == "A2", "local saves backed up before replacement"); }
-                    Check(server.Versions("123") == 3, "server keeps prior versions");
-
-                    // Empty scans and failed uploads never look synced and never replace the cloud copy.
-                    File.Delete(Path.Combine(ar, "123", "Saves", "slot.dat")); puts = server.Puts; a.Round(idle);
-                    Check(server.Puts == puts && a.Saves.StatusOf("123").Status == SaveSyncStatus.LocalMissing, "emptied save folder keeps the cloud copy and is not reported synced");
-                    Write(Path.Combine(br, "123", "Saves", "slot.dat"), "B3"); server.FailPuts = 1; string journal = b.Saves.App("123").contentHash; b.Round(idle);
-                    Check(b.Saves.StatusOf("123").Status == SaveSyncStatus.Error && b.Saves.App("123").contentHash == journal, "failed upload keeps the journal and reports an error");
-                    b.Round(idle);
-                    Check(b.Saves.StatusOf("123").Status == SaveSyncStatus.Synced && server.Current("123").ContentHash == b.Saves.App("123").contentHash, "failed upload is retried");
-
-                    // Legacy backups: content restores into an empty OnlineFix folder; empty ZIPs never do.
-                    server.SetLegacy("456", LegacyZip("legacy.dat", "legacy"), "old-pc"); server.SetLegacy("789", new byte[] { 0x50, 0x4b, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, "old-pc");
-                    server.SetLegacy("321", LegacyZip("slot.dat", "old-legacy"), "old-pc");
-                    foreach (string id in new[] { "456", "789", "321" }) Directory.CreateDirectory(Path.Combine(br, id, "Saves"));
-                    Write(Path.Combine(br, "321", "Saves", "slot.dat"), "real-local");
-                    b.Round(idle);
-                    Check(File.ReadAllText(Path.Combine(br, "456", "Saves", "legacy.dat")) == "legacy", "legacy backup restored into an empty OnlineFix folder");
-                    Check(Directory.GetFiles(Path.Combine(br, "789", "Saves")).Length == 0 && b.Saves.StatusOf("789").Status == SaveSyncStatus.Empty, "22-byte legacy ZIP counts as no backup and shows 'No save files found'");
-                    Check(File.ReadAllText(Path.Combine(br, "321", "Saves", "slot.dat")) == "real-local" && server.Current("321") != null, "legacy backup never replaces real local saves; they upload as format 2");
+                    string unchanged = File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")); int requests = server.Progress;
+                    b.Round(delegate { return true; }); Check(server.Progress == requests && unchanged == File.ReadAllText(Path.Combine(br, "123", "Stats", "Achievements.ini")), "running app is never pushed or applied");
                     Check(errors.Count == 0, "end-to-end rounds completed without errors");
                     bool denied = false;
                     try { b.Connect(server.Origin + "/connect#cab_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"); } catch (WebException) { denied = true; }
@@ -350,73 +270,41 @@ namespace CabinetEngine
                     Console.WriteLine("Cabinet Cloud self-test passed (temporary roots only).");
                 }
             }
-            finally { SaveManifestCache.Fetcher = fetcher; if (Directory.Exists(root)) Directory.Delete(root, true); }
-        }
-        static byte[] LegacyZip(string name, string text)
-        {
-            using (var ms = new MemoryStream())
-            {
-                using (var z = new ZipArchive(ms, ZipArchiveMode.Create, true)) using (var w = new StreamWriter(z.CreateEntry(name).Open())) w.Write(text);
-                return ms.ToArray();
-            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
         }
         sealed class FakeServer : IDisposable
         {
             internal const string Token = "cab_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             readonly HttpListener listener = new HttpListener(); readonly Thread thread;
-            readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
+            readonly JavaScriptSerializer json = new JavaScriptSerializer();
             internal readonly string Origin;
             internal Dictionary<string, object> App = new Dictionary<string, object> { { "achievements", new Dictionary<string, object>() }, { "stats", new Dictionary<string, object>() }, { "statsUpdatedAt", 0L }, { "playtime", new Dictionary<string, object>() }, { "playtimeTotal", 0L }, { "save", null } };
-            readonly Dictionary<string, List<KeyValuePair<Dictionary<string, object>, byte[]>>> archives = new Dictionary<string, List<KeyValuePair<Dictionary<string, object>, byte[]>>>();
-            readonly Dictionary<string, KeyValuePair<Dictionary<string, object>, byte[]>> legacy = new Dictionary<string, KeyValuePair<Dictionary<string, object>, byte[]>>();
-            internal int Progress, Puts, LegacyPuts, FailPuts;
-            long clock = 1000;
+            internal int SaveRequests, Progress;
             internal FakeServer()
             {
                 var tcp = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0); tcp.Start(); int port = ((IPEndPoint)tcp.LocalEndpoint).Port; tcp.Stop();
                 Origin = "http://localhost:" + port; listener.Prefixes.Add(Origin + "/"); listener.Start();
                 thread = new Thread(Loop); thread.IsBackground = true; thread.Start();
             }
-            internal void EarlierAchievement() { lock (this) CloudClient.Map(App["achievements"])["A"] = 50L; }
-            internal SaveCloudMeta Current(string app) { lock (this) { List<KeyValuePair<Dictionary<string, object>, byte[]>> l; return archives.TryGetValue(app, out l) && l.Count > 0 ? SaveCloudMeta.Parse(l[l.Count - 1].Key) : null; } }
-            internal int Versions(string app) { lock (this) { List<KeyValuePair<Dictionary<string, object>, byte[]>> l; return archives.TryGetValue(app, out l) ? l.Count : 0; } }
-            internal void SetLegacy(string app, byte[] zip, string device)
-            { lock (this) legacy[app] = new KeyValuePair<Dictionary<string, object>, byte[]>(new Dictionary<string, object> { { "sha256", CloudClient.Hash(zip) }, { "size", zip.Length }, { "updatedAt", 500L }, { "deviceId", device }, { "deviceName", "Old PC" }, { "empty", zip.Length <= 22 } }, zip); }
+            internal void EarlierAchievement() { CloudClient.Map(App["achievements"])["A"] = 50L; }
             void Loop()
             {
                 while (listener.IsListening)
                 {
                     HttpListenerContext c; try { c = listener.GetContext(); } catch (HttpListenerException) { break; } catch (ObjectDisposedException) { break; }
-                    try { lock (this) Handle(c); } catch (Exception ex) { c.Response.StatusCode = 500; Reply(c, new Dictionary<string, object> { { "error", ex.Message } }); }
+                    try { Handle(c); } catch (Exception ex) { c.Response.StatusCode = 500; Reply(c, new Dictionary<string, object> { { "error", ex.Message } }); }
                     finally { c.Response.Close(); }
                 }
             }
             void Reply(HttpListenerContext c, object obj)
             { byte[] bytes = Encoding.UTF8.GetBytes(json.Serialize(obj)); c.Response.ContentType = "application/json"; c.Response.OutputStream.Write(bytes, 0, bytes.Length); }
-            void Bytes(HttpListenerContext c, byte[] data) { c.Response.ContentType = "application/zip"; c.Response.Headers["ETag"] = CloudClient.Hash(data); c.Response.OutputStream.Write(data, 0, data.Length); }
-            Dictionary<string, object> AppState(string id)
-            {
-                var state = id == "123" ? new Dictionary<string, object>(App) : new Dictionary<string, object> { { "achievements", new Dictionary<string, object>() }, { "stats", new Dictionary<string, object>() }, { "statsUpdatedAt", 0L }, { "playtime", new Dictionary<string, object>() }, { "playtimeTotal", 0L }, { "save", null } };
-                List<KeyValuePair<Dictionary<string, object>, byte[]>> l; KeyValuePair<Dictionary<string, object>, byte[]> old;
-                state["archive"] = archives.TryGetValue(id, out l) && l.Count > 0 ? l[l.Count - 1].Key : null;
-                state["save"] = legacy.TryGetValue(id, out old) ? old.Key : null;
-                return state;
-            }
             void Handle(HttpListenerContext c)
             {
                 if (c.Request.Headers["Authorization"] != "Bearer " + Token) { c.Response.StatusCode = 401; Reply(c, new { error = "unauthorized" }); return; }
                 if (!c.Request.UserAgent.StartsWith("Cabinet/")) throw new Exception("Missing user agent");
-                if (c.Request.HttpMethod != "GET" && c.Request.Headers["Origin"] != Origin) { c.Response.StatusCode = 403; Reply(c, new { error = "forbidden" }); return; }
                 string path = c.Request.Url.AbsolutePath;
                 if (path == "/api/me") { Reply(c, new { user = new { id = "test-user", name = "Tester" } }); return; }
-                if (path == "/api/state")
-                {
-                    var apps = new Dictionary<string, object>();
-                    foreach (string id in new[] { "123" }.Concat(archives.Keys).Concat(legacy.Keys).Distinct()) apps[id] = AppState(id);
-                    Reply(c, new { apps = apps }); return;
-                }
-                var pm = System.Text.RegularExpressions.Regex.Match(path, "^/api/apps/([0-9]+)/progress$");
-                if (pm.Success && pm.Groups[1].Value != "123" && c.Request.HttpMethod == "POST") { Reply(c, AppState(pm.Groups[1].Value)); return; }
+                if (path == "/api/state") { Reply(c, new { apps = new Dictionary<string, object> { { "123", App } } }); return; }
                 if (path == "/api/apps/123/progress" && c.Request.HttpMethod == "POST")
                 {
                     Progress++; Dictionary<string, object> body;
@@ -429,37 +317,8 @@ namespace CabinetEngine
                     times[device] = Math.Max(times.TryGetValue(device, out n) ? CloudClient.Num(n) : 0, CloudClient.Num(body["playtimeMinutes"])); App["playtimeTotal"] = times.Values.Sum(v => CloudClient.Num(v));
                     Reply(c, App); return;
                 }
-                var m = System.Text.RegularExpressions.Regex.Match(path, "^/api/apps/([0-9]+)/(archive|save)$");
-                if (!m.Success) { c.Response.StatusCode = 404; Reply(c, new { error = "not_found" }); return; }
-                string app = m.Groups[1].Value; var q = c.Request.QueryString;
-                if (m.Groups[2].Value == "save")
-                {
-                    if (c.Request.HttpMethod == "PUT") { LegacyPuts++; c.Response.StatusCode = 400; Reply(c, new { error = "legacy upload in self-test" }); return; }
-                    KeyValuePair<Dictionary<string, object>, byte[]> old;
-                    if (legacy.TryGetValue(app, out old)) { Bytes(c, old.Value); return; }
-                    c.Response.StatusCode = 404; Reply(c, new { error = "not_found" }); return;
-                }
-                List<KeyValuePair<Dictionary<string, object>, byte[]>> list;
-                if (!archives.TryGetValue(app, out list)) { list = new List<KeyValuePair<Dictionary<string, object>, byte[]>>(); archives[app] = list; }
-                if (c.Request.HttpMethod == "GET")
-                {
-                    var hit = list.Where(v => q["id"] == null || (string)v.Key["id"] == q["id"]).Select(v => v.Value).LastOrDefault();
-                    if (hit == null) { c.Response.StatusCode = 404; Reply(c, new { error = "not_found" }); return; }
-                    Bytes(c, hit); return;
-                }
-                Puts++;
-                if (FailPuts > 0) { FailPuts--; c.Response.StatusCode = 502; Reply(c, new { error = "bad_gateway" }); return; }
-                byte[] zip; using (var ms = new MemoryStream()) { c.Request.InputStream.CopyTo(ms); zip = ms.ToArray(); }
-                if (c.Request.ContentType != "application/zip" || CloudClient.Hash(zip) != q["sha256"]) { c.Response.StatusCode = 400; Reply(c, new { error = "bad upload" }); return; }
-                var archive = SaveArchive.Read(zip, "steam:" + app);
-                if (archive.ContentHash != q["contentHash"] || archive.Files.Count != int.Parse(q["files"]) || archive.ExpandedBytes != long.Parse(q["bytes"])) { c.Response.StatusCode = 400; Reply(c, new { error = "manifest mismatch" }); return; }
-                if (archive.IsEmpty && q["intent"] != "delete") { c.Response.StatusCode = 422; Reply(c, new { error = "empty_archive" }); return; }
-                var current = list.Count > 0 ? list[list.Count - 1].Key : null;
-                if (current != null && (string)current["contentHash"] == archive.ContentHash) { Reply(c, current); return; }
-                if (current != null && (string)current["contentHash"] != (q["base"] ?? "")) { c.Response.StatusCode = 409; Reply(c, new { current = current }); return; }
-                var meta = new Dictionary<string, object> { { "id", Guid.NewGuid().ToString("N") }, { "sha256", CloudClient.Hash(zip) }, { "contentHash", archive.ContentHash }, { "size", zip.Length }, { "files", archive.Files.Count }, { "bytes", archive.ExpandedBytes }, { "createdAt", ++clock }, { "deviceId", q["deviceId"] }, { "deviceName", "Fake PC" }, { "deleted", archive.IsEmpty } };
-                list.Add(new KeyValuePair<Dictionary<string, object>, byte[]>(meta, zip));
-                Reply(c, meta);
+                if (path.EndsWith("/save") || path.EndsWith("/archive")) SaveRequests++;
+                c.Response.StatusCode = 404; Reply(c, new { error = "not_found" });
             }
             public void Dispose() { listener.Close(); thread.Join(5000); }
         }
@@ -467,19 +326,14 @@ namespace CabinetEngine
     sealed class CloudSettings { public string server, token, deviceId, deviceName, userName, userId; }
     sealed class CloudAppJournal
     {
-        // saveHash/saveUpdatedAt belong to the retired legacy save sync; kept so older Cabinet
-        // versions sharing this journal keep their watermark. Save state is in save-state.json.
-#pragma warning disable 0649
         public string progressHash, statsHash, saveHash;
         public long statsUpdatedAt, saveUpdatedAt, ownMinutes;
-#pragma warning restore 0649
         public Dictionary<string, long> remote = new Dictionary<string, long>();
         public Dictionary<string, long> pending = new Dictionary<string, long>();
     }
     sealed class CloudJournal { public Dictionary<string, CloudAppJournal> apps = new Dictionary<string, CloudAppJournal>(); }
-    sealed class CloudClient : ISaveCloud
+    sealed class CloudClient
     {
-        internal readonly SaveSync Saves;
         internal readonly string Data, Root;
         readonly Func<string, long> minutes;
         readonly Action<string> log;
@@ -492,7 +346,6 @@ namespace CabinetEngine
         internal string Token { get { return settings.token; } } // LuaTools: CloudRedirect only.
         internal int ConnectionVersion { get; private set; }
         internal string Device { get { return settings.deviceId; } }
-        internal string UserId { get { return settings.userId; } }
         internal CloudClient(string data, string root, Func<string, long> getMinutes, Action<string> logger)
         {
             Data = data; Root = root; minutes = getMinutes; log = logger; Directory.CreateDirectory(Data);
@@ -510,7 +363,6 @@ namespace CabinetEngine
             else SaveSettings();
             string state = Path.Combine(Data, "cloud-state.json");
             journal = File.Exists(state) ? Json.Deserialize<CloudJournal>(File.ReadAllText(state)) : new CloudJournal();
-            Saves = new SaveSync(Data, log, delegate { return SaveEnvironment.Current(Syncer.SteamPath(), Syncer.AccountId(), Root); });
         }
         static void Atomic(string path, string text)
         {
@@ -599,25 +451,6 @@ namespace CabinetEngine
         }
         byte[] Request(string method, string path, byte[] body, string type, bool acceptConflict)
         { return RequestTo(settings.server, settings.token, method, path, body, type, acceptConflict, 30000); }
-        // Any HTTP status comes back with its body; only transport failures throw.
-        byte[] RequestAny(string method, string path, byte[] body, string type, out int status)
-        {
-            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
-            var req = (HttpWebRequest)WebRequest.Create(settings.server + path);
-            req.Method = method; req.Timeout = 120000; req.ReadWriteTimeout = 120000; req.AllowAutoRedirect = false;
-            req.UserAgent = "Cabinet/" + BuildInfo.Version; req.Headers[HttpRequestHeader.Authorization] = "Bearer " + settings.token;
-            req.Headers["Origin"] = new Uri(settings.server).GetLeftPart(UriPartial.Authority);
-            if (body != null) { req.ContentType = type; req.ContentLength = body.Length; using (var s = req.GetRequestStream()) s.Write(body, 0, body.Length); }
-            HttpWebResponse response;
-            try { response = (HttpWebResponse)req.GetResponse(); }
-            catch (WebException ex) { response = ex.Response as HttpWebResponse; if (response == null) throw; }
-            using (response) using (var s = response.GetResponseStream()) using (var ms = new MemoryStream())
-            {
-                status = (int)response.StatusCode; byte[] buffer = new byte[65536]; int n;
-                while ((n = s.Read(buffer, 0, buffer.Length)) > 0) { if (ms.Length + n > 4L * 1024 * 1024) throw new InvalidDataException("Cloud response too large"); ms.Write(buffer, 0, n); }
-                return ms.ToArray();
-            }
-        }
         static byte[] RequestTo(string server, string token, string method, string path, byte[] body, string type, bool acceptConflict, int timeout)
         {
             ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
@@ -678,52 +511,7 @@ namespace CabinetEngine
                 try { Apply(app.Key, Map(app.Value), blocked); } catch (Exception ex) { log("pull " + app.Key + ": " + ex.Message); }
             }
             SaveJournal();
-            SyncSaves(state, blocked);
         }
-        // Saves of every eligible game (OnlineFix folders, LuaTools luas, overrides) plus cloud
-        // backups of games installed here. See docs/save-sync.md.
-        internal void SyncSaves(Dictionary<string, object> state, Func<string, bool> blocked)
-        {
-            Saves.UseAccount(settings.server, settings.userId); Saves.Device = Device;
-            Saves.Manifest.Refresh(false);
-            var env = Saves.CurrentEnvironment(true);
-            var eligible = new HashSet<string>(Saves.Eligible(env));
-            var ids = new SortedSet<string>(eligible, StringComparer.Ordinal);
-            foreach (var app in state) { object archive; if (AppId(app.Key) && Map(app.Value).TryGetValue("archive", out archive) && archive != null) ids.Add(app.Key); }
-            foreach (string id in ids)
-            {
-                object value, archive = null, save = null;
-                if (state.TryGetValue(id, out value)) { Map(value).TryGetValue("archive", out archive); Map(value).TryGetValue("save", out save); }
-                var cloud = SaveCloudMeta.Parse(archive);
-                Saves.Sync(id, cloud, SaveLegacyMeta.Parse(save), this, blocked, env, eligible.Contains(id) || (cloud != null && env.Installed.ContainsKey(id)));
-            }
-        }
-        internal void ScanSaves(bool connected)
-        {
-            Saves.Manifest.Refresh(false);
-            var env = Saves.CurrentEnvironment(true);
-            foreach (string id in Saves.Eligible(env)) Saves.Scan(id, env, true, connected);
-        }
-        internal Dictionary<string, object> AppStateOf(string appid)
-        {
-            var state = Map(Map(RequestJson("GET", "/api/state", null))["apps"]); object value;
-            return state.TryGetValue(appid, out value) ? Map(value) : new Dictionary<string, object>();
-        }
-        public SavePutResult Put(string appid, SaveArchive archive, string baseHash, bool deleteIntent)
-        {
-            string path = "/api/apps/" + appid + "/archive?deviceId=" + Uri.EscapeDataString(Device) + "&sha256=" + Hash(archive.Bytes) + "&contentHash=" + archive.ContentHash
-                + "&files=" + archive.Files.Count.ToString(CultureInfo.InvariantCulture) + "&bytes=" + archive.ExpandedBytes.ToString(CultureInfo.InvariantCulture) + "&base=" + (baseHash ?? "") + (deleteIntent ? "&intent=delete" : "");
-            int status; byte[] body = RequestAny("PUT", path, archive.Bytes, "application/zip", out status);
-            var result = new SavePutResult { Status = status }; Dictionary<string, object> reply;
-            try { reply = Map(Json.DeserializeObject(Encoding.UTF8.GetString(body))); } catch (Exception) { reply = new Dictionary<string, object>(); }
-            if (status == 200) result.Meta = SaveCloudMeta.Parse(reply);
-            else if (status == 409) result.Meta = SaveCloudMeta.Parse(reply.ContainsKey("current") ? reply["current"] : null);
-            else result.Error = reply.ContainsKey("error") ? Convert.ToString(reply["error"]) : null;
-            return result;
-        }
-        public byte[] Get(string appid, string versionId)
-        { return Request("GET", "/api/apps/" + appid + "/archive" + (versionId == null ? "" : "?id=" + Uri.EscapeDataString(versionId)), null, null, false); }
-        public byte[] GetLegacy(string appid) { return Request("GET", "/api/apps/" + appid + "/save", null, null, false); }
         void Push(string id, Func<string, bool> blocked)
         {
             var a = AppJournal(id); var ach = Achievements(id); var stats = Stats(id);
@@ -737,8 +525,8 @@ namespace CabinetEngine
             var body = new Dictionary<string, object> { { "deviceId", Device }, { "deviceName", settings.deviceName }, { "achievements", ach }, { "stats", stats }, { "statsUpdatedAt", a.statsUpdatedAt }, { "playtimeMinutes", a.ownMinutes } };
             string progress = Hash(Encoding.UTF8.GetBytes(Json.Serialize(body))); if (blocked(id)) return;
             if (progress != a.progressHash) { RequestJson("POST", "/api/apps/" + id + "/progress", body); a.progressHash = progress; SaveJournal(); }
-            // Saves sync separately (SaveSync) from every discovered save location; the legacy
-            // OnlineFix-only ZIP upload is retired.
+            // LuaTools: saves sync through CloudRedirect (Steam Cloud paths) to this Cabinet server, so the
+            // engine no longer uploads or restores the OnlineFix Saves folder.
         }
         void Apply(string id, Dictionary<string, object> state, Func<string, bool> blocked)
         {

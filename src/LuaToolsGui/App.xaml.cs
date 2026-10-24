@@ -46,7 +46,6 @@ public partial class App : Application
                 services.AddSingleton<ICabinetSettings>(sp => sp.GetRequiredService<SettingsService>());
                 services.AddSingleton<CabinetService>();
                 services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetService>());
-                services.AddSingleton<ICabinetSaves>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<UpdateService>();
@@ -268,6 +267,44 @@ public partial class App : Application
             window.ShowUpdateNotification();
             settingsVm.ShowUpdateResult(UpdateCheckResult.Staged, updates.StagedVersion);
         });
+        // Cabinet saves sync only through CloudRedirect, which uses each game's own Steam Cloud paths.
+        var unlocker = _host.Services.GetRequiredService<UnlockerService>();
+        var cabinetService = _host.Services.GetRequiredService<CabinetService>();
+        var cabinetVm = _host.Services.GetRequiredService<CabinetViewModel>();
+        var modeVm = _host.Services.GetRequiredService<ModeViewModel>();
+        CabinetCloudSaves CloudSavesNow()
+        {
+            if (!cabinetService.Status.Cloud.Connected) return CabinetCloudSaves.Hidden;
+            if (unlocker.SelectedMode is not (UnlockerMode.Ost or UnlockerMode.Bst)) return CabinetCloudSaves.Unavailable;
+            return unlocker.IsCloudRedirectAddonEnabled && new CloudRedirectCabinetConfig().Status().Configured
+                ? CabinetCloudSaves.Active : CabinetCloudSaves.Off;
+        }
+        async Task OfferCloudSavesAsync()
+        {
+            var state = CloudSavesNow();
+            if (state == CabinetCloudSaves.Active)
+            {
+                await cabinetService.ConfigureCloudRedirectAsync(); // the server or token may have changed
+                return;
+            }
+            if (state == CabinetCloudSaves.Unavailable)
+            {
+                toast.Show("Cabinet", LuaToolsGui.Resources.Strings.Cabinet_Saves_Unavailable);
+                return;
+            }
+            if (state != CabinetCloudSaves.Off) return;
+            // The user's explicit Yes here is the consent the Settings switch and Mode page Enable record.
+            if (MessageBox.Show(window, LuaToolsGui.Resources.Strings.Cabinet_Saves_OfferBody,
+                    LuaToolsGui.Resources.Strings.Cabinet_Saves_OfferTitle, MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            settingsVm.CloudRedirectEnabled = true;
+            await modeVm.EnableCloudRedirectForCabinetAsync();
+        }
+        cabinetVm.CloudSavesProvider = CloudSavesNow;
+        cabinetVm.RequestEnableCloudSaves = OfferCloudSavesAsync;
+        settingsVm.RequestOfferCloudSaves = async () => { await OfferCloudSavesAsync(); cabinetVm.RefreshCloudSaves(); };
+        cabinetVm.RefreshCloudSaves();
+
         settingsVm.RequestUpdateCheck = async () => (await Task.Run(() => updates.CheckAndStageAsync()), updates.StagedVersion);
         settingsVm.RequestApplyUpdate = () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } };
         _ = updates.CheckAndStageAsync();

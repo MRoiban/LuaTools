@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.IO;
 using LuaToolsGui.Services;
 using LuaToolsGui.Services.Cabinet;
 using LuaToolsGui.ViewModels;
@@ -81,6 +82,44 @@ public sealed class CabinetViewModelTests
     {
         var service = new FakeCabinetService(); var vm = new CabinetViewModel(service, new SettingsService(new AppSettings()));
         vm.Dispose(); service.Publish(CabinetStatus.Off with { Enabled = true }); Assert.True(vm.IsOff);
+    }
+    [Fact]
+    public async Task CloudSavesLineFollowsCloudRedirectAndOffersToTurnItOn()
+    {
+        var service = new FakeCabinetService();
+        service.Publish(CabinetStatus.Off with { Enabled = true });
+        using var vm = new CabinetViewModel(service, new SettingsService(new AppSettings()));
+        var state = CabinetCloudSaves.Off; int offers = 0;
+        vm.CloudSavesProvider = () => state;
+        vm.RequestEnableCloudSaves = () => { offers++; state = CabinetCloudSaves.Active; return Task.CompletedTask; };
+        vm.RefreshCloudSaves();
+        Assert.False(vm.ShowCloudSaves); // Cabinet Cloud isn't connected yet
+
+        service.Publish(service.Status with { Cloud = new CabinetCloudStatus(true, "Alex", "cabinet.mc2.onl", null) });
+        Assert.True(vm.ShowCloudSaves); Assert.True(vm.CanEnableCloudSaves); Assert.False(vm.CloudSavesActive);
+        Assert.Equal(Resources.Strings.Cabinet_Saves_Off, vm.CloudSavesLabel);
+
+        await vm.EnableCloudSavesCommand.ExecuteAsync(null);
+        Assert.Equal(1, offers);
+        Assert.True(vm.CloudSavesActive); Assert.False(vm.CanEnableCloudSaves);
+        Assert.Equal(string.Format(Resources.Strings.Cabinet_Saves_Active, "cabinet.mc2.onl"), vm.CloudSavesLabel);
+
+        state = CabinetCloudSaves.Unavailable; vm.RefreshCloudSaves();
+        Assert.True(vm.ShowCloudSaves); Assert.False(vm.CanEnableCloudSaves);
+        Assert.Equal(Resources.Strings.Cabinet_Saves_Unavailable, vm.CloudSavesLabel);
+
+        service.Publish(service.Status with { Cloud = CabinetCloudStatus.Disconnected });
+        Assert.False(vm.ShowCloudSaves);
+    }
+    [Fact]
+    public void CloudSavesProviderFailureHidesTheLine()
+    {
+        var service = new FakeCabinetService();
+        service.Publish(CabinetStatus.Off with { Enabled = true, Cloud = new CabinetCloudStatus(true, "Alex", "cabinet.mc2.onl", null) });
+        using var vm = new CabinetViewModel(service, new SettingsService(new AppSettings()));
+        vm.CloudSavesProvider = () => throw new IOException("config locked");
+        vm.RefreshCloudSaves();
+        Assert.False(vm.ShowCloudSaves);
     }
     [Theory]
     [InlineData("en")]

@@ -209,6 +209,19 @@ public partial class ModeViewModel : ObservableObject
         }
     }
 
+    /// <summary>Cabinet's cloud-saves offer, after the user agreed: enable the add-on (first enable
+    /// downloads the verified dll) and point it at the connected Cabinet server.</summary>
+    internal async Task EnableCloudRedirectForCabinetAsync()
+    {
+        await LoadAsync();
+        if (!CloudRedirectEnabled) await ToggleCloudRedirect();
+        else if (_cabinet is not null)
+        {
+            try { await _cabinet.ConfigureCloudRedirectAsync(); }
+            catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
+        }
+    }
+
     /// <summary>Replace cloud_redirect.dll with the latest. Reports "close Steam" if it's locked.</summary>
     [RelayCommand]
     private async Task UpdateCloudRedirect()
