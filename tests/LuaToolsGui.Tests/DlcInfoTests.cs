@@ -240,13 +240,10 @@ public class DlcInfoTests
     }
 
     [Fact]
-    public async Task PluginDlcRequiresSignInAndAParent()
+    public async Task PluginDlcRequiresAParent()
     {
         using var f = new Fixture(() => throw new Exception("API was reached"));
-        f.Details(1670540, "dlc", "1142710");
         f.Details(999999, "dlc", null);
-        var guest = await RunAsync(Plugin(f), 1670540);
-        Assert.Equal(LuaToolsGui.Resources.Strings.Add_SignIn_Dlc, guest.Error);
         await f.SignInAsync();
         var orphan = await RunAsync(Plugin(f), 999999);
         Assert.Equal(LuaToolsGui.Resources.Strings.Add_Err_BaseGame, orphan.Error);

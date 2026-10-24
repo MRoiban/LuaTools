@@ -86,11 +86,10 @@ public partial class DepotDownloaderService(
     private bool IsEnabled(string component) => settings?.IsExecutableWorkflowEnabled(component) == true;
 
     /// <summary>
-    /// Whether missing manifests can be fetched from the API. Guests can still download depots whose
-    /// manifest Steam already has — they just can't pull new ones. Checked locally so the picker never
-    /// needs a request to decide what to grey out.
+    /// Signed out, missing manifests come from the game's SteamML archive instead of the lua.tools
+    /// manifest API (which needs an account).
     /// </summary>
-    public bool CanFetchManifests => !auth.IsGuest;
+    public bool IsGuest => auth.IsGuest;
 
     private static readonly string ToolDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "depotdownloader");

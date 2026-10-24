@@ -249,13 +249,13 @@ public class PluginAddService(
         }
     }
 
-    /// <summary>DLC route: sign-in, the parent game Steam reports for THIS DLC, then /api/dlc/info.
+    /// <summary>DLC route: the parent game Steam reports for THIS DLC, then /api/dlc/info (signed out,
+    /// the same check against the base game's SteamML archive).
     /// Generation is offered when keys exist or nothing is missing, the same rule as the Add page.</summary>
     private async Task CheckDlcAsync(long appId, AddState state, GameDetails details)
     {
         string? error = null;
-        if (auth.IsGuest) error = Resources.Strings.Add_SignIn_Dlc;
-        else if (!ApiContract.IsAppId(details.BaseAppId)) error = Resources.Strings.Add_Err_BaseGame;
+        if (!ApiContract.IsAppId(details.BaseAppId)) error = Resources.Strings.Add_Err_BaseGame;
         if (error is not null)
         {
             PluginLog.Log($"PluginAdd.Dlc appid={appId} base={(ApiContract.IsAppId(details.BaseAppId) ? details.BaseAppId : "invalid")} rejected guest={auth.IsGuest}");

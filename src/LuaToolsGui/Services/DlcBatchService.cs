@@ -30,7 +30,6 @@ public sealed class DlcBatchService
 
     /// <summary>The operations the batch needs, injectable for tests.</summary>
     internal sealed record Ports(
-        Func<bool> IsGuest,
         Func<long, CancellationToken, Task<GameDetails?>> Details,
         Func<long, CancellationToken, Task<IReadOnlyList<long>>> DeclaredDlc,
         Func<long, IReadOnlyList<long>> StoreDlc,
@@ -68,9 +67,8 @@ public sealed class DlcBatchService
     private readonly object _gate = new();
 
     public DlcBatchService(LuaToolsApiClient api, SteamDepotInfo depots, SteamAppInfoCache appInfo,
-        LuaInstaller installer, AuthService auth)
+        LuaInstaller installer)
         : this(new Ports(
-            () => auth.IsGuest,
             (id, ct) => api.GetDetailsAsync(id.ToString(), ct),
             async (id, ct) => (await depots.GetAsync(id, ct))?.DlcIds ?? [],
             id => StoreDlcIds(appInfo.GetFullDetails(id)),
@@ -129,7 +127,6 @@ public sealed class DlcBatchService
         var ct = batch.Cts.Token;
         try
         {
-            if (_ports.IsGuest()) { Fail(batch, Resources.Strings.Add_SignIn_Dlc); return; }
             var game = await _ports.Details(batch.AppId, ct);
             if (game is null || game.IsDlc) { Fail(batch, Resources.Strings.DlcBatch_Err_NotAGame); return; }
 

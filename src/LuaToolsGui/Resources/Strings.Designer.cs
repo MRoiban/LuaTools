@@ -365,7 +365,6 @@ public static class Strings
     public static string Add_Generating => Get(nameof(Add_Generating));
     public static string Add_DlcHint => Get(nameof(Add_DlcHint));
     public static string Add_AlreadyHaveFiles => Get(nameof(Add_AlreadyHaveFiles));
-    public static string Add_SignIn_Dlc => Get(nameof(Add_SignIn_Dlc));
     public static string Add_SignIn_Download => Get(nameof(Add_SignIn_Download));
     public static string Add_Err_BaseGame => Get(nameof(Add_Err_BaseGame));
     public static string Add_Err_Generic => Get(nameof(Add_Err_Generic));
@@ -591,7 +590,6 @@ public static class Strings
     public static string Builds_Select_Title => Get(nameof(Builds_Select_Title));
     public static string Builds_Select_Confirm => Get(nameof(Builds_Select_Confirm));
     public static string Builds_Select_NoManifest => Get(nameof(Builds_Select_NoManifest));
-    public static string Builds_Select_SignIn => Get(nameof(Builds_Select_SignIn));
     public static string Depot_Err_SignIn => Get(nameof(Depot_Err_SignIn));
     public static string Depot_Err_NoManifest => Get(nameof(Depot_Err_NoManifest));
     public static string Downloads_Depot_FetchingManifest => Get(nameof(Downloads_Depot_FetchingManifest));
@@ -722,4 +720,6 @@ public static class Strings
     public static string Fixes_OnlineFixMe_ArchiveDescription => Get(nameof(Fixes_OnlineFixMe_ArchiveDescription));
     public static string SteamMl_DownloadFailed => Get(nameof(SteamMl_DownloadFailed));
     public static string SteamMl_InvalidArchive => Get(nameof(SteamMl_InvalidArchive));
+    public static string SteamMl_NoArchive => Get(nameof(SteamMl_NoArchive));
+    public static string SteamMl_NoManifest => Get(nameof(SteamMl_NoManifest));
 }
