@@ -84,6 +84,7 @@ public partial class App : Application
                 services.AddSingleton<Services.Downloads.ManifestJobFactory>();
                 // Hook loader infrastructure
                 services.AddSingleton<PluginAddService>();
+                services.AddSingleton<DlcBatchService>();
                 services.AddSingleton<HttpServerService>();
                 // Also resolvable as a plain singleton (not just IHostedService) so PluginInstallerService
                 // can call ReloadPluginFilesAsync() after install/uninstall. Same pattern as HttpServerService.
@@ -368,7 +369,11 @@ public partial class App : Application
         // Open only the local catalog UI. No protocol installs, onboarding installers,
         // key donation, analytics, upstream updates or automatic Steam modifications run here.
         if (Program.StartMinimized)
+        {
             window.StartSilent();
+            try { await main.InitializeAsync(); }
+            catch { /* auth restore failed (e.g. offline). Plugin requests stay guest-only */ }
+        }
         else
             window.Show();
         await SetPluginRuntimeAsync(activate: BundledPlugin.IsActivated);

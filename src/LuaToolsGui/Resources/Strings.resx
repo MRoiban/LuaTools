@@ -577,6 +577,8 @@ This deletes the .lua files from Steam\config\stplug-in.</value></data>
   <data name="Api_Err_RequestFailed" xml:space="preserve"><value>Request failed ({0})</value></data>
   <data name="Api_Err_SessionExpired" xml:space="preserve"><value>Session expired. Please sign in again.</value></data>
   <data name="Api_Err_InvalidDlcResponse" xml:space="preserve"><value>Invalid DLC response.</value></data>
+  <data name="DlcBatch_Err_NotAGame" xml:space="preserve"><value>Open the base game's store page to add all of its DLC.</value></data>
+  <data name="DlcBatch_Err_NoDlc" xml:space="preserve"><value>Steam lists no DLC for this game.</value></data>
   <data name="Hubcap_Err_InvalidKey" xml:space="preserve"><value>Your Hubcap key is invalid or expired.</value></data>
   <data name="Hubcap_Err_LimitReached" xml:space="preserve"><value>Your Hubcap daily limit has been reached.</value></data>
   <data name="Hubcap_Err_NoManifest" xml:space="preserve"><value>No Hubcap manifest is available for this app.</value></data>

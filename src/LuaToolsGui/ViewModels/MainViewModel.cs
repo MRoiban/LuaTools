@@ -48,7 +48,14 @@ public partial class MainViewModel : ObservableObject
         _auth.AuthStateChanged += () => IsGuest = _auth.IsGuest;
     }
 
-    public async Task InitializeAsync()
+    private Task? _initialize;
+
+    /// <summary>Restore the saved session once. Runs at startup even for a --minimized (tray) launch,
+    /// where the window's Loaded never fires and the Steam plugin would otherwise act as a guest; the
+    /// window's own call later just awaits the same task.</summary>
+    public Task InitializeAsync() => _initialize ??= InitializeCoreAsync();
+
+    private async Task InitializeCoreAsync()
     {
         await _auth.InitializeAsync();
         IsGuest = _auth.IsGuest;

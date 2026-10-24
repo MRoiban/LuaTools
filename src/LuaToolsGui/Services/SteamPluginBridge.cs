@@ -11,6 +11,8 @@ internal static class SteamPluginBridge
     internal const int MaximumArgsBytes = 4096;
     internal const int MaximumResultBytes = 512 * 1024;
     internal const int RequestLifetimeMs = 20000;
+    private static readonly HashSet<string> DlcBatchMethods =
+        new(StringComparer.Ordinal) { "CheckDlcBatch", "GetDlcBatchStatus", "ApplyDlcBatch", "CancelDlcBatch" };
 
     internal static bool IsStoreUrl(string? url) => Uri.TryCreate(url, UriKind.Absolute, out var u)
         && u.Scheme == "https" && u.IdnHost == "store.steampowered.com" && u.Port == 443
@@ -37,6 +39,10 @@ internal static class SteamPluginBridge
             "DismissLoadedApps" => ("POST", "/loaded-apps"),
             "OpenExternalUrl" => ("POST", "/open-url"),
             "GetIconDataUrl" => ("GET", "/icon"),
+            "CheckDlcBatch" => ("POST", "/dlc-batch/{appid}"),
+            "GetDlcBatchStatus" => ("GET", "/dlc-batch/{appid}"),
+            "ApplyDlcBatch" => ("POST", "/dlc-batch-apply/{appid}"),
+            "CancelDlcBatch" => ("POST", "/dlc-batch-cancel/{appid}"),
             _ => throw new InvalidOperationException("Unknown Steam plugin method.")
         };
         var expected = new HashSet<string>(StringComparer.Ordinal);
@@ -47,7 +53,9 @@ internal static class SteamPluginBridge
                 || !id.TryGetUInt32(out uint appid) || appid == 0)
                 throw new InvalidDataException("appid must be a positive numeric Steam app ID.");
             var segments = new Uri(currentUrl).AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length < 2 || segments[0] != "app"
+            // The DLC batch also runs from the game's "Browse all DLC" page (/dlc/<game>/).
+            bool dlcPage = DlcBatchMethods.Contains(method) && segments.Length >= 2 && segments[0] == "dlc";
+            if (segments.Length < 2 || (segments[0] != "app" && !dlcPage)
                 || !uint.TryParse(segments[1], NumberStyles.None, CultureInfo.InvariantCulture, out uint pageApp)
                 || pageApp != appid)
                 throw new InvalidOperationException("The app does not match the current Steam store page.");
@@ -57,6 +65,14 @@ internal static class SteamPluginBridge
         {
             expected.Add("name");
             RequireString(args, "name", 512, allowEmpty: true);
+        }
+        if (method == "CheckDlcBatch")
+        {
+            expected.Add("owned");
+            if (!args.TryGetProperty("owned", out var owned) || owned.ValueKind != JsonValueKind.Array
+                || owned.GetArrayLength() > DlcBatchService.MaxOwned
+                || owned.EnumerateArray().Any(e => e.ValueKind != JsonValueKind.Number || !e.TryGetUInt32(out uint v) || v == 0))
+                throw new InvalidDataException("owned must be a list of Steam app IDs.");
         }
         if (method == "PickLuaToolsAddSource")
         {

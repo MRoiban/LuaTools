@@ -5,7 +5,19 @@
 (function () {
   'use strict';
   const clean = (value, max = 240) => String(value == null ? '' : value).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max);
-  const appId = path => { const m = /^\/app\/(\d+)(?:\/|$)/.exec(path); return m && /^[1-9]\d{0,9}$/.test(m[1]) && Number(m[1]) <= 4294967295 ? Number(m[1]) : null; };
+  const pageId = (kind, path) => { const m = new RegExp(`^/${kind}/(\\d+)(?:/|$)`).exec(path); return m && /^[1-9]\d{0,9}$/.test(m[1]) && Number(m[1]) <= 4294967295 ? Number(m[1]) : null; };
+  const appId = path => pageId('app', path);
+  const dlcPageId = path => pageId('dlc', path);
+  // "Add all DLC": owned ids come from Steam's own ds_owned markers and only ever SKIP a DLC.
+  const ownedIds = nodes => Array.from(new Set(Array.from(nodes || []).flatMap(n => String(n.getAttribute && n.getAttribute('data-ds-appid') || '').split(','))
+    .map(v => v.trim()).filter(v => /^[1-9]\d{0,9}$/.test(v) && Number(v) <= 4294967295).map(Number))).slice(0, 400);
+  function batchCounts(data) {
+    const items = (Array.isArray(data && data.items) ? data.items : []).filter(i => i && typeof i === 'object').slice(0, 1000);
+    const count = state => items.filter(i => i.state === state).length;
+    return { total: items.length, ready: count('ready'), download: items.filter(i => i.state === 'ready' && i.download === true).length,
+      owned: count('owned'), added: count('added'), unavailable: count('unavailable') + count('not-dlc'), installed: count('installed'),
+      failed: count('failed'), limit: count('limit'), done: Math.max(0, Math.floor(Number(data && data.done) || 0)) };
+  }
   const sourceRows = data => (Array.isArray(data.sources) ? data.sources : []).filter(s => s && typeof s === 'object').slice(0, 32).map(s => ({
     name: clean(s.name, 128), displayName: clean(s.displayName || s.name, 128), status: clean(s.status, 40),
     canDownload: s.canDownload === true, locked: s.locked === true, needsKey: s.needsKey === true,
@@ -33,14 +45,21 @@
     };
   }
   // Pure helpers are exported only in Node, for source-owned behavior tests.
-  if (typeof module === 'object' && module.exports) { module.exports = { clean, appId, sourceRows, classify, translator }; return; }
+  if (typeof module === 'object' && module.exports) { module.exports = { clean, appId, dlcPageId, ownedIds, batchCounts, sourceRows, classify, translator }; return; }
   if (window.__LuaToolsInjected) return;
   if (location.hostname !== 'store.steampowered.com') return;
   window.__LuaToolsInjected = true;
   const css = typeof window.__LuaToolsCss === 'string' ? window.__LuaToolsCss : '';
   const t = translator(window.__LuaToolsStrings, document.documentElement.lang || 'en');
-  let context = null, nav = null, overlay = null, menu = null, modal = null, url = '', scanPending = false;
+  let context = null, nav = null, overlay = null, menu = null, modal = null, url = '', scanPending = false, batch = null;
   let loaded = [], menuGeneration = 0;
+  // An app restart injects a fresh isolated world while this one keeps running. The newest injection
+  // stamps the shared DOM; an older instance that sees a newer stamp removes its hosts and goes quiet,
+  // so the page never shows duplicate panels backed by a dead bridge.
+  const generation = Math.random().toString(36).slice(2);
+  document.documentElement.setAttribute('data-luatools-gen', generation);
+  for (const stale of Array.from(document.querySelectorAll('[data-luatools]'))) stale.remove();
+  const superseded = () => document.documentElement.getAttribute('data-luatools-gen') !== generation;
   const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
   function moon(panel = false) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -182,6 +201,82 @@
     if (c.flowBody && modal && c.expanded) c.flowBody.replaceChildren(area); else c.shadow.append(area);
     if (focusText) Array.from(area.querySelectorAll('button')).find(b => b.textContent === focusText)?.focus();
   }
+  const batchCurrent = b => batch === b && b.host.isConnected;
+  async function batchPoll(b, gen) {
+    if (!batchCurrent(b) || gen !== b.gen) return;
+    try {
+      const data = await call('GetDlcBatchStatus', { appid: b.id });
+      if (!batchCurrent(b) || gen !== b.gen) return;
+      b.data = data; b.state = ['checking', 'ready', 'applying', 'done', 'failed'].includes(data.phase) ? data.phase : 'idle';
+      b.error = clean(data.error, 1000); renderBatch(b);
+      if (['checking', 'applying'].includes(b.state)) b.timer = setTimeout(() => batchPoll(b, gen), 400);
+    } catch (e) { if (gen === b.gen) { b.state = 'failed'; b.error = clean(e.message, 1000); renderBatch(b); } }
+  }
+  async function batchCall(b, method, args, next) {
+    if (!batchCurrent(b) || b.busy) return;
+    clearTimeout(b.timer); const gen = ++b.gen; b.busy = true; b.error = ''; b.state = next; renderBatch(b);
+    try { await call(method, { appid: b.id, ...args }); b.busy = false; batchPoll(b, gen); }
+    catch (e) { if (gen === b.gen) { b.busy = false; b.state = 'failed'; b.error = clean(e.message, 1000); renderBatch(b); } }
+  }
+  const batchCheck = b => batchCall(b, 'CheckDlcBatch', { owned: ownedIds(document.querySelectorAll('[data-ds-appid].ds_owned')) }, 'checking');
+  const batchApply = b => batchCall(b, 'ApplyDlcBatch', {}, 'applying');
+  async function batchCancel(b) {
+    clearTimeout(b.timer); b.gen++;
+    try { await call('CancelDlcBatch', { appid: b.id }); } catch (_) { /* The panel resets either way. */ }
+    if (batchCurrent(b)) { b.state = 'idle'; b.busy = false; renderBatch(b); }
+  }
+  function renderBatch(b) {
+    if (!batchCurrent(b)) return;
+    clear(b.shadow);
+    const n = batchCounts(b.data), area = el('section', 'lt-panel lt-batch'); area.setAttribute('aria-label', 'LuaTools DLC');
+    area.append(el('h2', '', t('Add all DLC via LuaTools')), moon(true));
+    const sub = el('div', `lt-sub${b.state === 'failed' ? ' lt-error' : ''}`);
+    const lines = [];
+    if (b.state === 'idle') lines.push(t('Checks every DLC with lua.tools, then adds the ones you don\'t own.'));
+    if (b.state === 'checking') lines.push(n.total ? t('Checking DLC… {done}/{total}', { done: n.done, total: n.total }) : t('Finding DLC…'));
+    if (b.state === 'ready') {
+      lines.push(t('{count} DLC can be added', { count: n.ready }) + (n.download ? ' · ' + t('{count} use a lua.tools download', { count: n.download }) : ''));
+      lines.push(t('{owned} owned · {added} already added · {unavailable} unavailable', n));
+    }
+    if (b.state === 'applying') lines.push(t('Adding DLC… {done}/{total}', { done: n.done, total: n.ready + n.installed + n.failed + n.limit }));
+    if (b.state === 'done') {
+      lines.push(t('Added {count} DLC. Restart Steam to apply.', { count: n.installed }));
+      if (n.failed || n.limit) lines.push(t('{failed} failed · {limit} over the daily download limit', n));
+    }
+    if (b.state === 'failed') lines.push(b.error || t('LuaTools could not complete the request.'));
+    sub.append(document.createTextNode(lines.join(' · '))); area.append(sub);
+    if (['checking', 'applying'].includes(b.state)) {
+      const total = b.state === 'checking' ? n.total : n.ready + n.installed + n.failed + n.limit;
+      const bar = el('div', `lt-bar${total ? '' : ' lt-indeterminate'}`), fill = el('i'), p = el('div', 'lt-progress');
+      if (total) fill.style.width = `${Math.min(100, Math.round(100 * n.done / total))}%`;
+      bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-label', 'DLC progress'); bar.append(fill); p.append(bar); area.append(p);
+    }
+    const actions = el('div', 'lt-action');
+    if (b.state === 'idle') actions.append(button('Check DLC', () => batchCheck(b), 'green'));
+    if (b.state === 'ready') {
+      const add = button(t('Add {count} DLC', { count: n.ready }), () => batchApply(b), 'green'); add.disabled = !n.ready; actions.append(add);
+      actions.append(button('Cancel', () => batchCancel(b), 'grey'));
+    }
+    if (['checking', 'applying'].includes(b.state)) actions.append(button('Cancel', () => batchCancel(b), 'grey'));
+    if (b.state === 'done') actions.append(button('Restart Steam', restart, 'green'), button('Check again', () => batchCheck(b), 'grey'));
+    if (b.state === 'failed') actions.append(button('Try Again', () => batchCheck(b), 'green'));
+    for (const x of actions.children) if (b.busy) x.disabled = true;
+    if (actions.childNodes.length) area.append(actions);
+    b.shadow.append(area);
+  }
+  function scanBatch() {
+    // Base game page: next to its DLC section. "Browse all DLC" page: under the header.
+    const id = appId(location.pathname) || dlcPageId(location.pathname);
+    const section = appId(location.pathname) ? document.querySelector('#gameAreaDLCSection') : null;
+    const header = dlcPageId(location.pathname) ? document.querySelector('#curator_header_area_ctn_id') : null;
+    if (batch && (!batch.host.isConnected || batch.id !== id)) { clearTimeout(batch.timer); batch.host.remove(); batch = null; }
+    if (batch || !id || !(section || header)) return;
+    const host = el('div'); host.dataset.luatools = 'batch';
+    const shadow = host.attachShadow({ mode: 'closed' }); shadow.append(el('style', '', css));
+    if (section) section.parentElement.insertBefore(host, section); else header.append(host);
+    batch = { host, shadow, id, state: 'idle', data: {}, gen: 0, timer: null, busy: false, error: '' };
+    renderBatch(batch); batchPoll(batch, batch.gen); // resumes a batch already running for this game
+  }
   function closeMenu(focus = true) { menuGeneration++; if (menu) menu.remove(); menu = null; if (nav) { nav.button.setAttribute('aria-expanded', 'false'); if (focus) nav.button.focus(); } }
   function closeModal() {
     if (!modal) return; const old = modal; modal = null; old.scrim.remove();
@@ -269,11 +364,19 @@
     try { const data = await call('ReadLoadedApps'); if (menu === node && generation === menuGeneration) { loaded = normalizeApps(data); added.firstChild.textContent = t('Added since last restart ({count})', { count: loaded.length }); } }
     catch (_) { /* The menu remains usable when the optional count is unavailable. */ }
   }
+  function retire() {
+    closeMenu(false); closeModal();
+    if (context) { stop(context); context.host.remove(); context = null; }
+    if (batch) { clearTimeout(batch.timer); batch.gen++; batch.host.remove(); batch = null; }
+    for (const r of [nav, overlay]) if (r) r.host.remove();
+    nav = null; overlay = null;
+  }
   function scan() {
     scanPending = false;
     if (!document.body) return;
+    if (superseded()) { retire(); return; }
     if (!overlay || !overlay.host.isConnected) { closeModal(); closeMenu(false); overlay = root(document.body, 'overlay'); }
-    if (url !== location.href) { url = location.href; closeMenu(false); closeModal(); if (context) { stop(context); context.host.remove(); context = null; } }
+    if (url !== location.href) { url = location.href; closeMenu(false); closeModal(); if (context) { stop(context); context.host.remove(); context = null; } if (batch) { clearTimeout(batch.timer); batch.host.remove(); batch = null; } }
     if (!nav || !nav.host.isConnected) {
       const anchor = document.querySelector('._1wn1lBlAzl3HMRqS1llwie') || document.querySelector('#store_nav_search_term')?.parentElement || document.querySelector('#store_nav_area, .store_nav');
       if (anchor) {
@@ -297,6 +400,7 @@
       }
     }
     if (context && !context.host.isConnected) { stop(context); context = null; }
+    scanBatch();
     if (id && !context) {
       const fallback = document.querySelector('.apphub_OtherSiteInfo') || document.querySelector('#queueBtnFollow')?.parentElement;
       if (purchase || fallback) {
@@ -314,6 +418,6 @@
   window.addEventListener('pagehide', () => { if (context) stop(context); closeMenu(false); closeModal(); });
   document.addEventListener('pointerdown', e => { if (e.isTrusted && menu && !e.composedPath().includes(overlay.host) && !e.composedPath().includes(nav.host)) closeMenu(false); }, true);
   document.addEventListener('focusin', e => { if (modal && !e.composedPath().includes(overlay.host)) focusables(modal.card)[0]?.focus(); }, true);
-  setInterval(() => { if (url !== location.href || !context || !nav || (context && (!context.host.isConnected || context.fallback)) || (nav && !nav.host.isConnected)) scheduleScan(); }, 750);
+  setInterval(() => { if (superseded()) { if (nav || overlay || context || batch) retire(); return; } if (url !== location.href || !context || !nav || (context && (!context.host.isConnected || context.fallback)) || (nav && !nav.host.isConnected) || (batch && !batch.host.isConnected)) scheduleScan(); }, 750);
   scan();
 })();

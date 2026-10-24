@@ -21,6 +21,33 @@ public class SteamPluginBridgeTests
         Assert.Throws<InvalidOperationException>(() => SteamPluginBridge.Map("Logger", Args("{}"), Store));
     }
 
+    [Fact]
+    public void DlcBatchIsPinnedToTheGameOnItsStoreOrBrowseAllDlcPage()
+    {
+        const string dlcPage = "https://store.steampowered.com/dlc/1142710/Total_War_WARHAMMER_III/";
+        const string appPage = "https://store.steampowered.com/app/1142710/";
+        Assert.Equal(("POST", "/dlc-batch/1142710"), SteamPluginBridge.Map("CheckDlcBatch", Args("{\"appid\":1142710,\"owned\":[3858050]}"), appPage));
+        Assert.Equal(("POST", "/dlc-batch/1142710"), SteamPluginBridge.Map("CheckDlcBatch", Args("{\"appid\":1142710,\"owned\":[]}"), dlcPage));
+        Assert.Equal(("GET", "/dlc-batch/1142710"), SteamPluginBridge.Map("GetDlcBatchStatus", Args("{\"appid\":1142710}"), dlcPage));
+        Assert.Equal(("POST", "/dlc-batch-apply/1142710"), SteamPluginBridge.Map("ApplyDlcBatch", Args("{\"appid\":1142710}"), dlcPage));
+        Assert.Equal(("POST", "/dlc-batch-cancel/1142710"), SteamPluginBridge.Map("CancelDlcBatch", Args("{\"appid\":1142710}"), appPage));
+        // Another game's batch, or a non-batch method on the DLC page, is refused.
+        Assert.Throws<InvalidOperationException>(() => SteamPluginBridge.Map("ApplyDlcBatch", Args("{\"appid\":594570}"), dlcPage));
+        Assert.Throws<InvalidOperationException>(() => SteamPluginBridge.Map("StartLuaToolsAdd", Args("{\"appid\":1142710,\"name\":\"x\"}"), dlcPage));
+        Assert.Throws<InvalidOperationException>(() => SteamPluginBridge.Map("ApplyDlcBatch", Args("{\"appid\":1142710}"), "https://store.steampowered.com/sub/1142710/"));
+    }
+
+    [Theory]
+    [InlineData("{\"appid\":1142710}")]
+    [InlineData("{\"appid\":1142710,\"owned\":\"3858050\"}")]
+    [InlineData("{\"appid\":1142710,\"owned\":[\"3858050\"]}")]
+    [InlineData("{\"appid\":1142710,\"owned\":[0]}")]
+    [InlineData("{\"appid\":1142710,\"owned\":[-1]}")]
+    [InlineData("{\"appid\":1142710,\"owned\":[4294967296]}")]
+    [InlineData("{\"appid\":1142710,\"owned\":[1],\"apply\":true}")]
+    public void DlcBatchOwnedListIsStrict(string raw) =>
+        Assert.Throws<InvalidDataException>(() => SteamPluginBridge.Map("CheckDlcBatch", Args(raw), "https://store.steampowered.com/app/1142710/"));
+
     [Theory]
     [InlineData("{\"appid\":\"620\"}")]
     [InlineData("{\"appid\":0}")]
