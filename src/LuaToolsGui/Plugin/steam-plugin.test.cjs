@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const { clean, appId, sourceRows, classify, translator } = require('./steam-plugin.js');
+const { clean, appId, dlcPageId, ownedIds, batchCounts, sourceRows, classify, translator } = require('./steam-plugin.js');
 
 test('app IDs, remote names and progress are bounded', () => {
   assert.equal(appId('/app/1145360/Hades/'), 1145360);
@@ -38,6 +38,7 @@ class Element {
   constructor(tag, doc) { this.tagName = tag.toUpperCase(); this.doc = doc; this.children = []; this.parentElement = null; this.dataset = {}; this.style = {}; this.events = {}; this.attrs = {}; this._text = ''; this.disabled = false; this.hidden = false; }
   append(...nodes) { for (const n of nodes) { n.remove(); n.parentElement = this; this.children.push(n); } }
   prepend(n) { n.remove(); n.parentElement = this; this.children.unshift(n); }
+  insertBefore(n, ref) { n.remove(); n.parentElement = this; const i = this.children.indexOf(ref); this.children.splice(i < 0 ? this.children.length : i, 0, n); }
   replaceChildren(...nodes) { for (const n of [...this.children]) n.remove(); this._text = ''; this.append(...nodes); }
   remove() { if (this.parentElement) { const a = this.parentElement.children; a.splice(a.indexOf(this), 1); this.parentElement = null; } }
   attachShadow() { const n = new Element('shadow', this.doc); n.host = this; this.doc.shadows.push(n); return n; }
@@ -47,6 +48,7 @@ class Element {
   get childNodes() { return this.children; }
   get isConnected() { return this === this.doc.body || !!(this.host ? this.host.isConnected : this.parentElement && this.parentElement.isConnected); }
   setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; }
   addEventListener(k, f) { (this.events[k] ||= []).push(f); }
   focus() { let p = this; while (p.parentElement) p = p.parentElement; p.activeElement = this; }
   getBoundingClientRect() { return { bottom: 35, right: 900 }; }
@@ -149,4 +151,47 @@ test('only French page languages select French; other languages use English', ()
   assert.equal(translator(dictionaries, 'fr_CA')('Cancel'), 'Annuler');
   assert.equal(translator(dictionaries, 'de-DE')('Cancel'), 'Cancel');
   assert.equal(translator(dictionaries, 'en-US')('Cancel'), 'Cancel');
+});
+
+test('DLC batch helpers bound ids, read owned markers and count states', () => {
+  assert.equal(dlcPageId('/dlc/1142710/Total_War_WARHAMMER_III/'), 1142710);
+  for (const path of ['/dlc/0/', '/dlc/x', '/app/1142710/', '/dlc/4294967296/']) assert.equal(dlcPageId(path), null);
+  const node = v => ({ getAttribute: k => k === 'data-ds-appid' ? v : null });
+  assert.deepEqual(ownedIds([node('3858050'), node('10,20'), node('0'), node('-1'), node('x'), node('3858050'), node('4294967296')]), [3858050, 10, 20]);
+  assert.equal(ownedIds(Array.from({ length: 900 }, (_, i) => node(String(i + 1)))).length, 400);
+  const n = batchCounts({ done: 3, items: [{ state: 'ready' }, { state: 'ready', download: true }, { state: 'owned' }, { state: 'added' }, { state: 'unavailable' }, { state: 'not-dlc' }, null, 5] });
+  assert.deepEqual([n.total, n.ready, n.download, n.owned, n.added, n.unavailable, n.done], [6, 2, 1, 1, 1, 2, 3]);
+});
+test('actual script: DLC batch checks with owned markers, needs trusted clicks and adds only after review', async () => {
+  let status = { phase: 'idle', items: [] };
+  const h = harness(method => method === 'HasLuaToolsForApp' ? { exists: false } : method === 'GetDlcBatchStatus' ? status : { success: true });
+  const doc = h.world.document, section = new Element('div', doc); doc.body.append(section);
+  const base = doc.querySelector; doc.querySelector = sel => sel === '#gameAreaDLCSection' ? section : base(sel);
+  doc.querySelectorAll = sel => sel === '[data-ds-appid].ds_owned' ? [{ getAttribute: () => '42' }] : [];
+  await h.rescan();
+  assert.equal(doc.body.children.filter(c => c.dataset.luatools === 'batch').length, 1);
+  await h.click('Check DLC', false); assert.equal(h.calls.some(c => c.method === 'CheckDlcBatch'), false);
+  status = { phase: 'checking', done: 1, items: [{ state: 'queued' }, { state: 'queued' }, { state: 'queued' }] };
+  await h.click('Check DLC');
+  assert.equal(JSON.stringify(h.calls.find(c => c.method === 'CheckDlcBatch').args), '{"appid":123,"owned":[42]}');
+  status = { phase: 'ready', done: 3, items: [{ state: 'ready' }, { state: 'ready', download: true }, { state: 'owned' }] };
+  for (const [id, fn] of [...h.timers]) { h.timers.delete(id); fn(); } await tick();
+  assert.equal(h.calls.some(c => c.method === 'ApplyDlcBatch'), false, 'nothing is added before the user reviews');
+  status = { phase: 'applying', done: 0, items: [{ state: 'ready' }, { state: 'ready', download: true }, { state: 'owned' }] };
+  await h.click('Add 2 DLC'); assert.equal(JSON.stringify(h.calls.find(c => c.method === 'ApplyDlcBatch').args), '{"appid":123}');
+  status = { phase: 'done', done: 2, items: [{ state: 'installed' }, { state: 'installed' }, { state: 'owned' }] };
+  for (const [id, fn] of [...h.timers]) { h.timers.delete(id); fn(); } await tick();
+  assert.ok(h.buttons().some(b => b.isConnected && b.textContent === 'Check again'));
+  h.navigate(); await tick(); assert.equal(doc.body.children.some(c => c.dataset.luatools === 'batch'), false);
+});
+
+test('a newer injection retires the old instance instead of duplicating panels', async () => {
+  const h = harness(method => method === 'HasLuaToolsForApp' ? { exists: false } : { success: true }); await tick();
+  const hosts = () => h.world.document.body.children.concat(h.purchase.children).filter(c => c.dataset && c.dataset.luatools);
+  assert.ok(hosts().length >= 2, 'nav and panel are shown');
+  h.world.document.documentElement.setAttribute('data-luatools-gen', 'newer-injection');
+  await h.rescan();
+  assert.equal(hosts().length, 0, 'the superseded instance removed its hosts');
+  assert.equal(h.timers.size, 0, 'and stopped polling');
+  await h.rescan(); assert.equal(hosts().length, 0, 'and does not re-add them');
 });

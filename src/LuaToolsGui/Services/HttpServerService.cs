@@ -184,7 +184,8 @@ public class HttpServerService : IHostedService
             if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")) { resp.StatusCode = 403; return; }
             string? path = req.Url?.AbsolutePath.TrimEnd('/');
             // Log everything except the noisy status poll.
-            if (path is not null && !path.StartsWith("/add-status/") && !path.StartsWith("/has/"))
+            if (path is not null && !path.StartsWith("/add-status/") && !path.StartsWith("/has/")
+                && !(req.HttpMethod == "GET" && path.StartsWith("/dlc-batch/")))
                 PluginLog.Log($"HTTP {req.HttpMethod} {path}");
             (int status, string body) = path switch
             {
@@ -194,6 +195,11 @@ public class HttpServerService : IHostedService
                 var p when req.HttpMethod == "GET" && MatchGet(p, "/add-status/{appid}", out var id) => HandleAddStatus(long.Parse(id)),
                 var p when req.HttpMethod == "POST" && MatchPost(p, "/add-source/{appid}", out var id) => HandleAddSource(long.Parse(id), requestBody),
                 var p when req.HttpMethod == "POST" && MatchPost(p, "/check-sources/{appid}", out var id) => await HandleCheckSources(long.Parse(id)),
+                // Steam-plugin "Add all DLC": check (verify, no writes) → status → apply.
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchCheck(long.Parse(id), requestBody),
+                var p when req.HttpMethod == "GET" && MatchGet(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchStatus(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch-apply/{appid}", out var id) => HandleDlcBatchApply(long.Parse(id)),
+                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch-cancel/{appid}", out var id) => HandleDlcBatchCancel(long.Parse(id)),
                 var p when req.HttpMethod == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
                 var p when req.HttpMethod == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
                 var p when req.HttpMethod == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
@@ -333,6 +339,42 @@ public class HttpServerService : IHostedService
             return (409, JsonErr("The source is unavailable or an operation is already active."));
         return (200, Json(new { success = true }));
     }
+
+    private (int, string) HandleDlcBatchCheck(long appId, string body)
+    {
+        // Owned ids come from the store page's own markers and can only skip DLC. Bounded and numeric.
+        var owned = new List<long>();
+        try
+        {
+            var json = JsonSerializer.Deserialize<JsonElement>(body);
+            if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("owned", out var o) && o.ValueKind == JsonValueKind.Array)
+                foreach (var e in o.EnumerateArray().Take(DlcBatchService.MaxOwned))
+                    if (e.ValueKind == JsonValueKind.Number && e.TryGetUInt32(out uint v) && v > 0) owned.Add(v);
+        }
+        catch (JsonException) { }
+        if (!_services.GetRequiredService<DlcBatchService>().Check(appId, owned))
+            return (409, JsonErr("A DLC batch is already running for this game."));
+        return (200, Json(new { success = true }));
+    }
+
+    private (int, string) HandleDlcBatchStatus(long appId)
+    {
+        var batch = _services.GetRequiredService<DlcBatchService>().GetState(appId);
+        if (batch is null) return (200, Json(new { success = true, phase = "idle", items = Array.Empty<object>() }));
+        var items = batch.Items.ToList().Select(i => (object)new
+        {
+            appid = i.AppId, baseAppId = i.BaseAppId, name = i.Name, state = i.State, download = i.Download, error = i.Error,
+        }).ToList();
+        return (200, Json(new { success = true, appid = batch.AppId, phase = batch.Phase, done = batch.Done, total = items.Count, items, error = batch.Error }));
+    }
+
+    private (int, string) HandleDlcBatchApply(long appId) =>
+        _services.GetRequiredService<DlcBatchService>().Apply(appId)
+            ? (200, Json(new { success = true }))
+            : (409, JsonErr("Nothing verified to add. Check the DLC again."));
+
+    private (int, string) HandleDlcBatchCancel(long appId) =>
+        (200, Json(new { success = _services.GetRequiredService<DlcBatchService>().Cancel(appId) }));
 
     private async Task<(int, string)> HandleCheckSources(long appId)
     {
