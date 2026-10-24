@@ -15,7 +15,7 @@ public partial class CabinetView : UserControl
         DataContext = viewModel;
         var clock = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         clock.Tick += (_, _) => { foreach (var game in viewModel.Games) game.RefreshLastSync(); };
-        Loaded += (_, _) => clock.Start();
+        Loaded += (_, _) => { clock.Start(); viewModel.RefreshCloudSaves(); }; // CloudRedirect may have changed on the Mode page
         Unloaded += (_, _) => clock.Stop();
         SizeChanged += (_, _) => IsCompact = ActualWidth < 640;
     }

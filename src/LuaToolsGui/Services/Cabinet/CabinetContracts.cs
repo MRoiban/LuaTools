@@ -39,8 +39,7 @@ public sealed record CabinetStatus(
     bool IsSyncing,
     bool StandaloneCabinetRunning,  // Cabinet.exe is running: engine pauses to avoid double-crediting
     IReadOnlyList<CabinetGame> Games,
-    CabinetCloudStatus Cloud,
-    IReadOnlyList<CabinetSaveGame>? Saves = null)  // Cabinet save backups (not CloudRedirect storage)
+    CabinetCloudStatus Cloud)
 {
     public static readonly CabinetStatus Off = new(false, false, false, false, Array.Empty<CabinetGame>(), CabinetCloudStatus.Disconnected);
 }
@@ -70,61 +69,11 @@ public interface ICabinetService
     void SettingsChanged();
 }
 
-// ── Cabinet save backups (format-2 archives on the Cabinet server; see the cabinet repo's
-//    docs/save-sync.md). Separate from CloudRedirect's Steam Cloud file storage. ──
-
-public enum CabinetSaveState
+/// <summary>Cabinet saves sync only through the CloudRedirect add-on (Steam Cloud's own paths).</summary>
+public enum CabinetCloudSaves
 {
-    Synced,         // local saves match the newest cloud backup
-    Pending,        // local changes waiting for the next upload
-    Conflict,       // this PC and the cloud both changed; nothing was overwritten
-    Error,          // last attempt failed; retried next round
-    NotFound,       // "Save location not found": missing, unavailable or unsupported
-    NoFiles,        // "No save files found": the folder exists but is empty
-    Ambiguous,      // several folders hold saves for one location
-    LocalMissing,   // saves were synced before and are gone locally; cloud kept
-    CloudDeleted,   // the cloud backup was deleted on purpose (tombstone)
-    Deferred,       // the game is running
-    NotConnected,   // found locally, Cabinet Cloud not connected
-    Off,            // sync switched off for this game
-    CloudOnly,      // cloud backup exists, game not set up for sync here
-}
-
-public sealed record CabinetSaveRoot(string Id, string Source, string? Path, string State, int Files, long Bytes, string? Note);
-
-public sealed record CabinetSaveGame(
-    string AppId,
-    string Name,
-    CabinetSaveState State,
-    string? Discovery,                  // found / empty / missing / unavailable / ambiguous / unsupported
-    IReadOnlyList<CabinetSaveRoot> Roots,
-    int Files,
-    long Bytes,
-    int CloudFiles,
-    long CloudBytes,
-    DateTimeOffset? LastUpload,
-    DateTimeOffset? LastDownload,
-    string? Error,
-    string? OverrideMode,               // null, "supplement" or "replace"
-    string? ManifestVersion,
-    IReadOnlyList<string> Notes);
-
-public enum CabinetRestoreAction { Create, Replace, Delete }
-public sealed record CabinetRestoreItem(CabinetRestoreAction Action, string Destination, long Bytes);
-/// <summary>Problems are the engine's own (English) reasons, e.g. an unmapped save location.</summary>
-public sealed record CabinetRestorePreview(string? BackupPath, IReadOnlyList<CabinetRestoreItem> Items, IReadOnlyList<string> Problems, bool CanApply);
-
-public interface ICabinetSaves
-{
-    Task RescanAsync(CancellationToken cancellationToken = default);
-    /// <summary>mode: "supplement" adds folders to the discovered ones, "replace" uses only them. sync=false turns the game off.</summary>
-    Task SetOverrideAsync(string appId, string mode, IReadOnlyList<string> folders, bool? sync, CancellationToken cancellationToken = default);
-    Task ResetOverrideAsync(string appId, CancellationToken cancellationToken = default);
-    /// <summary>Dry run: every destination path and the local backup file. Writes nothing.</summary>
-    Task<CabinetRestorePreview> PreviewRestoreAsync(string appId, CancellationToken cancellationToken = default);
-    Task RestoreAsync(string appId, CancellationToken cancellationToken = default);
-    /// <summary>Conflict: upload this PC's saves over the current cloud version (kept in history).</summary>
-    Task KeepLocalAsync(string appId, CancellationToken cancellationToken = default);
-    /// <summary>Intentional deletion: records a tombstone; history and local saves are kept.</summary>
-    Task DeleteCloudAsync(string appId, CancellationToken cancellationToken = default);
+    Hidden,         // Cabinet Cloud isn't connected
+    Active,         // CloudRedirect is enabled and pointed at the connected Cabinet server
+    Off,            // CloudRedirect could be turned on
+    Unavailable,    // the selected unlocker mode can't load CloudRedirect
 }

@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.IO;
-using System.Net;
-using System.Net.Http;
 using CabinetEngine;
 using CabinetApp = CabinetEngine.App;
 using Microsoft.Extensions.Hosting;
@@ -15,11 +13,8 @@ namespace LuaToolsGui.Services.Cabinet;
 /// never run the engine at the same time. All engine calls happen on one dedicated thread, as they
 /// did on Cabinet's UI timer thread.
 /// </summary>
-public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetSaves, IHostedService, IDisposable
+public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedService, IDisposable
 {
-    // The engine's manifest download goes through LuaTools' outbound policy (raw.githubusercontent.com).
-    static CabinetService() { SaveManifestCache.Fetcher = FetchManifest; }
-
     private readonly ICabinetSettings _settings;
     private readonly UnlockerService? _unlocker;
     private readonly CloudRedirectCabinetConfig _cloudRedirectConfig = new();
@@ -71,8 +66,7 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetSav
         _wake.Set();
     }
 
-    // Sync now also runs a Cabinet Cloud round (progress and save backups).
-    public Task SyncNowAsync(CancellationToken cancellationToken = default) => OnEngine(() => { CloudSync.RequestSync(); Tick(true); });
+    public Task SyncNowAsync(CancellationToken cancellationToken = default) => OnEngine(() => Tick(true));
 
     // ── ICabinetCloud: the tray's Cabinet Cloud menu, driven from Settings ──
     CabinetCloudStatus ICabinetCloud.Status => Status.Cloud;
@@ -147,173 +141,6 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetSav
     }
 
     Task ICabinetCloud.SyncNowAsync(CancellationToken cancellationToken) => OnEngine(CloudSync.RequestSync);
-
-    // ── ICabinetSaves: run on the Cabinet Cloud worker, between rounds ──
-    private static readonly TimeSpan SaveActionTimeout = TimeSpan.FromMinutes(3);
-
-    private async Task<T> OnSaves<T>(Func<CloudClient, T> action, bool needsCloud, CancellationToken cancellationToken)
-    {
-        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        await OnEngine(() =>
-        {
-            if (_instance is null) throw new InvalidOperationException("Cabinet engine is not active");
-            if (needsCloud && !CloudSync.Connected) throw new InvalidOperationException("Cabinet Cloud is not connected");
-            CloudSync.QueueSaveAction(client =>
-            {
-                try { done.TrySetResult(action(client)); }
-                catch (Exception ex) { done.TrySetException(ex); }
-            });
-        }).ConfigureAwait(false);
-        _wake.Set();
-        try { return await done.Task.WaitAsync(SaveActionTimeout, cancellationToken).ConfigureAwait(false); }
-        finally { _wake.Set(); }
-    }
-    private Task OnSaves(Action<CloudClient> action, bool needsCloud, CancellationToken cancellationToken) =>
-        OnSaves<bool>(client => { action(client); PublishSoon(); return true; }, needsCloud, cancellationToken);
-    private void PublishSoon() => _work.Enqueue(() => PublishSnapshot(_playtime?.RunningApps() ?? new HashSet<string>()));
-
-    private static void CheckAppId(string appId)
-    {
-        if (string.IsNullOrEmpty(appId) || appId.Length > 10 || !appId.All(char.IsAsciiDigit)) throw new ArgumentException("Invalid AppID", nameof(appId));
-    }
-    private static (SaveCloudMeta? Archive, SaveLegacyMeta? Legacy) CloudState(CloudClient client, string appId)
-    {
-        var state = client.AppStateOf(appId);
-        state.TryGetValue("archive", out var archive); state.TryGetValue("save", out var save);
-        return (SaveCloudMeta.Parse(archive), SaveLegacyMeta.Parse(save));
-    }
-    private static Func<string, bool> Blocked => CloudSync.BlockedApp;
-
-    public Task RescanAsync(CancellationToken cancellationToken = default) =>
-        OnSaves(client => client.ScanSaves(client.Connected), false, cancellationToken);
-
-    public Task SetOverrideAsync(string appId, string mode, IReadOnlyList<string> folders, bool? sync, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            client.Saves.Overrides.Set(appId, mode, folders, sync);
-            var env = client.Saves.CurrentEnvironment(true);
-            client.Saves.Scan(appId, env, client.Saves.Eligible(env).Contains(appId), client.Connected);
-        }, false, cancellationToken);
-    }
-
-    public Task ResetOverrideAsync(string appId, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            client.Saves.Overrides.Reset(appId);
-            var env = client.Saves.CurrentEnvironment(true);
-            client.Saves.Scan(appId, env, client.Saves.Eligible(env).Contains(appId), client.Connected);
-        }, false, cancellationToken);
-    }
-
-    public Task<CabinetRestorePreview> PreviewRestoreAsync(string appId, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            var (archive, legacy) = CloudState(client, appId);
-            string? version = archive is { Deleted: false, Files: > 0 } ? archive.Id : legacy is { Empty: false } ? "legacy" : null;
-            if (version is null) throw new InvalidOperationException("No cloud backup with save files");
-            var plan = client.Saves.PreviewRestore(appId, version, client, client.Saves.CurrentEnvironment(true), out _, out _);
-            return ToPreview(plan);
-        }, true, cancellationToken);
-    }
-
-    public Task RestoreAsync(string appId, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            var (archive, legacy) = CloudState(client, appId);
-            string? version = archive is { Deleted: false, Files: > 0 } ? archive.Id : legacy is { Empty: false } ? "legacy" : null;
-            if (version is null) throw new InvalidOperationException("No cloud backup with save files");
-            client.Saves.UseAccount(client.Server, client.UserId);
-            client.Saves.Restore(appId, version, archive, client, Blocked, client.Saves.CurrentEnvironment(true));
-        }, true, cancellationToken);
-    }
-
-    public Task KeepLocalAsync(string appId, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            client.Saves.UseAccount(client.Server, client.UserId);
-            client.Saves.KeepLocal(appId, CloudState(client, appId).Archive, client, Blocked, client.Saves.CurrentEnvironment(true));
-        }, true, cancellationToken);
-    }
-
-    public Task DeleteCloudAsync(string appId, CancellationToken cancellationToken = default)
-    {
-        CheckAppId(appId);
-        return OnSaves(client =>
-        {
-            client.Saves.UseAccount(client.Server, client.UserId);
-            client.Saves.DeleteCloud(appId, CloudState(client, appId).Archive, client);
-        }, true, cancellationToken);
-    }
-
-    // LuaTools: the Ludusavi manifest through the outbound policy, with a conditional request.
-    internal static SaveManifestResponse FetchManifest(string url, string etag, long maxBytes)
-    {
-        using var client = AppHttp.Create(TimeSpan.FromSeconds(120), responseBudget: HttpResponseBudget.LargeList);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        if (!string.IsNullOrEmpty(etag)) request.Headers.TryAddWithoutValidation("If-None-Match", etag);
-        using var response = client.Send(request, HttpCompletionOption.ResponseHeadersRead);
-        if (response.StatusCode == HttpStatusCode.NotModified) return new SaveManifestResponse { Status = 304 };
-        if (!response.IsSuccessStatusCode) return new SaveManifestResponse { Status = (int)response.StatusCode };
-        if (response.Content.Headers.ContentLength > maxBytes) throw new InvalidDataException("Manifest too large");
-        using var body = response.Content.ReadAsStream();
-        using var buffer = new MemoryStream();
-        var chunk = new byte[81920]; int read;
-        while ((read = body.Read(chunk, 0, chunk.Length)) > 0)
-        {
-            if (buffer.Length + read > maxBytes) throw new InvalidDataException("Manifest too large");
-            buffer.Write(chunk, 0, read);
-        }
-        return new SaveManifestResponse { Status = 200, ETag = response.Headers.ETag?.ToString(), Body = buffer.ToArray() };
-    }
-
-    internal static CabinetRestorePreview ToPreview(SaveRestorePlan plan)
-    {
-        var items = plan.Items.Select(i => new CabinetRestoreItem(i.Action == "replace" ? CabinetRestoreAction.Replace : CabinetRestoreAction.Create, i.Destination, i.Size))
-            .Concat(plan.Deletions.Select(i => new CabinetRestoreItem(CabinetRestoreAction.Delete, i.Destination, i.Size))).ToList();
-        return new CabinetRestorePreview(plan.BackupPath, items, plan.Errors.Concat(plan.Unmapped).ToList(), plan.CanApply);
-    }
-
-    internal static IReadOnlyList<CabinetSaveGame> MapSaves(IEnumerable<SaveGameStatus> statuses, IReadOnlyDictionary<string, string> names, bool connected)
-    {
-        static DateTimeOffset? Time(long ms) => ms > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
-        var list = new List<CabinetSaveGame>();
-        foreach (var s in statuses)
-        {
-            var state = s.Status switch
-            {
-                SaveSyncStatus.Synced => CabinetSaveState.Synced,
-                SaveSyncStatus.Pending => connected ? CabinetSaveState.Pending : CabinetSaveState.NotConnected,
-                SaveSyncStatus.Conflict => CabinetSaveState.Conflict,
-                SaveSyncStatus.Error => CabinetSaveState.Error,
-                SaveSyncStatus.Empty => CabinetSaveState.NoFiles,
-                SaveSyncStatus.Ambiguous => CabinetSaveState.Ambiguous,
-                SaveSyncStatus.LocalMissing => CabinetSaveState.LocalMissing,
-                SaveSyncStatus.CloudDeleted => CabinetSaveState.CloudDeleted,
-                SaveSyncStatus.Deferred => CabinetSaveState.Deferred,
-                SaveSyncStatus.Offline => CabinetSaveState.NotConnected,
-                SaveSyncStatus.Disabled => CabinetSaveState.Off,
-                SaveSyncStatus.CloudOnly => CabinetSaveState.CloudOnly,
-                _ => CabinetSaveState.NotFound,
-            };
-            // Never "Synced" without save files, whatever the journal says.
-            if (state == CabinetSaveState.Synced && s.Files == 0) state = s.Discovery == SaveStatus.Empty ? CabinetSaveState.NoFiles : CabinetSaveState.NotFound;
-            string name = s.Name ?? (names.TryGetValue(s.AppId, out var n) ? n : "App " + s.AppId);
-            var roots = s.Roots.Select(r => new CabinetSaveRoot(r.Id, r.Source, r.Path, r.State, r.Files, r.Bytes, r.Note)).ToList();
-            list.Add(new CabinetSaveGame(s.AppId, name, state, s.Discovery, roots, s.Files, s.Bytes, s.CloudFiles, s.CloudBytes,
-                Time(s.LastUpload), Time(s.LastDownload), s.Error, s.OverrideMode, s.ManifestVersion, s.Notes.ToList()));
-        }
-        return list.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-    }
 
     private Task OnEngine(Action action)
     {
@@ -483,11 +310,8 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetSav
             cloud = ReadCloudStatus();
         }
         catch { cloud = CabinetCloudStatus.Disconnected; }
-        IReadOnlyList<CabinetSaveGame> saves;
-        try { saves = MapSaves(CloudSync.Saves.Statuses(), games.ToDictionary(g => g.AppId, g => g.Name), cloud.Connected); }
-        catch (Exception ex) { CabinetApp.Log("save overview error: " + ex.Message); saves = Array.Empty<CabinetSaveGame>(); }
         bool cloudChanged = cloud != Status.Cloud;
-        Publish(new CabinetStatus(true, Playtime.SteamRunning(), false, false, games, cloud, saves));
+        Publish(new CabinetStatus(true, Playtime.SteamRunning(), false, false, games, cloud));
         if (cloudChanged) { try { CloudStatusChanged?.Invoke(this, cloud); } catch { } }
     }
 

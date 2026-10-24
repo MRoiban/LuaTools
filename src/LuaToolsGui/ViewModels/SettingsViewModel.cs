@@ -112,13 +112,19 @@ public partial class SettingsViewModel : ObservableObject
     private async Task ConnectCloudAsync()
     {
         if (_cloud is null || !CabinetEnabled || CloudBusy) return;
-        CloudBusy = true; CloudError = null;
-        try { await _cloud.ConnectAsync(CloudPairingCode.Trim(), CloudServer); CloudPairingCode = ""; }
+        CloudBusy = true; CloudError = null; bool connected = false;
+        try { await _cloud.ConnectAsync(CloudPairingCode.Trim(), CloudServer); CloudPairingCode = ""; connected = true; }
         catch (CabinetConnectException ex) { CloudError = ex.Message; }
         catch (FormatException) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; }
         catch { CloudError = Resources.Strings.CabinetCloud_ConnectError; }
         finally { CloudBusy = false; RefreshCloud(); }
+        if (connected && RequestOfferCloudSaves is { } offer)
+        {
+            try { await offer(); } catch { /* The Cabinet view keeps offering it. */ }
+        }
     }
+    /// <summary>Set by App: after connecting, offer to sync saves by turning on CloudRedirect.</summary>
+    public Func<Task>? RequestOfferCloudSaves { get; set; }
     [RelayCommand]
     private async Task DisconnectCloudAsync()
     {
