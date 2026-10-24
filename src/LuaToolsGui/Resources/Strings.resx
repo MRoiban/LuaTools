@@ -761,4 +761,72 @@ Cancel - keep downloading</value></data>
   <data name="Fixes_OnlineFixMe_ArchiveDescription" xml:space="preserve"><value>Fix Repair archive</value></data>
   <data name="SteamMl_DownloadFailed" xml:space="preserve"><value>SteamML download failed (HTTP {0}).</value></data>
   <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML returned an invalid ZIP archive.</value></data>
+  <data name="CabinetSaves_Title" xml:space="preserve"><value>Cloud saves</value></data>
+  <data name="CabinetSaves_Subtitle" xml:space="preserve"><value>Cabinet backs up each game's save files to your Cabinet server, wherever the game keeps them. This is separate from CloudRedirect's Steam Cloud storage, which these backups don't need.</value></data>
+  <data name="CabinetSaves_Attribution" xml:space="preserve"><value>Save locations come from the Ludusavi manifest (MIT), compiled from PCGamingWiki (CC BY-NC-SA 3.0). Version: {0}</value></data>
+  <data name="CabinetSaves_ManifestUnavailable" xml:space="preserve"><value>not downloaded yet</value></data>
+  <data name="CabinetSaves_Rescan" xml:space="preserve"><value>Rescan</value></data>
+  <data name="CabinetSaves_Empty" xml:space="preserve"><value>No games are set up for save backups yet. Games with an OnlineFix folder, a LuaTools lua or a save folder you chose appear here.</value></data>
+  <data name="CabinetSaves_State_Synced" xml:space="preserve"><value>Synced</value></data>
+  <data name="CabinetSaves_State_Pending" xml:space="preserve"><value>Waiting to upload</value></data>
+  <data name="CabinetSaves_State_Conflict" xml:space="preserve"><value>Conflict: this PC and the cloud both changed</value></data>
+  <data name="CabinetSaves_State_Error" xml:space="preserve"><value>Error: {0}</value></data>
+  <data name="CabinetSaves_State_NotFound" xml:space="preserve"><value>Save location not found</value></data>
+  <data name="CabinetSaves_State_NoFiles" xml:space="preserve"><value>No save files found</value></data>
+  <data name="CabinetSaves_State_Ambiguous" xml:space="preserve"><value>Several save folders found: choose one</value></data>
+  <data name="CabinetSaves_State_LocalMissing" xml:space="preserve"><value>Local saves missing; the cloud backup is kept</value></data>
+  <data name="CabinetSaves_State_CloudDeleted" xml:space="preserve"><value>Cloud backup deleted</value></data>
+  <data name="CabinetSaves_State_Deferred" xml:space="preserve"><value>Waiting for the game to close</value></data>
+  <data name="CabinetSaves_State_NotConnected" xml:space="preserve"><value>Not backed up: Cabinet Cloud isn't connected</value></data>
+  <data name="CabinetSaves_State_Off" xml:space="preserve"><value>Backups off for this game</value></data>
+  <data name="CabinetSaves_State_CloudOnly" xml:space="preserve"><value>Cloud backup available</value></data>
+  <data name="CabinetSaves_Source_manifest" xml:space="preserve"><value>Ludusavi manifest</value></data>
+  <data name="CabinetSaves_Source_onlinefix" xml:space="preserve"><value>OnlineFix</value></data>
+  <data name="CabinetSaves_Source_override" xml:space="preserve"><value>Your folder</value></data>
+  <data name="CabinetSaves_Location" xml:space="preserve"><value>{0}: {1} ({2})</value></data>
+  <data name="CabinetSaves_RootFiles" xml:space="preserve"><value>{0} files, {1}</value></data>
+  <data name="CabinetSaves_Root_empty" xml:space="preserve"><value>empty</value></data>
+  <data name="CabinetSaves_Root_missing" xml:space="preserve"><value>not found</value></data>
+  <data name="CabinetSaves_Root_unavailable" xml:space="preserve"><value>drive or folder not present</value></data>
+  <data name="CabinetSaves_Root_denied" xml:space="preserve"><value>access denied</value></data>
+  <data name="CabinetSaves_Root_tooBroad" xml:space="preserve"><value>refused: would back up a whole folder</value></data>
+  <data name="CabinetSaves_Root_overlapped" xml:space="preserve"><value>covered by another location</value></data>
+  <data name="CabinetSaves_Root_ambiguous" xml:space="preserve"><value>several matching folders</value></data>
+  <data name="CabinetSaves_Root_unsupported" xml:space="preserve"><value>not supported</value></data>
+  <data name="CabinetSaves_Totals" xml:space="preserve"><value>This PC: {0} files, {1}</value></data>
+  <data name="CabinetSaves_CloudTotals" xml:space="preserve"><value>Cloud: {0} files, {1}</value></data>
+  <data name="CabinetSaves_LastUpload" xml:space="preserve"><value>Last upload: {0}</value></data>
+  <data name="CabinetSaves_LastDownload" xml:space="preserve"><value>Last download: {0}</value></data>
+  <data name="CabinetSaves_Override_replace" xml:space="preserve"><value>Using only your folders</value></data>
+  <data name="CabinetSaves_Override_supplement" xml:space="preserve"><value>Your folders are added</value></data>
+  <data name="CabinetSaves_EditLocation" xml:space="preserve"><value>Choose save folder…</value></data>
+  <data name="CabinetSaves_ResetLocation" xml:space="preserve"><value>Reset location</value></data>
+  <data name="CabinetSaves_TurnOff" xml:space="preserve"><value>Turn off backups</value></data>
+  <data name="CabinetSaves_TurnOn" xml:space="preserve"><value>Turn on backups</value></data>
+  <data name="CabinetSaves_Restore" xml:space="preserve"><value>Restore from cloud…</value></data>
+  <data name="CabinetSaves_KeepLocal" xml:space="preserve"><value>Keep this PC</value></data>
+  <data name="CabinetSaves_UseCloud" xml:space="preserve"><value>Use cloud…</value></data>
+  <data name="CabinetSaves_DeleteCloud" xml:space="preserve"><value>Delete cloud backup…</value></data>
+  <data name="CabinetSaves_ReplaceTitle" xml:space="preserve"><value>Save folder</value></data>
+  <data name="CabinetSaves_ReplaceQuestion" xml:space="preserve"><value>Use only {0} for this game's saves?
+
+Yes: only this folder.
+No: add it to the locations Cabinet found.
+Cancel: change nothing.</value></data>
+  <data name="CabinetSaves_RestoreTitle" xml:space="preserve"><value>Restore saves from the cloud</value></data>
+  <data name="CabinetSaves_RestoreConfirm" xml:space="preserve"><value>Cabinet will back up the current files, then make these changes:
+
+{0}
+
+Restore now?</value></data>
+  <data name="CabinetSaves_PlanBackup" xml:space="preserve"><value>Backup first: {0}</value></data>
+  <data name="CabinetSaves_PlanNoBackup" xml:space="preserve"><value>No local files to back up</value></data>
+  <data name="CabinetSaves_PlanCreate" xml:space="preserve"><value>Create {0}</value></data>
+  <data name="CabinetSaves_PlanReplace" xml:space="preserve"><value>Replace {0}</value></data>
+  <data name="CabinetSaves_PlanDelete" xml:space="preserve"><value>Delete {0} (kept in the backup)</value></data>
+  <data name="CabinetSaves_PlanBlocked" xml:space="preserve"><value>This backup can't be restored on this PC:
+{0}</value></data>
+  <data name="CabinetSaves_KeepLocalConfirm" xml:space="preserve"><value>Upload this PC's saves for {0} over the cloud version? The cloud version stays in the server's history.</value></data>
+  <data name="CabinetSaves_DeleteConfirm" xml:space="preserve"><value>Delete the cloud backup for {0}? Saves on every PC are kept, and the server keeps its history.</value></data>
+  <data name="CabinetSaves_ActionFailed" xml:space="preserve"><value>Couldn't do that: {0}</value></data>
 </root>
