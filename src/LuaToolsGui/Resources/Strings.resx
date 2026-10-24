@@ -130,6 +130,7 @@
   <data name="Settings_MinimizeToTray" xml:space="preserve"><value>Minimize to System Tray</value></data>
   <data name="Settings_MinimizeToTray_Hint" xml:space="preserve"><value>When you close the window, keep LuaTools running in the system tray instead of quitting. Double-click the tray icon to restore.</value></data>
   <data name="Tray_Open" xml:space="preserve"><value>Open LuaTools</value></data>
+  <data name="Update_Ready_Tray" xml:space="preserve"><value>A LuaTools update is ready. Click here, then choose Restart now.</value></data>
   <data name="Tray_Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="Settings_SteamNotFound" xml:space="preserve"><value>Steam not found</value></data>
   <data name="Settings_SteamSource_Custom" xml:space="preserve"><value>Custom location</value></data>

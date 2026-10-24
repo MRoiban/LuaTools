@@ -100,6 +100,7 @@ public static class Strings
     public static string Settings_MinimizeToTray => Get(nameof(Settings_MinimizeToTray));
     public static string Settings_MinimizeToTray_Hint => Get(nameof(Settings_MinimizeToTray_Hint));
     public static string Tray_Open => Get(nameof(Tray_Open));
+    public static string Update_Ready_Tray => Get(nameof(Update_Ready_Tray));
     public static string Tray_Exit => Get(nameof(Tray_Exit));
     public static string Settings_SteamNotFound => Get(nameof(Settings_SteamNotFound));
     public static string Settings_SteamSource_Custom => Get(nameof(Settings_SteamSource_Custom));

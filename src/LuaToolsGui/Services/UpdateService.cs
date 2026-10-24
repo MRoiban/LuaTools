@@ -110,9 +110,20 @@ public sealed class UpdateService
         zip.ExtractToDirectory(destination, overwriteFiles: false);
     }
 
+    /// <summary>How often a long-running (tray) instance looks for a newer signed release.</summary>
+    public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(4);
+
     public async Task CheckAndStageAsync()
     {
         if (_version.Major != 1 || _version.Minor != 4 || _version.Build < 1 || !_gate.Wait(0)) return;
+        if (_pending is not null)
+        {
+            // Already verified and staged: re-raise the prompt (e.g. the plugin's "Check for updates"
+            // after the toast was dismissed) instead of downloading the same release again.
+            _gate.Release();
+            UpdateReady?.Invoke();
+            return;
+        }
         string? temporary = null;
         try
         {

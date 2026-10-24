@@ -369,6 +369,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Settings_MinimizeToTray" xml:space="preserve"><value>Réduire dans la zone de notification</value></data>
   <data name="Settings_MinimizeToTray_Hint" xml:space="preserve"><value>Lorsque vous fermez la fenêtre, gardez LuaTools actif dans la zone de notification au lieu de quitter. Double-cliquez sur l'icône pour restaurer.</value></data>
   <data name="Tray_Open" xml:space="preserve"><value>Ouvrir LuaTools</value></data>
+  <data name="Update_Ready_Tray" xml:space="preserve"><value>Une mise à jour de LuaTools est prête. Clique ici, puis choisis Redémarrer maintenant.</value></data>
   <data name="Tray_Exit" xml:space="preserve"><value>Quitter</value></data>
 
   <data name="Add_FastFetch" xml:space="preserve"><value>FastFetch™️</value></data>

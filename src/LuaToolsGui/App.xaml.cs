@@ -251,10 +251,26 @@ public partial class App : Application
         toast.Attach(window.RootSnackbar); // wire the presenter before anything can raise a toast
 
         var updates = _host.Services.GetRequiredService<UpdateService>();
-        updates.UpdateReady += () => Dispatcher.Invoke(() => toast.ShowAction(
-            "LuaTools", LuaToolsGui.Resources.Strings.Plugin_Badge_UpdateAvailable, LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
-            () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } }));
+        bool updateToastShown = false;
+        updates.UpdateReady += () => Dispatcher.Invoke(() =>
+        {
+            // The in-window toast holds the (consented) restart action. One is enough: re-raises only
+            // nudge from the tray, where a --minimized/tray instance would otherwise never surface it.
+            if (!updateToastShown)
+            {
+                updateToastShown = true;
+                toast.ShowAction(
+                    "LuaTools", LuaToolsGui.Resources.Strings.Plugin_Badge_UpdateAvailable, LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
+                    () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } });
+            }
+            window.ShowUpdateNotification();
+        });
         _ = updates.CheckAndStageAsync();
+        // The app usually lives in the tray for days (autostart --minimized), so a launch-time check alone
+        // misses every release published after boot.
+        var updateTimer = new DispatcherTimer { Interval = UpdateService.CheckInterval };
+        updateTimer.Tick += (_, _) => { if (!updates.HasStagedUpdate) _ = updates.CheckAndStageAsync(); };
+        updateTimer.Start();
 
         // Language changed → persistent toast offering an immediate relaunch.
         settingsVm.RequestRestartPrompt = () => Dispatcher.Invoke(() =>

@@ -133,6 +133,22 @@ public sealed class ForkUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task RecheckWithAStagedUpdateRepromptsWithoutDownloadingOrApproving()
+    {
+        using var feed = new Feed(Release());
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), feed);
+        var updater = new UpdateService(http, _root, Old, PublicKey);
+        int prompts = 0;
+        updater.UpdateReady += () => prompts++;
+        await updater.CheckAndStageAsync();
+        await updater.CheckAndStageAsync(); // e.g. the plugin's "Check for updates" after the toast was dismissed
+        Assert.Equal(2, prompts);
+        Assert.Equal(3, feed.Requests.Count); // the second check never touched the network
+        Assert.Single(Directory.EnumerateDirectories(_root));
+        Assert.False(File.Exists(Path.Combine(_root, "approved.txt")));
+    }
+
+    [Fact]
     public async Task HostileFeedCannotTriggerPackageDownloadOrStaging()
     {
         var r = Release(); r.Sig[0] ^= 1;
