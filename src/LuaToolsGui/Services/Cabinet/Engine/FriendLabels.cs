@@ -308,7 +308,7 @@ s.fallback=fallback;s.labels=labels;s.expires=Date.now()+180000;s.apply();return
                 return fallbackIcon = "data:image/png;base64," + Convert.ToBase64String(bytes);
             }
         }
-        internal static Uri SelectTarget(string json)
+        internal static Uri SelectTarget(string json, string discoveryUrl = "http://127.0.0.1:8080/json")
         {
             object parsed; try { parsed = new JavaScriptSerializer().DeserializeObject(json); } catch { return null; }
             var targets = parsed as object[]; if (targets == null) return null;
@@ -316,27 +316,41 @@ s.fallback=fallback;s.labels=labels;s.expires=Date.now()+180000;s.apply();return
             {
                 var row = CloudClient.Map(entry); object title, socket; Uri uri;
                 if (row.TryGetValue("title", out title) && (title as string) == "SharedJSContext" && row.TryGetValue("webSocketDebuggerUrl", out socket)
-                    && Uri.TryCreate(socket as string, UriKind.Absolute, out uri) && uri.Scheme == "ws" && uri.IsLoopback && uri.Port == 8080 && uri.UserInfo == "") return uri;
+                    && LuaToolsGui.Services.CefInjectorService.IsAllowedDebuggerEndpoint(socket as string ?? "", discoveryUrl)
+                    && Uri.TryCreate(socket as string, UriKind.Absolute, out uri)) return uri;
             }
             return null;
         }
         // Returns the script's own error report ("{}" when every step worked).
         internal static string Apply(Dictionary<string, Label> labels)
         {
-            var req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:8080/json");
+            // LuaTools: share installation/session ownership discovery with the store plugin.
+            var steam = new LuaToolsGui.Services.SteamService(new LuaToolsGui.Services.SettingsService());
+            string installation = steam.EffectivePath;
+            var discovery = new LuaToolsGui.Services.SteamDebugEndpointDiscovery();
+            string endpoint = discovery.Find(installation, refresh: true);
+            if (endpoint == null) throw new IOException(LuaToolsGui.Resources.Strings.SteamIsolation_DebuggerMissing);
+            var req = (HttpWebRequest)WebRequest.Create(endpoint);
             req.Timeout = 3000; req.ReadWriteTimeout = 3000; req.Proxy = null; req.AllowAutoRedirect = false;
             string json;
             using (var response = req.GetResponse()) using (var stream = response.GetResponseStream()) using (var reader = new StreamReader(stream))
             { char[] buffer = new char[1024 * 1024 + 1]; int length = reader.ReadBlock(buffer, 0, buffer.Length); if (length == buffer.Length) throw new IOException("Debugger target list too large"); json = new string(buffer, 0, length); }
-            var target = SelectTarget(json); if (target == null) throw new IOException("SharedJSContext target missing");
-            object value; return CloudClient.Map(Evaluate(target, BuildScript(labels))).TryGetValue("value", out value) ? value as string : null;
+            var target = SelectTarget(json, endpoint); if (target == null) throw new IOException("SharedJSContext target missing");
+            void ValidateSelection()
+            {
+                if (steam.EffectivePath != installation || discovery.Find(installation, refresh: true) != endpoint)
+                    throw new IOException(LuaToolsGui.Resources.Strings.SteamIsolation_DebuggerChanged);
+            }
+            ValidateSelection();
+            object value; return CloudClient.Map(Evaluate(target, BuildScript(labels), ValidateSelection)).TryGetValue("value", out value) ? value as string : null;
         }
-        internal static object Evaluate(Uri target, string script)
+        internal static object Evaluate(Uri target, string script, Action validateSelection = null)
         {
             using (var timeout = new CancellationTokenSource(5000)) using (var ws = new ClientWebSocket())
             {
                 ws.Options.Proxy = null;
                 ws.ConnectAsync(target, timeout.Token).GetAwaiter().GetResult();
+                validateSelection?.Invoke();
                 byte[] command = Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(new { id = 1, method = "Runtime.evaluate", @params = new { expression = script, returnByValue = true } }));
                 ws.SendAsync(new ArraySegment<byte>(command), WebSocketMessageType.Text, true, timeout.Token).GetAwaiter().GetResult();
                 byte[] buffer = new byte[8192];

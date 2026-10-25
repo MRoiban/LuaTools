@@ -31,6 +31,7 @@ public partial class App : Application
             }
             else
             {
+                await injector.StopAsync(CancellationToken.None);
                 await server.StopAsync(CancellationToken.None);
             }
         }

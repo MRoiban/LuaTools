@@ -152,17 +152,14 @@ public sealed class CloudRedirectCabinetConfigTests : IDisposable
     public void ApplyMatchesThePublishedWindowsPathFixture()
     {
         if (!OperatingSystem.IsWindows()) return;
-        const string directory = @"C:\Users\Alex\AppData\Roaming\CloudRedirect";
-        // The exact DLL fixture uses a synthetic profile. Never overwrite an existing profile's data.
-        Assert.False(Directory.Exists(directory));
-        try
-        {
-            new CloudRedirectCabinetConfig(directory, Transform, Transform).Apply(Server, Token);
-            string fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "cloudredirect-config.json"));
-            Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture),
-                JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "config.json")))));
-        }
-        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+        // The published example's user directory can be a real profile on a developer PC.
+        // Keep the fixture's schema/values, relocating only its two absolute token paths.
+        new CloudRedirectCabinetConfig(_directory, Transform, Transform).Apply(Server, Token);
+        string fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "cloudredirect-config.json"));
+        var expected = JsonNode.Parse(fixture)!;
+        expected["token_path"] = TokenPath;
+        expected["token_paths"]!["cabinet"] = TokenPath;
+        Assert.True(JsonNode.DeepEquals(expected, JsonNode.Parse(File.ReadAllText(ConfigPath))));
     }
 
     public void Dispose()

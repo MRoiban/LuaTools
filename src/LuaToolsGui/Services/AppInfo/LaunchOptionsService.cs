@@ -40,7 +40,7 @@ public class LaunchOptionsService
 
     public LaunchOptionsService(SteamService steam, LaunchModStore store)
         : this(() => steam.EffectivePath is { } p ? Path.Combine(p, "appcache", "appinfo.vdf") : null,
-               SteamService.IsSteamRunning, steam.StopSteam, () => steam.StartSteam(), store,
+               steam.IsSelectedSteamRunning, steam.StopSteam, () => steam.StartSteam(), store,
                // Backups live NEXT TO appinfo.vdf, on Steam's own drive. Deliberately not %AppData%.
                // The file is ~373 MB and the system drive is often the tightest on space (this dev
                // machine had 874 MB free), so parking copies there would fill it in two applies. Same
@@ -133,8 +133,9 @@ public class LaunchOptionsService
             return new ApplyResult(false, "Steam's appinfo cache wasn't found.");
         if (edits.Count == 0) return new ApplyResult(true);
 
-        bool wasRunning = _isSteamRunning();
-        if (wasRunning) _stopSteam();
+        bool wasRunning;
+        try { wasRunning = _isSteamRunning(); if (wasRunning) _stopSteam(); }
+        catch (Exception ex) { return new(false, ex.Message, false); }
 
         string tmp = path + ".luatools.tmp";
         try

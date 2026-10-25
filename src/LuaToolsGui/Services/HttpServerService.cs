@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -22,10 +21,7 @@ public class HttpServerService : IHostedService
     private readonly IServiceProvider _services;
     private readonly ILogger<HttpServerService> _log;
     private readonly SettingsService _settings;
-    private readonly object _lifecycle = new();
-    private HttpListener? _listener;
-    private CancellationTokenSource? _appCts;
-    private Task? _listenTask;
+    private volatile bool _active;
 
     // appid -> the queue item for its manifest download. Retained after completion so a late poll from
     // the store-page popup still sees "done" (the previous DownloadState dictionary behaved the same way).
@@ -98,141 +94,59 @@ public class HttpServerService : IHostedService
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        lock (_lifecycle)
-        {
-            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin") || cancellationToken.IsCancellationRequested
-                || _listener?.IsListening == true) return Task.CompletedTask;
-            _appCts?.Cancel();
-            _appCts?.Dispose();
-            _appCts = null;
-            _listener?.Close();
-            _listener = null;
-            var listener = new HttpListener();
-            listener.Prefixes.Add($"http://127.0.0.1:{LocalPluginBridgePolicy.Port}/");
-            try
-            {
-                listener.Start();
-            }
-            catch (Exception ex)
-            {
-                listener.Close();
-                _log.LogError(ex, "Failed to start HTTP server on :6767");
-                throw;
-            }
-            _appCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _listener = listener;
-            _listenTask = ListenLoop(listener, _appCts.Token);
-        }
-        _log.LogInformation("HTTP server listening on http://127.0.0.1:6767");
+        cancellationToken.ThrowIfCancellationRequested();
+        _active = _settings.IsExecutableWorkflowEnabled("LuaToolsPlugin");
         return Task.CompletedTask;
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
     {
-        Task? loop;
-        CancellationTokenSource? stopped;
-        lock (_lifecycle)
-        {
-            stopped = _appCts;
-            _appCts = null;
-            loop = _listenTask;
-            _listenTask = null;
-            stopped?.Cancel();
-            try { _listener?.Close(); } catch { }
-            _listener = null;
-        }
-        try { if (loop is not null) await loop.WaitAsync(cancellationToken); }
-        catch (OperationCanceledException) { }
-        finally { stopped?.Dispose(); }
+        _active = false;
+        return Task.CompletedTask;
     }
 
-    private async Task ListenLoop(HttpListener listener, CancellationToken ct)
+    // Internal capability: only the validated CEF connection in this process can dispatch.
+    // Nothing listens on port 6767, so other Windows sessions cannot steal or receive commands.
+    internal async Task<(int Status, string Body)> DispatchAsync(string method, string path,
+        string requestBody, string installation, CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested && listener.IsListening)
+        ct.ThrowIfCancellationRequested();
+        if (!_active || !_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")
+            || !string.Equals(_steam.EffectivePath, installation, StringComparison.OrdinalIgnoreCase))
+            return (403, JsonErr(LuaToolsGui.Resources.Strings.SteamIsolation_ContextChanged));
+        if (method is not ("GET" or "POST")) return (405, JsonErr("Method not allowed."));
+        if (Encoding.UTF8.GetByteCount(requestBody) > LocalPluginBridgePolicy.MaximumBodyBytes)
+            return (413, JsonErr("Bridge request exceeds its size limit."));
+        path = path.TrimEnd('/');
+        return path switch
         {
-            try
-            {
-                var ctx = await listener.GetContextAsync().WaitAsync(ct);
-                _ = HandleRequest(ctx, ct);
-            }
-            catch (OperationCanceledException) { break; }
-            catch (HttpListenerException) { break; }
-            catch (ObjectDisposedException) { break; }
-            catch { }
-        }
-    }
+            var p when method == "GET" && MatchGet(p, "/has/{appid}", out var id) => await HandleHas(long.Parse(id)),
+            // Steam-plugin headless add: reflects the app's real DownloadViewModel.
+            var p when method == "POST" && MatchPost(p, "/add/{appid}", out var id) => HandleAdd(long.Parse(id), requestBody),
+            var p when method == "GET" && MatchGet(p, "/add-status/{appid}", out var id) => HandleAddStatus(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/add-source/{appid}", out var id) => HandleAddSource(long.Parse(id), requestBody),
+            var p when method == "POST" && MatchPost(p, "/check-sources/{appid}", out var id) => await HandleCheckSources(long.Parse(id)),
+            // Steam-plugin "Add all DLC": check (verify, no writes) → status → apply.
+            var p when method == "POST" && MatchPost(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchCheck(long.Parse(id), requestBody),
+            var p when method == "GET" && MatchGet(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchStatus(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/dlc-batch-apply/{appid}", out var id) => HandleDlcBatchApply(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/dlc-batch-cancel/{appid}", out var id) => HandleDlcBatchCancel(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
+            var p when method == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
+            var p when method == "POST" && MatchPost(p, "/open/fix/{appid}", out var id) => HandleOpenFix(long.Parse(id)),
+            "/open/settings" when method == "POST" => HandleOpenSettings(),
+            "/open-url" when method == "POST" => HandleOpenUrl(requestBody),
+            "/restart-steam" when method == "POST" => HandleRestartSteam(),
+            "/check-updates" when method == "POST" => await HandleCheckUpdates(),
+            "/loaded-apps" when method == "GET" => await HandleReadLoadedApps(),
+            "/loaded-apps" when method == "POST" => HandleDismissLoadedApps(),
+            "/api-list" when method == "GET" => HandleApiList(),
+            "/icon" when method == "GET" => HandleIcon(),
+            _ => (404, JsonErr("Not found")),
+        };
 
-    private async Task HandleRequest(HttpListenerContext ctx, CancellationToken ct)
-    {
-        var req = ctx.Request;
-        var resp = ctx.Response;
-
-        resp.ContentType = "application/json; charset=utf-8";
-
-        try
-        {
-            if (!LocalPluginBridgePolicy.IsAuthorized(_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"),
-                req.Url, req.Headers["Host"], req.RemoteEndPoint?.Address, req.IsLocal,
-                req.Headers["Origin"], req.Headers[LocalPluginBridgePolicy.TokenHeader]))
-            {
-                resp.StatusCode = 403;
-                return;
-            }
-            if (req.HttpMethod is not ("GET" or "POST")) { resp.StatusCode = 405; return; }
-            string requestBody = await LocalPluginBridgePolicy.ReadBodyAsync(req.InputStream, req.ContentLength64, ct);
-            ct.ThrowIfCancellationRequested();
-            if (!_settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")) { resp.StatusCode = 403; return; }
-            string? path = req.Url?.AbsolutePath.TrimEnd('/');
-            // Log everything except the noisy status poll.
-            if (path is not null && !path.StartsWith("/add-status/") && !path.StartsWith("/has/")
-                && !(req.HttpMethod == "GET" && path.StartsWith("/dlc-batch/")))
-                PluginLog.Log($"HTTP {req.HttpMethod} {path}");
-            (int status, string body) = path switch
-            {
-                var p when req.HttpMethod == "GET" && MatchGet(p, "/has/{appid}", out var id) => await HandleHas(long.Parse(id)),
-                // Steam-plugin headless add: reflects the app's real DownloadViewModel.
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/add/{appid}", out var id) => HandleAdd(long.Parse(id), requestBody),
-                var p when req.HttpMethod == "GET" && MatchGet(p, "/add-status/{appid}", out var id) => HandleAddStatus(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/add-source/{appid}", out var id) => HandleAddSource(long.Parse(id), requestBody),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/check-sources/{appid}", out var id) => await HandleCheckSources(long.Parse(id)),
-                // Steam-plugin "Add all DLC": check (verify, no writes) → status → apply.
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchCheck(long.Parse(id), requestBody),
-                var p when req.HttpMethod == "GET" && MatchGet(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchStatus(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch-apply/{appid}", out var id) => HandleDlcBatchApply(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/dlc-batch-cancel/{appid}", out var id) => HandleDlcBatchCancel(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
-                var p when req.HttpMethod == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
-                var p when req.HttpMethod == "POST" && MatchPost(p, "/open/fix/{appid}", out var id) => HandleOpenFix(long.Parse(id)),
-                "/open/settings" when req.HttpMethod == "POST" => HandleOpenSettings(),
-                "/open-url" when req.HttpMethod == "POST" => HandleOpenUrl(requestBody),
-                "/restart-steam" when req.HttpMethod == "POST" => HandleRestartSteam(),
-                "/check-updates" when req.HttpMethod == "POST" => await HandleCheckUpdates(),
-                "/loaded-apps" when req.HttpMethod == "GET" => await HandleReadLoadedApps(),
-                "/loaded-apps" when req.HttpMethod == "POST" => HandleDismissLoadedApps(),
-                "/api-list" when req.HttpMethod == "GET" => HandleApiList(),
-                "/icon" when req.HttpMethod == "GET" => HandleIcon(),
-                _ => (404, JsonErr("Not found")),
-            };
-
-            resp.StatusCode = status;
-            var bytes = Encoding.UTF8.GetBytes(body);
-            await resp.OutputStream.WriteAsync(bytes);
-        }
-        catch (InvalidDataException) { resp.StatusCode = 413; }
-        catch (DecoderFallbackException) { resp.StatusCode = 400; }
-        catch (OperationCanceledException) { resp.StatusCode = 408; }
-        catch (Exception)
-        {
-            resp.StatusCode = 500;
-            var body = Encoding.UTF8.GetBytes(JsonErr("Bridge request failed."));
-            try { await resp.OutputStream.WriteAsync(body, ct); } catch { }
-        }
-        finally
-        {
-            try { resp.Close(); } catch { }
-        }
     }
 
     private static bool MatchGet(string? path, string pattern, out string id)
@@ -253,7 +167,7 @@ public class HttpServerService : IHostedService
     private static bool MatchPost(string? path, string pattern, out string id) =>
         MatchGet(path, pattern, out id);
 
-    // ── Endpoint handlers ─────────────────────────────────────────────
+    // â”€â”€ Endpoint handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private Task<(int, string)> HandleHas(long appId)
     {
@@ -261,7 +175,7 @@ public class HttpServerService : IHostedService
         return Task.FromResult((200, Json(new { success = true, exists })));
     }
 
-    // ── Steam-plugin add: drive + reflect the real DownloadViewModel ──
+    // â”€â”€ Steam-plugin add: drive + reflect the real DownloadViewModel â”€â”€
 
     /// <summary>Trigger the fully headless add (PluginAddService. Dynamic sources, Hubcap, key-gating,
     /// usage, FastFetch auto-download). Uses services only; the app window is never touched.</summary>
@@ -322,7 +236,7 @@ public class HttpServerService : IHostedService
         }));
     }
 
-    /// <summary>Plugin picked a source by name (FastFetch-off path) → download+install it headlessly.</summary>
+    /// <summary>Plugin picked a source by name (FastFetch-off path) â†’ download+install it headlessly.</summary>
     private (int, string) HandleAddSource(long appId, string body)
     {
         string source = "";
@@ -512,7 +426,7 @@ public class HttpServerService : IHostedService
         }
     }
 
-    // ── App-owned actions (surface the LuaTools GUI window; it does the real work) ──
+    // â”€â”€ App-owned actions (surface the LuaTools GUI window; it does the real work) â”€â”€
 
     /// <summary>Open the Fixes page for a game (same as the fix:// protocol).</summary>
     private (int, string) HandleOpenFix(long appId)
@@ -576,7 +490,7 @@ public class HttpServerService : IHostedService
     {
         try
         {
-            // Frontend "Check for updates" → run the exact same update flow as Steam-open (app + plugin,
+            // Frontend "Check for updates" â†’ run the exact same update flow as Steam-open (app + plugin,
             // with the sync app-restart), so the button can't leave the backend out of sync with a freshly
             // updated plugin. Fire-and-forget: the flow may restart Steam and/or the app, so don't block the
             // HTTP response on it. Fall back to the plain checks if the app flow isn't wired yet.
@@ -598,10 +512,10 @@ public class HttpServerService : IHostedService
     private async Task<(int, string)> HandleReadLoadedApps()
     {
         var ids = _cache.GetLoadedAppIds();
-        // Resolve appid → game name so the plugin's "Added Games" popup shows names, not just numbers
+        // Resolve appid â†’ game name so the plugin's "Added Games" popup shows names, not just numbers
         // (it renders item.name || item.appid). Names are best-effort. A missing one falls back to the id.
         var names = _services.GetRequiredService<SteamAppListCache>();
-        try { await names.EnsureLoadedAsync(); } catch { /* offline / not cached yet → ids only */ }
+        try { await names.EnsureLoadedAsync(); } catch { /* offline / not cached yet â†’ ids only */ }
         var apps = ids.Select(id => new { appid = id, name = names.GetName(id) }).ToList();
         return (200, Json(new { success = true, apps }));
     }
@@ -656,9 +570,9 @@ public class HttpServerService : IHostedService
         }
     }
 
-    // ── Download worker ───────────────────────────────────────────────
+    // â”€â”€ Download worker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    // ── Helpers ───────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static string Json(object obj) => JsonSerializer.Serialize(obj);
     private static string JsonErr(string msg) => JsonSerializer.Serialize(new { success = false, error = msg });

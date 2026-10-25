@@ -722,4 +722,23 @@ public static class Strings
     public static string SteamMl_InvalidArchive => Get(nameof(SteamMl_InvalidArchive));
     public static string SteamMl_NoArchive => Get(nameof(SteamMl_NoArchive));
     public static string SteamMl_NoManifest => Get(nameof(SteamMl_NoManifest));
+    public static string SteamIsolation_FalconIncomplete => Get(nameof(SteamIsolation_FalconIncomplete));
+    public static string SteamIsolation_AbsolutePaths => Get(nameof(SteamIsolation_AbsolutePaths));
+    public static string SteamIsolation_SteamMissing => Get(nameof(SteamIsolation_SteamMissing));
+    public static string SteamIsolation_ShutdownRoute => Get(nameof(SteamIsolation_ShutdownRoute));
+    public static string SteamIsolation_ContextIncomplete => Get(nameof(SteamIsolation_ContextIncomplete));
+    public static string SteamIsolation_ContextMismatch => Get(nameof(SteamIsolation_ContextMismatch));
+    public static string SteamIsolation_IdentityUnknown => Get(nameof(SteamIsolation_IdentityUnknown));
+    public static string SteamIsolation_IdentityUnsafe => Get(nameof(SteamIsolation_IdentityUnsafe));
+    public static string SteamIsolation_ShutdownTimeout => Get(nameof(SteamIsolation_ShutdownTimeout));
+    public static string SteamIsolation_LauncherFailed => Get(nameof(SteamIsolation_LauncherFailed));
+    public static string SteamIsolation_ShutdownFailed => Get(nameof(SteamIsolation_ShutdownFailed));
+    public static string SteamIsolation_SelectSteam => Get(nameof(SteamIsolation_SelectSteam));
+    public static string SteamIsolation_SelectBeforeStop => Get(nameof(SteamIsolation_SelectBeforeStop));
+    public static string SteamIsolation_RequestRejected => Get(nameof(SteamIsolation_RequestRejected));
+    public static string SteamIsolation_ResultTooLarge => Get(nameof(SteamIsolation_ResultTooLarge));
+    public static string SteamIsolation_SelectionChanged => Get(nameof(SteamIsolation_SelectionChanged));
+    public static string SteamIsolation_DebuggerMissing => Get(nameof(SteamIsolation_DebuggerMissing));
+    public static string SteamIsolation_DebuggerChanged => Get(nameof(SteamIsolation_DebuggerChanged));
+    public static string SteamIsolation_ContextChanged => Get(nameof(SteamIsolation_ContextChanged));
 }

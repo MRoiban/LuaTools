@@ -745,4 +745,23 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML a renvoyé une archive ZIP non valide.</value></data>
   <data name="SteamMl_NoArchive" xml:space="preserve"><value>SteamML n'a pas d'archive pour ce jeu : impossible de l'ajouter sans se connecter.</value></data>
   <data name="SteamMl_NoManifest" xml:space="preserve"><value>SteamML n'a pas cette version du dépôt {0}. Connectez-vous pour la récupérer depuis lua.tools.</value></data>
+  <data name="SteamIsolation_FalconIncomplete" xml:space="preserve"><value>L?installation Falcon s?lectionn?e est incompl?te.</value></data>
+  <data name="SteamIsolation_AbsolutePaths" xml:space="preserve"><value>L?isolation de Steam n?cessite des chemins absolus.</value></data>
+  <data name="SteamIsolation_SteamMissing" xml:space="preserve"><value>L?ex?cutable Steam s?lectionn? est introuvable.</value></data>
+  <data name="SteamIsolation_ShutdownRoute" xml:space="preserve"><value>Cette commande d?arr?t n?cessite le lanceur de l?instance Steam isol?e.</value></data>
+  <data name="SteamIsolation_ContextIncomplete" xml:space="preserve"><value>La configuration d?isolation Steam h?rit?e est incompl?te. Steam n?a ?t? ni d?marr? ni arr?t?.</value></data>
+  <data name="SteamIsolation_ContextMismatch" xml:space="preserve"><value>Le lanceur d?isolation est absent ou ne correspond pas ? l?installation Steam s?lectionn?e. Steam n?a ?t? ni d?marr? ni arr?t?.</value></data>
+  <data name="SteamIsolation_IdentityUnknown" xml:space="preserve"><value>Impossible d?identifier un processus Steam dans cette session Windows.</value></data>
+  <data name="SteamIsolation_IdentityUnsafe" xml:space="preserve"><value>Impossible d?identifier avec certitude le processus Steam s?lectionn?. Aucun processus Steam n?a ?t? arr?t?.</value></data>
+  <data name="SteamIsolation_ShutdownTimeout" xml:space="preserve"><value>L?instance Steam s?lectionn?e ne s?est pas ferm?e. Aucun red?marrage ni changement d?installation n?a ?t? tent?.</value></data>
+  <data name="SteamIsolation_LauncherFailed" xml:space="preserve"><value>Impossible de d?marrer le lanceur d?isolation.</value></data>
+  <data name="SteamIsolation_ShutdownFailed" xml:space="preserve"><value>Le lanceur d?isolation n?a pas confirm? la demande d?arr?t. Steam ne sera pas red?marr?.</value></data>
+  <data name="SteamIsolation_SelectSteam" xml:space="preserve"><value>S?lectionnez d?abord une installation Steam.</value></data>
+  <data name="SteamIsolation_SelectBeforeStop" xml:space="preserve"><value>S?lectionnez une installation Steam avant de l?arr?ter.</value></data>
+  <data name="SteamIsolation_RequestRejected" xml:space="preserve"><value>La requ?te du plugin Steam a ?t? refus?e.</value></data>
+  <data name="SteamIsolation_ResultTooLarge" xml:space="preserve"><value>Le r?sultat du plugin Steam d?passe la taille maximale.</value></data>
+  <data name="SteamIsolation_SelectionChanged" xml:space="preserve"><value>L?installation Steam s?lectionn?e a chang?.</value></data>
+  <data name="SteamIsolation_DebuggerMissing" xml:space="preserve"><value>Le d?bogueur de l?instance Steam s?lectionn?e est indisponible</value></data>
+  <data name="SteamIsolation_DebuggerChanged" xml:space="preserve"><value>Le d?bogueur Steam appartient d?sormais ? une autre instance</value></data>
+  <data name="SteamIsolation_ContextChanged" xml:space="preserve"><value>Le contexte du plugin Steam a chang?.</value></data>
 </root>

@@ -187,6 +187,21 @@ public class LaunchOptionsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Apply_StopFailureDoesNotWriteOrRestartSteam()
+    {
+        var before = File.ReadAllBytes(_appInfo);
+        var guarded = new LaunchOptionsService(() => _appInfo, () => true,
+            () => throw new InvalidOperationException("The selected Steam did not exit."),
+            () => _startCalls++, _store, Path.Combine(_tmp, "backup"));
+        var current = _service.Read(AppId)!.Current;
+        var result = guarded.Apply(new Dictionary<int, IReadOnlyList<LaunchOption>> { [AppId] = current }, true);
+        Assert.False(result.Ok);
+        Assert.Equal(before, File.ReadAllBytes(_appInfo));
+        Assert.Equal(0, _startCalls);
+        Assert.False(Directory.Exists(Path.Combine(_tmp, "backup")));
+    }
+
+    [Fact]
     public void Restore_PutsBackTheSnapshotAndForgetsTheMod()
     {
         var state = _service.Read(AppId)!;

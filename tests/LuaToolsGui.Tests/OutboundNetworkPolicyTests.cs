@@ -149,9 +149,23 @@ public class OutboundNetworkPolicyTests
     {
         var policy = new OutboundNetworkPolicy([8080]);
         policy.Validate(new Uri("http://127.0.0.1:8080/json"));
+        policy.Validate(new Uri("http://[::1]:8080/json"));
+        Assert.Throws<HttpRequestException>(() => policy.Validate(new Uri("http://[::ffff:127.0.0.1]:8080/json")));
+        Assert.Throws<HttpRequestException>(() => policy.Validate(new Uri("http://[::1]:6767/json")));
         Assert.Throws<HttpRequestException>(() => policy.Validate(new Uri("http://localhost:8080/json")));
         Assert.Throws<HttpRequestException>(() => policy.Validate(new Uri("http://127.0.0.1:6767/json")));
         Assert.Throws<HttpRequestException>(() => policy.Validate(new Uri("https://lua.tools/")));
+    }
+
+    [Fact]
+    public async Task Ipv6DebuggerPermissionCannotReceiveLocalBridgeToken()
+    {
+        var transport = new Stub(_ => new(HttpStatusCode.OK));
+        using var http = new HttpClient(new OutboundPolicyHandler(new OutboundNetworkPolicy([6767, 8080]), transport));
+        using var request = new HttpRequestMessage(HttpMethod.Get, "http://[::1]:6767/has/620");
+        request.Headers.TryAddWithoutValidation(LocalPluginBridgePolicy.TokenHeader, LocalPluginBridgePolicy.Token);
+        await Assert.ThrowsAsync<HttpRequestException>(() => http.SendAsync(request));
+        Assert.Empty(transport.Uris);
     }
 
     [Theory]

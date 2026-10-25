@@ -24,7 +24,7 @@ user Run key with `--minimized`, opening it in the tray. Startup never writes or
 repairs that registration. No Steam-injection startup hook is added. External protocol URLs and
 loader flags cannot start silent installs. Startup does not install/update a companion
 plugin or modify the selected Steam mode. An explicitly installed, enabled source-owned
-plugin resumes its isolated browser injection and authenticated local server at startup.
+plugin resumes its isolated browser injection and in-process backend at startup.
 Eight persisted switches default to off: executable game fixes,
 BetterSteamTools, OpenSteamTools, Steam plugin, DepotDownloaderMod, Steamless,
 SteamAutoCrack and CloudRedirect. Turning one on only saves consent. A subsequent
@@ -68,8 +68,12 @@ integrity only, not trust in downloaded code. Other remote plaintext requests re
 
 The Steam plugin runtime requires a successful explicit installation receipt,
 resumes at startup/re-enable, and stops when its switch is turned off.
-Its local HTTP bridge requires an ephemeral per-process token and rejects browser Origin
-headers; loopback alone does not authorize requests. The frontend and WinMM wrapper
+Plugin requests stay inside the LuaTools process attached to the selected Steam installation
+and Windows session. No plugin HTTP server listens on port 6767. Discovery checks local TCP
+listener ownership before attaching and again before dispatch; endpoint literals and target
+URLs remain constrained. Both standard Steam debugging ports and Falcon's OS-assigned ports
+are supported. Cabinet friend-label browser connections use the same ownership checks.
+The frontend and WinMM wrapper
 are now source-owned and bundled with the fork. The frontend runs in a CDP isolated
 world with a narrow bridge. Local CDP process spoofing and same-user filesystem attacks
 remain limitations; see [implementation record](design/steam-plugin/implementation.md).

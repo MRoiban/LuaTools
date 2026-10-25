@@ -10,25 +10,26 @@ namespace LuaToolsGui.Services;
 
 /// <summary>
 /// Source-owned UI in a CDP isolated world. Ordinary store scripts cannot access its capability queue.
-/// CDP on Steam's fixed local port does not authenticate the local listening process.
+/// CDP listeners are matched to the selected installation and current Windows session.
 /// </summary>
 public class CefInjectorService : IHostedService
 {
     private readonly SettingsService _settings;
+    private readonly SteamService _steam;
+    private readonly SteamDebugEndpointDiscovery _discovery = new();
     private readonly ILogger<CefInjectorService> _log;
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
-    private readonly HttpClient _http = AppHttp.CreateLoopback(TimeSpan.FromSeconds(10), 8080, 6767);
+    private readonly HttpServerService _backend;
     private readonly Dictionary<string, TabSession> _sessions = new(); // owned only by InjectionLoop
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private string _script = "";
-    private const string DebugUrl = "http://127.0.0.1:8080/json";
-    private const string BackendUrl = "http://127.0.0.1:6767";
     private static readonly HttpResponseBudget DiscoveryBudget = new(256 * 1024, TimeSpan.FromSeconds(5));
-    private static readonly HttpResponseBudget ResultBudget = new(SteamPluginBridge.MaximumResultBytes, TimeSpan.FromSeconds(8));
 
-    public CefInjectorService(SteamService steam, SettingsService settings, ILogger<CefInjectorService> logger)
+    public CefInjectorService(SteamService steam, SettingsService settings, ILogger<CefInjectorService> logger, HttpServerService backend)
     {
+        _backend = backend;
+        _steam = steam;
         _settings = settings;
         _log = logger;
     }
@@ -95,11 +96,17 @@ public class CefInjectorService : IHostedService
             {
                 try
                 {
-                    using var discovery = new HttpRequestMessage(HttpMethod.Get, DebugUrl);
+                    string? installation = _steam.EffectivePath;
+                    string? debugUrl = _discovery.Find(installation);
+                    foreach (var stale in _sessions.Where(s => s.Value.Installation != installation || s.Value.DebugUrl != debugUrl).Select(s => s.Key).ToArray()) Evict(stale);
+                    if (debugUrl is null) { await Task.Delay(350, ct); continue; }
+                    using var discovery = new HttpRequestMessage(HttpMethod.Get, debugUrl);
                     DiscoveryBudget.Apply(discovery);
-                    using var response = await _http.SendAsync(discovery, ct);
+                    using var http = AppHttp.CreateLoopback(TimeSpan.FromSeconds(10), new Uri(debugUrl).Port);
+                    using var response = await http.SendAsync(discovery, ct);
                     response.EnsureSuccessStatusCode();
                     using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+                    if (_steam.EffectivePath != installation) continue;
                     if (document.RootElement.ValueKind != JsonValueKind.Array || document.RootElement.GetArrayLength() > 128)
                         throw new InvalidDataException("Unexpected CEF target list.");
                     var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -110,11 +117,12 @@ public class CefInjectorService : IHostedService
                             || !target.TryGetProperty("webSocketDebuggerUrl", out var wsValue) || wsValue.ValueKind != JsonValueKind.String)
                             continue;
                         string id = idValue.GetString()!, url = urlValue.GetString()!, ws = wsValue.GetString()!;
-                        if (id.Length is < 1 or > 128 || !SteamPluginBridge.IsStoreUrl(url) || !IsAllowedDebuggerEndpoint(ws)
+                        if (id.Length is < 1 or > 128 || !SteamPluginBridge.IsStoreUrl(url) || !IsAllowedDebuggerEndpoint(ws, debugUrl)
                             || !seen.Add(id)) continue;
                         try
                         {
-                            var session = await GetSession(id, ws, ct);
+                            var session = await GetSession(id, ws, installation!, debugUrl, ct);
+                            EnsureSelection(session);
                             await EnsureWorld(session, ct);
                             await ProcessRequests(session, ct);
                         }
@@ -122,6 +130,7 @@ public class CefInjectorService : IHostedService
                         catch (Exception ex)
                         {
                             Evict(id);
+                            PluginLog.Log($"CEF tab reconnect: {ex.GetType().Name}: {ex.Message}");
                             _log.LogDebug("CEF tab unavailable: {Message}", ex.Message);
                         }
                     }
@@ -140,7 +149,7 @@ public class CefInjectorService : IHostedService
         }
     }
 
-    private async Task<TabSession> GetSession(string id, string endpoint, CancellationToken ct)
+    private async Task<TabSession> GetSession(string id, string endpoint, string installation, string debugUrl, CancellationToken ct)
     {
         if (!Enabled) throw new InvalidOperationException("Steam plugin is disabled in Settings.");
         if (_sessions.TryGetValue(id, out var session))
@@ -157,7 +166,7 @@ public class CefInjectorService : IHostedService
             await socket.ConnectAsync(new Uri(endpoint), timeout.Token);
         }
         catch { socket.Dispose(); throw; }
-        session = new TabSession(endpoint, new SteamCdpConnection(socket));
+        session = new TabSession(endpoint, new SteamCdpConnection(socket), installation, debugUrl);
         _sessions.Add(id, session);
         return session;
     }
@@ -173,22 +182,29 @@ public class CefInjectorService : IHostedService
 
     private async Task EnsureWorld(TabSession session, CancellationToken ct)
     {
+        EnsureSelection(session);
         var frame = await CurrentFrame(session, ct);
+        EnsureSelection(session);
         if (session.FrameId != frame.Id || session.LoaderId != frame.Loader)
         {
             var world = await session.Connection.CommandAsync("Page.createIsolatedWorld",
-                new { frameId = frame.Id, worldName = "LuaTools-" + Guid.NewGuid().ToString("N"), grantUniveralAccess = false }, ct);
+                // Reuse the same isolated world when the local app reconnects. A fresh random
+                // world leaves the visible controls attached to a bridge we no longer service.
+                new { frameId = frame.Id, worldName = "LuaTools-StorePlugin-v2", grantUniveralAccess = false }, ct);
             session.ContextId = world.GetProperty("executionContextId").GetInt32();
             session.FrameId = frame.Id; session.LoaderId = frame.Loader;
         }
         string alive = await session.Connection.EvaluateAsync(session.ContextId, "String(window.__LuaToolsReady === true)", ct);
+        EnsureSelection(session);
         if (alive != "true" && _script.Length != 0)
             await session.Connection.EvaluateAsync(session.ContextId, _script + "\n; 'injected';", ct);
     }
 
     private async Task ProcessRequests(TabSession session, CancellationToken ct)
     {
+        EnsureSelection(session);
         var raw = await session.Connection.EvaluateAsync(session.ContextId, "window.LuaToolsBridge.__drain()", ct);
+        EnsureSelection(session);
         using var batch = JsonDocument.Parse(raw);
         if (batch.RootElement.ValueKind != JsonValueKind.Array || batch.RootElement.GetArrayLength() > SteamPluginBridge.MaximumQueue)
             throw new InvalidDataException("Invalid bridge queue.");
@@ -213,16 +229,14 @@ public class CefInjectorService : IHostedService
                 string method = request.GetProperty("method").GetString()!;
                 var args = request.GetProperty("args");
                 var mapping = SteamPluginBridge.Map(method, args, frame.Url);
-                if (!Enabled) throw new InvalidOperationException("Steam plugin is disabled in Settings.");
-                using var httpRequest = new HttpRequestMessage(mapping.Method == "GET" ? HttpMethod.Get : HttpMethod.Post, BackendUrl + mapping.Path);
-                ResultBudget.Apply(httpRequest);
-                httpRequest.Headers.TryAddWithoutValidation(LocalPluginBridgePolicy.TokenHeader, LocalPluginBridgePolicy.Token);
-                if (mapping.Method != "GET") httpRequest.Content = new StringContent(args.GetRawText(), Encoding.UTF8, "application/json");
-                using var response = await _http.SendAsync(httpRequest, deadline.Token);
-                if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                    throw new InvalidOperationException("Steam plugin is disabled in Settings.");
-                var text = await response.Content.ReadAsStringAsync(deadline.Token);
-                response.EnsureSuccessStatusCode();
+                EnsureSelection(session);
+                var response = await _backend.DispatchAsync(mapping.Method, mapping.Path,
+                    mapping.Method == "GET" ? "" : args.GetRawText(), session.Installation, deadline.Token)
+                    .WaitAsync(deadline.Token);
+                if (response.Status is < 200 or >= 300) throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_RequestRejected);
+                var text = response.Body;
+                if (Encoding.UTF8.GetByteCount(text) > SteamPluginBridge.MaximumResultBytes)
+                    throw new InvalidDataException(LuaToolsGui.Resources.Strings.SteamIsolation_ResultTooLarge);
                 using var result = JsonDocument.Parse(text);
                 reply = new { id, value = result.RootElement.Clone() };
             }
@@ -230,15 +244,29 @@ public class CefInjectorService : IHostedService
             catch (OperationCanceledException) { reply = new { id, error = "Steam plugin bridge timed out." }; }
             catch (Exception ex) { reply = new { id, error = ex.Message }; }
             // Match by stable request ID, even if another promise expired or new calls arrived meanwhile.
+            EnsureSelection(session);
             await session.Connection.EvaluateAsync(session.ContextId,
                 "window.LuaToolsBridge.__complete([" + JsonSerializer.Serialize(reply) + "]); 'completed';", ct);
         }
     }
 
-    public static bool IsAllowedDebuggerEndpoint(string url)
+    public static bool IsAllowedDebuggerEndpoint(string url) => IsAllowedDebuggerEndpoint(url, "http://127.0.0.1:8080/json");
+
+    internal static bool IsAllowedDebuggerEndpoint(string url, string discoveryUrl)
     {
-        // Validate the wire form as well: Uri normalizes alternate numeric IPv4 forms and dot segments.
-        const string prefix = "ws://127.0.0.1:8080/devtools/page/";
+        if (!Uri.TryCreate(discoveryUrl, UriKind.Absolute, out var discovery)
+            || discovery.Scheme != "http" || discovery.Host is not ("127.0.0.1" or "[::1]")
+            || discovery.UserInfo.Length != 0 || discovery.AbsolutePath != "/json"
+            || discovery.Query.Length != 0 || discovery.Fragment.Length != 0 || discovery.Port < 1)
+            return false;
+        string host = discovery.Host;
+        if (host == "[::1]")
+        {
+            if (url.StartsWith("ws://[0000:0000:0000:0000:0000:0000:0000:0001]:", StringComparison.Ordinal))
+                host = "[0000:0000:0000:0000:0000:0000:0000:0001]";
+            else if (url.StartsWith("ws://[0:0:0:0:0:0:0:1]:", StringComparison.Ordinal)) host = "[0:0:0:0:0:0:0:1]";
+        }
+        string prefix = $"ws://{host}:{discovery.Port}/devtools/page/";
         return url.StartsWith(prefix, StringComparison.Ordinal) && url.Length > prefix.Length
             && url.Length <= prefix.Length + 256
             && url[prefix.Length..].All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
@@ -248,8 +276,17 @@ public class CefInjectorService : IHostedService
     {
         if (_sessions.Remove(id, out var session)) session.Connection.Dispose();
     }
-    private sealed class TabSession(string endpoint, SteamCdpConnection connection)
+    private void EnsureSelection(TabSession session)
     {
+        if (!Enabled || !string.Equals(_steam.EffectivePath, session.Installation, StringComparison.OrdinalIgnoreCase)
+            || _discovery.Find(session.Installation, refresh: true) != session.DebugUrl)
+            throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_SelectionChanged);
+    }
+
+    private sealed class TabSession(string endpoint, SteamCdpConnection connection, string installation, string debugUrl)
+    {
+        internal string Installation { get; } = installation;
+        internal string DebugUrl { get; } = debugUrl;
         internal string Endpoint { get; } = endpoint;
         internal SteamCdpConnection Connection { get; } = connection;
         internal string? FrameId { get; set; }

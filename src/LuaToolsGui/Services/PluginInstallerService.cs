@@ -93,7 +93,7 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
             ValidateMarker(marker);
             markerInitiallyPresent = MarkerExists(marker);
             ct.ThrowIfCancellationRequested();
-            wasRunning = Process.GetProcessesByName("steam").Length > 0;
+            wasRunning = steam.IsSelectedSteamRunning();
             steam.StopSteam();
             stopped = true;
             await Task.Delay(1200, ct);
@@ -167,7 +167,7 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
                 foreach (string name in new[] { LoaderName, RealName, ConfigurationName }) BundledPlugin.EnsureSafePath(Path.Combine(steamDir, name));
             }
             ct.ThrowIfCancellationRequested();
-            wasRunning = Process.GetProcessesByName("steam").Length > 0;
+            wasRunning = steam.IsSelectedSteamRunning();
             steam.StopSteam();
             stopped = true;
             await Task.Delay(1200, ct);

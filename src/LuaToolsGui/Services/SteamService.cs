@@ -26,7 +26,8 @@ public class SteamService(SettingsService settings)
     {
         get
         {
-            string? overridePath = settings.SteamPathOverride;
+            string? overridePath = Environment.GetEnvironmentVariable(SteamProcessControl.SteamVariable) is { Length: > 0 } inherited
+                ? Path.GetDirectoryName(inherited) : settings.SteamPathOverride;
             return !string.IsNullOrWhiteSpace(overridePath) ? Normalize(overridePath) : AutoDetectedPath;
         }
     }
@@ -37,7 +38,7 @@ public class SteamService(SettingsService settings)
     /// The Steam client's UI language ("english", "schinese", "brazilian", ...), or null if unreadable.
     /// </summary>
     /// <remarks>
-    /// This is the same vocabulary a depot's <c>config.language</c> uses — verified against steamcmd's
+    /// This is the same vocabulary a depot's <c>config.language</c> uses â€” verified against steamcmd's
     /// app info, where the registry's "english" matches the depot value verbatim, and against the
     /// <c>baselanguages</c> list ("english,german,french,..."). So it can be compared to depot languages
     /// directly, with no mapping table.
@@ -45,7 +46,7 @@ public class SteamService(SettingsService settings)
     /// Read fresh each time rather than cached: a user can change Steam's language without restarting
     /// this app, and the read is a single registry lookup.
     ///
-    /// Lowercased on the way out — the depot values are lowercase, and relying on every future call site
+    /// Lowercased on the way out â€” the depot values are lowercase, and relying on every future call site
     /// to remember OrdinalIgnoreCase is the kind of thing that breaks once and is never noticed.
     /// </remarks>
     public static string? SteamLanguage
@@ -78,14 +79,14 @@ public class SteamService(SettingsService settings)
     /// Full path to depotcache (where .manifest files go), or null if Steam isn't located.
     /// </summary>
     /// <remarks>
-    /// This is <c>&lt;Steam&gt;\depotcache</c>, a SIBLING of steamapps — NOT <c>config\depotcache</c>.
+    /// This is <c>&lt;Steam&gt;\depotcache</c>, a SIBLING of steamapps â€” NOT <c>config\depotcache</c>.
     /// Only stplug-in lives under config; that folder is SteamTools'. depotcache is Steam's own, and
     /// Steam builds the path as <c>%s/depotcache/%d_%llu.manifest</c> off the install root
     /// (the literal is in steamclient64.dll, listed beside /common, /downloading, /temp and /workshop).
     ///
     /// This was wrong until 2026-09-09 and it silently broke downloads: a manifest written to
     /// config\depotcache is invisible to Steam, so a pinned depot resolves to nothing and the download
-    /// never starts, with no error anywhere. Measured on a real install — of 2,314 files in
+    /// never starts, with no error anywhere. Measured on a real install â€” of 2,314 files in
     /// config\depotcache, 2,313 were byte-identical copies of the real depotcache with mtimes preserved
     /// (a stale one-off mirror), and the single file that was ONLY there was the manifest for the one
     /// app that would not download. Meanwhile 394 manifests Steam had fetched itself existed only in
@@ -116,7 +117,7 @@ public class SteamService(SettingsService settings)
     /// </summary>
     /// <remarks>
     /// <see cref="RevealInExplorer"/> always passes <c>/select</c>, which for a directory highlights it
-    /// in its PARENT rather than opening it — wrong for the depot output folder and a game's install
+    /// in its PARENT rather than opening it â€” wrong for the depot output folder and a game's install
     /// directory, which are the two most common targets. Callers hand over whichever they have and let
     /// this sort it out, so no call site has to probe the filesystem itself.
     /// </remarks>
@@ -139,7 +140,7 @@ public class SteamService(SettingsService settings)
     /// <summary>Put text on the clipboard. Returns false instead of throwing when it can't.</summary>
     /// <remarks>
     /// <c>Clipboard.SetText</c> throws <c>CLIPBRD_E_CANT_OPEN</c> when another process is holding the
-    /// clipboard open — common with remote-desktop and clipboard-manager tools, and entirely outside our
+    /// clipboard open â€” common with remote-desktop and clipboard-manager tools, and entirely outside our
     /// control. Copying an app id is never worth an unhandled exception, so failure is reported, not thrown.
     /// </remarks>
     public static bool CopyToClipboard(string? text)
@@ -149,24 +150,24 @@ public class SteamService(SettingsService settings)
         catch { return false; }
     }
 
-    /// <summary>Kill any running steam.exe (and its tree) and wait for it to exit. Safe to call when
-    /// Steam isn't running. Use before changing Steam's files so they aren't locked.</summary>
-    /// <summary>True while a Steam client process is running. Appinfo.vdf can't be edited under it.</summary>
-    public static bool IsSteamRunning()
+    /// <summary>Checks the selected installation in this session; ambiguous identity throws so
+    /// callers cannot treat an unreadable running Steam as safe to edit.</summary>
+    public bool IsSelectedSteamRunning()
     {
-        var procs = Process.GetProcessesByName("steam");
-        try { return procs.Length > 0; }
-        finally { foreach (var p in procs) p.Dispose(); }
+        string path = EffectivePath ?? throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_SelectSteam);
+        using var current = Process.GetCurrentProcess();
+        return SteamProcessControl.IsRunning(SteamExePathFor(path), current.SessionId,
+            Process.GetProcessesByName("steam").Select(p => (ISteamProcess)new SystemSteamProcess(p)));
     }
 
     public void StopSteam()
     {
-        foreach (var proc in Process.GetProcessesByName("steam"))
-        {
-            try { proc.Kill(entireProcessTree: true); proc.WaitForExit(8000); }
-            catch { /* already gone / access denied */ }
-            finally { proc.Dispose(); }
-        }
+        string path = EffectivePath ?? throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_SelectBeforeStop);
+        using var current = Process.GetCurrentProcess();
+        var environment = SteamProcessControl.ResolveEnvironment(SteamExePathFor(path), Environment.GetEnvironmentVariable, File.Exists);
+        SteamProcessControl.Stop(SteamExePathFor(path), current.SessionId,
+            Process.GetProcessesByName("steam").Select(p => (ISteamProcess)new SystemSteamProcess(p)),
+            environment, File.Exists, SteamProcessControl.ForwardShutdown);
     }
 
     /// <summary>Launch Steam from the effective path. Returns false if it can't be located/launched.</summary>
@@ -179,20 +180,22 @@ public class SteamService(SettingsService settings)
 
         try
         {
-            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = true });
-            return true;
+            var info = SteamProcessControl.CreateStartInfo(exe,
+                SteamProcessControl.ResolveEnvironment(exe, Environment.GetEnvironmentVariable, File.Exists), File.Exists);
+            using var process = Process.Start(info);
+            return process is not null;
         }
         catch { return false; }
     }
 
     /// <summary>
-    /// Kill any running steam.exe and relaunch it from the effective path. lua changes only take
-    /// effect after a Steam restart. Returns false if Steam can't be located/launched.
+    /// Stop only the selected Steam in this Windows session and relaunch it through its inherited
+    /// isolation route when present. Returns false if shutdown, route validation or launch fails.
     /// </summary>
     public bool RestartSteam()
     {
-        StopSteam();
-        return StartSteam();
+        try { StopSteam(); return StartSteam(); }
+        catch { return false; }
     }
 
     private static string? DetectFromRegistry()

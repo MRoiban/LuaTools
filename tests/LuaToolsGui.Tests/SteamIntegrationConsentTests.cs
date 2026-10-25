@@ -22,7 +22,7 @@ public class SteamIntegrationConsentTests
         var steam = new SteamService(settings);
         var cache = new CacheService(Path.Combine(temp.Directory, "cache.json"));
         var unlocker = new UnlockerService(steam, settings, cache, github);
-        var injector = new CefInjectorService(steam, settings, NullLogger<CefInjectorService>.Instance);
+        var injector = new CefInjectorService(steam, settings, NullLogger<CefInjectorService>.Instance, new HttpServerService(null!, steam, cache, null!, NullLogger<HttpServerService>.Instance, settings));
         var plugin = new PluginInstallerService(steam, settings, github, injector);
         File.WriteAllText(Path.Combine(temp.Directory, "OpenSteamTool.dll"), "unreviewed cached dll");
         Assert.False((await unlocker.InstallAsync(UnlockerMode.Ost)).Success);
