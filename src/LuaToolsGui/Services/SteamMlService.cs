@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services.Downloads;
@@ -149,8 +150,90 @@ public sealed partial class SteamMlService
         // Only the app-ID name is trusted, not a server-supplied Content-Disposition.
         response.Content.Headers.ContentDisposition = null;
         var file = await HttpFileDownloader.SaveResponseAsync(response, appid + ".zip", progress, ct);
-        if (ManifestJobFactory.IsZip(file.FilePath)) return file;
-        ManifestJobFactory.DeleteStaged(file.FilePath);
-        throw new ApiException(Resources.Strings.SteamMl_InvalidArchive);
+        try
+        {
+            if (!ManifestJobFactory.IsZip(file.FilePath))
+                throw new ApiException(Resources.Strings.SteamMl_InvalidArchive);
+            PrepareArchive(appid, file.FilePath);
+            return file;
+        }
+        catch
+        {
+            ManifestJobFactory.DeleteStaged(file.FilePath);
+            throw;
+        }
+    }
+
+    /// <summary>Convert SteamML's transport extras to the manifest-only format used by every consumer.</summary>
+    internal static void PrepareArchive(string appid, string zipPath)
+    {
+        ApiContract.RequireAppId(appid);
+        using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Update))
+        {
+            // Check paths, links, duplicates and expansion limits BEFORE ignoring any transport extras.
+            ManifestContentPolicy.ValidateArchive(zip, manifestPackage: false);
+            foreach (var entry in zip.Entries.ToArray())
+            {
+                // SteamML also bundles a root README and a Steam user-stats schema. Neither is installed
+                // or consumed by LuaTools. Keep this exception specific; all other payloads are validated.
+                if (entry.FullName.Equals("README", StringComparison.OrdinalIgnoreCase) ||
+                    entry.FullName.Equals($"UserStats_{appid}_0.bin", StringComparison.OrdinalIgnoreCase))
+                {
+                    using (var stream = entry.Open())
+                        ManifestContentPolicy.ReadBounded(stream, ManifestContentPolicy.MaxDocumentationBytes);
+                    entry.Delete();
+                    continue;
+                }
+                if (!entry.Name.EndsWith(".lua", StringComparison.OrdinalIgnoreCase)) continue;
+                using var luaStream = entry.Open();
+                byte[] bytes = ManifestContentPolicy.ReadBounded(luaStream, ManifestContentPolicy.MaxLuaBytes);
+                string lua = new UTF8Encoding(false, true).GetString(bytes);
+                byte[] normalized = Encoding.UTF8.GetBytes(RemoveBlockComments(lua));
+                ManifestContentPolicy.ValidateLua(normalized, long.Parse(appid));
+                luaStream.Position = 0;
+                luaStream.SetLength(0);
+                luaStream.Write(normalized);
+            }
+        }
+        using var prepared = ZipFile.OpenRead(zipPath);
+        ManifestContentPolicy.ValidateArchive(prepared, expectedAppId: long.Parse(appid));
+    }
+
+    // Strip only actual Lua long comments, preserving token boundaries and line breaks. Leaving
+    // them in the installed file would confuse the line-based depot parser and pin/enable editors.
+    internal static string RemoveBlockComments(string lua)
+    {
+        char[] result = lua.ToCharArray();
+        for (int i = 0; i < lua.Length; i++)
+        {
+            if (lua[i] is '\'' or '"')
+            {
+                char quote = lua[i];
+                while (++i < lua.Length && lua[i] != quote)
+                    if (lua[i] == '\\') i++;
+                continue;
+            }
+            if (lua[i] != '-' || i + 1 >= lua.Length || lua[i + 1] != '-') continue;
+            int opening = i + 2, end = opening;
+            if (opening < lua.Length && lua[opening] == '[')
+            {
+                end++;
+                while (end < lua.Length && lua[end] == '=') end++;
+                if (end < lua.Length && lua[end] == '[')
+                {
+                    string closing = "]" + new string('=', end - opening - 1) + "]";
+                    int close = lua.IndexOf(closing, end + 1, StringComparison.Ordinal);
+                    if (close < 0) throw new ApiException(Resources.Strings.SteamMl_InvalidArchive);
+                    int after = close + closing.Length;
+                    for (; i < after; i++)
+                        if (result[i] is not ('\r' or '\n')) result[i] = ' ';
+                    i--;
+                    continue;
+                }
+            }
+            // A long-comment delimiter inside an ordinary line comment has no Lua meaning.
+            while (i + 1 < lua.Length && lua[i + 1] is not ('\r' or '\n')) i++;
+        }
+        return new string(result);
     }
 }

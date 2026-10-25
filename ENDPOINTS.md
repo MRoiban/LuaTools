@@ -87,8 +87,12 @@ No key or lua.tools account is required; no daily allowance is advertised or ass
 Only canonical UInt32 app IDs are accepted. The dedicated external-data HTTP policy
 pins public DNS addresses, rejects account headers and redirects, and bounds downloads.
 The ordinary outbound policy permits only app-ID ZIP paths on this exact host (not
-the separately advertised SteamML executable). Server filenames are ignored, non-ZIP
-responses are deleted, and installation uses the existing manifest content policy.
+the separately advertised SteamML executable). Server filenames are ignored. Before
+returning a download, the service checks archive structure and expansion limits, strips
+Lua block comments, and discards the bounded root `README` and `UserStats_{appid}_0.bin`
+extras. The resulting archive must pass the existing manifest content policy for the
+requested app; non-ZIP and invalid packages are deleted. Preview, installation and
+depot parsing all receive this normalized archive.
 404 means unavailable; other errors/timeouts mean unknown. A failed legacy source lookup
 does not remove SteamML. Add and plugin pickers omit lua.tools usage badges for SteamML.
 
