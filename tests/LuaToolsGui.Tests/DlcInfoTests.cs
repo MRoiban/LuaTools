@@ -65,7 +65,8 @@ public class DlcInfoTests
             Auth = new AuthService(Http, Path.Combine(directory, "auth.dat"));
             AppInfo = new SteamAppInfoCache(new CacheService(Path.Combine(directory, "cache.json")),
                 NullLogger<SteamAppInfoCache>.Instance, new Stub(_ => throw new Exception("Steam was reached")), Path.Combine(directory, "details"));
-            Api = new LuaToolsApiClient(Auth, AppInfo, new CoverCache(Transport, Path.Combine(directory, "covers")), Http);
+            Api = new LuaToolsApiClient(Auth, AppInfo, new CoverCache(Transport, Path.Combine(directory, "covers")), Http,
+                depots: new SteamDepotInfo(new Stub(_ => Respond("{}", status: HttpStatusCode.NotFound))));
         }
 
         internal Task SignInAsync() => Auth.SignInWithCodeAsync("abc123");
@@ -219,7 +220,7 @@ public class DlcInfoTests
         var state = await RunAsync(Plugin(f), 1670540);
         Assert.Null(state.Error);
         Assert.True(state.SourcesLoaded);
-        var row = Assert.Single(state.Sources);
+        var row = Assert.Single(state.Sources.Where(r => r.Name == PluginAddService.DlcSourceName));
         Assert.Equal(PluginAddService.DlcSourceName, row.Name);
         Assert.True(row.CanDownload);
         Assert.Equal("1142710", state.DlcBaseAppId);
@@ -234,7 +235,7 @@ public class DlcInfoTests
         f.Details(1670540, "dlc", "1142710");
         await f.SignInAsync();
         var state = await RunAsync(Plugin(f, fastFetch: true), 1670540);
-        Assert.False(Assert.Single(state.Sources).CanDownload);
+        Assert.All(state.Sources, row => Assert.False(row.CanDownload));
         Assert.Equal(LuaToolsGui.Resources.Strings.Err_NoSourceAvailable, state.Error);
         Assert.False(state.Busy);
     }

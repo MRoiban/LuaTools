@@ -264,6 +264,54 @@ public class LuaToolsApiClient
         return DownloadFileAsync(url, $"{appid}.lua", progress, ct);
     }
 
+    /// <summary>DLC coverage from DexLua, independent of the lua.tools session and quota.</summary>
+    public async Task<DlcInfo> GetDexLuaDlcInfoAsync(string appid, string baseAppId, CancellationToken ct = default)
+    {
+        var (depots, keys) = await DexLuaDlcDepotsAsync(appid, baseAppId, ct);
+        return new DlcInfo
+        {
+            AppId = baseAppId, Type = "dlc", DepotCount = depots.Count,
+            HaveCount = depots.Count(d => keys.ContainsKey(d.Id)),
+            MissingCount = depots.Count(d => !keys.ContainsKey(d.Id)),
+            Depots = depots.Select(d => new DlcDepot
+            {
+                DepotId = d.Id.ToString(), Language = d.Language, OsList = d.Os, Included = keys.ContainsKey(d.Id),
+            }).ToList(),
+        };
+    }
+
+    public async Task<DownloadedFile> GenerateDexLuaDlcAsync(string appid, string baseAppId,
+        IProgress<DownloadProgress>? progress, CancellationToken ct = default)
+    {
+        var (depots, keys) = await DexLuaDlcDepotsAsync(appid, baseAppId, ct);
+        if (depots.Count > 0 && !depots.Any(d => keys.ContainsKey(d.Id)))
+            throw new ApiException(Resources.Strings.DexLua_NoDlcKeys);
+        var lua = new System.Text.StringBuilder($"addappid({appid})\n");
+        foreach (var depot in depots)
+            if (keys.TryGetValue(depot.Id, out var key))
+                lua.Append($"addappid({depot.Id},0,\"{key}\")\n");
+        // Include only this DLC's depots. Public manifest IDs are not DexLua pins.
+        var bytes = System.Text.Encoding.UTF8.GetBytes(lua.ToString());
+        ManifestContentPolicy.ValidateLua(bytes, long.Parse(appid));
+        using var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        return await HttpFileDownloader.SaveResponseAsync(response, $"{appid}.lua", progress, ct);
+    }
+
+    private async Task<(List<ContentDepot> Depots, IReadOnlyDictionary<long, string> Keys)> DexLuaDlcDepotsAsync(
+        string appid, string baseAppId, CancellationToken ct)
+    {
+        ApiContract.RequireAppId(appid);
+        ApiContract.RequireAppId(baseAppId);
+        long dlcId = long.Parse(appid);
+        var info = await _depots.GetAsync(long.Parse(baseAppId), ct)
+            ?? throw new ApiException(Resources.Strings.Add_Err_Generic);
+        var depots = info.Depots.Where(d => d.DlcAppId == dlcId).ToList();
+        if (depots.Count == 0 && !info.DlcIds.Contains(dlcId))
+            throw new ApiException(Resources.Strings.Add_Err_BaseGame);
+        var keys = await _dexLua.GetKeysAsync(baseAppId, ct);
+        return (depots, keys);
+    }
+
     // ── Signed-out DLC, from the base game's SteamML archive ─────────
 
     /// <summary>The DLC's depots (from the base game's public app info) and which of them the base

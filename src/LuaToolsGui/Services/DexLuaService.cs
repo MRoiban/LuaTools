@@ -60,6 +60,18 @@ public sealed class DexLuaService
         return normalized;
     }
 
+    /// <summary>Active depot keys only, from the validated base-game script.</summary>
+    internal async Task<IReadOnlyDictionary<long, string>> GetKeysAsync(string appid, CancellationToken ct)
+    {
+        var bytes = await FetchAsync(appid, ct);
+        var keys = new Dictionary<long, string>();
+        foreach (Match match in Regex.Matches(Encoding.UTF8.GetString(bytes),
+            """^[ \t]*addappid[ \t]*\([ \t]*([1-9][0-9]{0,9})[ \t]*,[ \t]*[01][ \t]*,[ \t]*["']([0-9a-fA-F]{64})["'][ \t]*\)""",
+            RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)))
+            keys[long.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)] = match.Groups[2].Value.ToLowerInvariant();
+        return keys;
+    }
+
     public async Task<DownloadedFile> DownloadManifestAsync(string appid, IProgress<DownloadProgress>? progress,
         CancellationToken ct = default)
     {

@@ -718,6 +718,7 @@ public static class Strings
     public static string Fixes_OnlineFixMe_FolderPlaceholder => Get(nameof(Fixes_OnlineFixMe_FolderPlaceholder));
     public static string Fixes_OnlineFixMe_Lookup => Get(nameof(Fixes_OnlineFixMe_Lookup));
     public static string Fixes_OnlineFixMe_ArchiveDescription => Get(nameof(Fixes_OnlineFixMe_ArchiveDescription));
+    public static string DexLua_NoDlcKeys => Get(nameof(DexLua_NoDlcKeys));
     public static string DexLua_DownloadFailed => Get(nameof(DexLua_DownloadFailed));
     public static string DexLua_InvalidScript => Get(nameof(DexLua_InvalidScript));
     public static string SteamMl_DownloadFailed => Get(nameof(SteamMl_DownloadFailed));
