@@ -24,6 +24,7 @@ public class LuaToolsApiClient
     private readonly CoverCache covers;
     private readonly HttpClient _http;
     private readonly SteamMlService _steamMl;
+    private readonly DexLuaService _dexLua;
     private readonly SteamDepotInfo _depots;
     /// <summary>SteamML archives, for signed-out depot downloads.</summary>
     public SteamMlService SteamMl => _steamMl;
@@ -33,9 +34,10 @@ public class LuaToolsApiClient
         : this(auth, appInfo, covers, AppHttp.Create(TimeSpan.FromMinutes(5), new Uri(AppConfig.ApiBaseUrl)), depots: depots) { }
 
     internal LuaToolsApiClient(AuthService auth, SteamAppInfoCache appInfo, CoverCache covers, HttpClient http, Func<Uri, HttpClient>? externalClient = null, SteamMlService? steamMl = null,
-        SteamDepotInfo? depots = null)
+        SteamDepotInfo? depots = null, DexLuaService? dexLua = null)
     {
         _steamMl = steamMl ?? new SteamMlService();
+        _dexLua = dexLua ?? new DexLuaService();
         _depots = depots ?? new SteamDepotInfo();
         this.auth = auth;
         this.appInfo = appInfo;
@@ -112,10 +114,16 @@ public class LuaToolsApiClient
     /// <summary>Source name → "available" | "unavailable" | other status.</summary>
     /// <remarks>Signed out, only sources that need no account are checked: lua.tools sources would
     /// only fail at download.</remarks>
-    public async Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default) =>
-        auth.IsGuest
+    public async Task<Dictionary<string, string>> CheckSourcesAsync(string appid, CancellationToken ct = default)
+    {
+        ApiContract.RequireAppId(appid);
+        var dexLua = _dexLua.CheckStatusAsync(appid, ct);
+        var sources = auth.IsGuest
             ? new Dictionary<string, string> { [SteamMlService.SourceName] = await _steamMl.CheckStatusAsync(appid, ct) }
             : await _steamMl.CheckSourcesAsync(appid, (id, token) => SourceAvailabilityClient.CheckAsync(id, token), ct);
+        sources[DexLuaService.SourceName] = await dexLua;
+        return sources;
+    }
 
     /// <summary>
     /// The standard lua.tools daily download usage (25/day), counted live from the user_downloads
@@ -208,6 +216,8 @@ public class LuaToolsApiClient
         IProgress<DownloadProgress>? progress, CancellationToken ct = default)
     {
         ApiContract.RequireAppId(appid);
+        if (source == DexLuaService.SourceName)
+            return _dexLua.DownloadManifestAsync(appid, progress, ct);
         if (source == SteamMlService.SourceName)
             return _steamMl.DownloadManifestAsync(appid, progress, ct);
         if (!ApiContract.ValidText(source, 128)) throw new ArgumentException("Invalid source.");

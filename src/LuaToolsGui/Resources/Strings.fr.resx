@@ -746,4 +746,6 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML a renvoyé une archive ZIP non valide.</value></data>
   <data name="SteamMl_NoArchive" xml:space="preserve"><value>SteamML n'a pas d'archive pour ce jeu : impossible de l'ajouter sans se connecter.</value></data>
   <data name="SteamMl_NoManifest" xml:space="preserve"><value>SteamML n'a pas cette version du dépôt {0}. Connectez-vous pour la récupérer depuis lua.tools.</value></data>
+  <data name="DexLua_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement DexLua (HTTP {0}).</value></data>
+  <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua a renvoyé un script Lua non valide.</value></data>
 </root>

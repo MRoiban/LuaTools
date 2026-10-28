@@ -781,4 +781,6 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="SteamMl_InvalidArchive" xml:space="preserve"><value>SteamML returned an invalid ZIP archive.</value></data>
   <data name="SteamMl_NoArchive" xml:space="preserve"><value>SteamML has no archive for this game, so it can't be added without signing in.</value></data>
   <data name="SteamMl_NoManifest" xml:space="preserve"><value>SteamML doesn't have this version of depot {0}. Sign in to fetch it from lua.tools.</value></data>
+  <data name="DexLua_DownloadFailed" xml:space="preserve"><value>DexLua download failed (HTTP {0}).</value></data>
+  <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua returned an invalid Lua script.</value></data>
 </root>

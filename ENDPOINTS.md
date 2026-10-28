@@ -253,3 +253,22 @@ Startup regression: `CacheStartupTests.StartupCacheSaveCompletesWithoutPumpingUi
 ## Source-owned plugin integration
 
 Plugin installation and status no longer call upstream LTSP release or asset endpoints. The frontend and WinMM wrapper are built into our fork. Existing manifest/catalog backends remain unchanged by this plugin replacement. See [implementation record](design/steam-plugin/implementation.md) for bridge contracts, tests and limitations.
+
+## DexLua public Lua scripts
+
+`DexLuaService` uses credential-free GET requests to
+`https://dexlua.vercel.app/api/download?id={appid}` for availability and explicit downloads.
+The external-data client rejects redirects and credentials; responses are bounded to 2 MiB
+and 30 seconds (availability has a 10-second total timeout). Only canonical UInt32 IDs
+are accepted. The ordinary policy allows only this download path and single ID query.
+404 means unavailable; invalid scripts, outages and other errors mean unknown.
+Availability validates the script, not Steam depot downloadability.
+
+Verified the ETS2 endpoint on 2026-10-28: raw Lua, no pinned manifest IDs.
+DexLua's exact `addappid(id, 1, "title")` label form is converted to `addappid(id, 1)`;
+all remaining content must pass the existing declarative Lua policy for the requested app.
+Server filenames are ignored. Downloads are staged as `{appid}.lua`. No Lua is evaluated,
+no manifest IDs are invented, and executable fix endpoints are not used.
+The Add and plugin source pickers include DexLua for guests and omit lua.tools quota badges.
+Signed-out DLC generation and raw manifest retrieval still use SteamML; this provider
+adds an explicit whole-game Lua source, not an automatic coverage merge or manifest fallback.
