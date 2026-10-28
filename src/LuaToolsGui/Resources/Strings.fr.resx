@@ -764,4 +764,6 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="SteamIsolation_DebuggerMissing" xml:space="preserve"><value>Le d?bogueur de l?instance Steam s?lectionn?e est indisponible</value></data>
   <data name="SteamIsolation_DebuggerChanged" xml:space="preserve"><value>Le d?bogueur Steam appartient d?sormais ? une autre instance</value></data>
   <data name="SteamIsolation_ContextChanged" xml:space="preserve"><value>Le contexte du plugin Steam a chang?.</value></data>
+  <data name="DexLua_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement DexLua (HTTP {0}).</value></data>
+  <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua a renvoyé un script Lua non valide.</value></data>
 </root>

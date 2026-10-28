@@ -21,6 +21,7 @@ public static class AppConfig
     public const string BotAccountEmailDomain = "@bot.lua.tools";
 
     // Public app-ID ZIPs used by the steamml.ink generator.
+    public const string DexLuaBaseUrl = "https://dexlua.vercel.app/";
     public const string SteamMlCdnUrl = "https://pub-5b6d3b7c03fd4ac1afb5bd3017850e20.r2.dev/";
 
     // Hubcap (hubcapmanifest.com): the app talks to this directly with the user's own API key

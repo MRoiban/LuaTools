@@ -74,6 +74,9 @@ public sealed class OutboundNetworkPolicy
                 if (uri.IdnHost == new Uri(AppConfig.SteamMlCdnUrl).IdnHost
                     && string.IsNullOrEmpty(uri.Query) && uri.AbsolutePath.EndsWith(".zip", StringComparison.Ordinal)
                     && ApiContract.IsAppId(uri.AbsolutePath[1..^4])) return;
+                if (uri.IdnHost == new Uri(AppConfig.DexLuaBaseUrl).IdnHost
+                    && uri.AbsolutePath == "/api/download" && uri.Query.StartsWith("?id=", StringComparison.Ordinal)
+                    && ApiContract.IsAppId(uri.Query[4..])) return;
                 if (Hosts.Contains(uri.IdnHost)) return;
             }
         }
