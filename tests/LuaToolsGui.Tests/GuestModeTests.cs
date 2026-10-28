@@ -95,14 +95,15 @@ public sealed class GuestModeTests : IDisposable
         }));
         var auth = new AuthService(api, Path.Combine(_dir, "auth.dat"));
         Assert.True(auth.IsGuest);
-        return new LuaToolsApiClient(auth, null!, null!, api, steamMl: new SteamMlService(steamMl), depots: depots);
+        return new LuaToolsApiClient(auth, null!, null!, api, steamMl: new SteamMlService(steamMl), depots: depots, dexLua: new DexLuaService(new HttpClient(new Stub(_ =>
+            new HttpResponseMessage(HttpStatusCode.NotFound)))));
     }
 
     [Fact]
-    public async Task SignedOutSourcesAreOnlySteamMl()
+    public async Task SignedOutSourcesArePublicProviders()
     {
         var sources = await GuestApi().CheckSourcesAsync("1000");
-        Assert.Equal(new[] { SteamMlService.SourceName }, sources.Keys);
+        Assert.Equal(new[] { SteamMlService.SourceName, DexLuaService.SourceName }, sources.Keys);
         Assert.Equal("available", sources[SteamMlService.SourceName]);
         Assert.Equal(0, _apiRequests);
     }

@@ -632,7 +632,7 @@ public partial class DownloadViewModel : ObservableObject
     /// </summary>
     public async Task RefreshStandardUsageAsync()
     {
-        var standardRows = Sources.Where(s => !s.NeedsKey && s.Name != SteamMlService.SourceName).ToList();
+        var standardRows = Sources.Where(s => !s.NeedsKey && s.Name != SteamMlService.SourceName && s.Name != DexLuaService.SourceName).ToList();
         if (standardRows.Count == 0) return;
         if (_auth.IsGuest) return;
 
@@ -672,7 +672,7 @@ public partial class DownloadViewModel : ObservableObject
         // Hubcap downloads use the user's OWN key and never touch lua.tools, so a guest with a key
         // configured can download without signing in. SteamML is public; lua.tools sources need an account.
         bool hubcapWithKey = source.NeedsKey && !string.IsNullOrEmpty(_settings.HubcapApiKey);
-        if (source.Name != SteamMlService.SourceName && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
+        if (source.Name != SteamMlService.SourceName && source.Name != DexLuaService.SourceName && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
 
         Error = null;
         LastDownload = null;
