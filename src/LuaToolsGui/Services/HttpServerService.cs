@@ -277,7 +277,7 @@ public class HttpServerService : IHostedService
         if (batch is null) return (200, Json(new { success = true, phase = "idle", items = Array.Empty<object>() }));
         var items = batch.Items.ToList().Select(i => (object)new
         {
-            appid = i.AppId, baseAppId = i.BaseAppId, name = i.Name, state = i.State, download = i.Download, error = i.Error,
+            appid = i.AppId, baseAppId = i.BaseAppId, name = i.Name, state = i.State, download = i.Download, source = i.Source, error = i.Error,
         }).ToList();
         return (200, Json(new { success = true, appid = batch.AppId, phase = batch.Phase, done = batch.Done, total = items.Count, items, error = batch.Error }));
     }

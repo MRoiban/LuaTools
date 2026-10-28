@@ -25,6 +25,9 @@ public class DlcBatchServiceTests
         public readonly Dictionary<long, string> Installed = [];
         public Func<string, string, DlcInfo>? Info;
         public Exception? GenerateError;
+        public Func<long, CancellationToken, Task<DexLuaDlcSnapshot>>? PublicSource;
+        public readonly List<long> PublicCalls = [];
+        public readonly Dictionary<long, string> InstalledSources = [];
 
         public DlcBatchService Service() => new(new DlcBatchService.Ports(
             (id, _) => Task.FromResult(id == Game ? GameDetails
@@ -51,12 +54,24 @@ public class DlcBatchServiceTests
                 File.WriteAllText(path, $"addappid({dlc})\naddappid(1143201,1,\"{new string('a', 64)}\")\n");
                 return Task.FromResult(new DownloadedFile(path, $"{dlc}.lua"));
             },
-            (path, id) =>
+            Install,
+            PublicSource is null ? null : (id, ct) =>
             {
-                ManifestContentPolicy.ValidateLuaFile(path, id); // the installer's own content gate
-                Installed[id] = File.ReadAllText(path);
-                return new InstallResult(true, 0, [], null);
+                PublicCalls.Add(id);
+                return PublicSource(id, ct);
+            },
+            (path, id, source) =>
+            {
+                InstalledSources[id] = source;
+                return Install(path, id);
             }));
+
+        private InstallResult Install(string path, long id)
+        {
+            ManifestContentPolicy.ValidateLuaFile(path, id);
+            Installed[id] = File.ReadAllText(path);
+            return new InstallResult(true, 0, [], null);
+        }
     }
 
     private static async Task<DlcBatchService.Batch> CheckAsync(DlcBatchService svc, params long[] owned)
@@ -141,7 +156,7 @@ public class DlcBatchServiceTests
     }
 
     [Fact]
-    public async Task OneUndescribableDlcIsSkippedButAnExpiredSessionStopsTheBatch()
+    public async Task OneUndescribableDlcIsSkippedAndAnExpiredSessionOnlyFailsLegacyItems()
     {
         var odd = new Fake { Info = (dlc, b) => dlc == NoDepots.ToString() ? throw new ApiException("Invalid DLC response.") : new DlcInfo { AppId = b } };
         var batch = await CheckAsync(odd.Service());
@@ -151,7 +166,9 @@ public class DlcBatchServiceTests
 
         var expired = new Fake { Info = (_, _) => throw new ApiException("Session expired.", HttpStatusCode.Unauthorized) };
         batch = await CheckAsync(expired.Service());
-        Assert.Equal(("failed", "Session expired."), (batch.Phase, batch.Error));
+        Assert.Equal("ready", batch.Phase);
+        Assert.Equal("failed", StateOf(batch, NoDepots));
+        Assert.Equal("Session expired.", batch.Items.Single(i => i.AppId == NoDepots).Error);
     }
 
     [Fact]
@@ -165,6 +182,111 @@ public class DlcBatchServiceTests
         Assert.Equal("cancelled", svc.GetState(Game)!.Phase);
         Assert.False(svc.Apply(Game));
         Assert.Empty(fake.Installed);
+    }
+
+    private static DexLuaDlcSnapshot Snapshot(long parent, params long[] dlcs) => new(
+        new AppDepotInfo(parent, dlcs.Select(id => new ContentDepot(id + 1, 10, id, false, "windows", null, "555")).ToList(),
+            dlcs, []), dlcs.ToDictionary(id => id + 1, _ => new string('a', 64)));
+
+    [Fact]
+    public async Task SeventyOneDexLuaDlcUseOneFetchAndNoQuotaLimitedCalls()
+    {
+        var ids = Enumerable.Range(1, 71).Select(i => 500000L + i * 10).ToList();
+        var fake = new Fake
+        {
+            Declared = ids, Store = [],
+            PublicSource = (parent, _) => Task.FromResult(Snapshot(parent, ids.ToArray())),
+            Info = (_, _) => throw new Exception("Quota-limited info must not be called"),
+            GenerateError = new Exception("Quota-limited generation must not be called"),
+        };
+        var svc = fake.Service();
+        var batch = await CheckAsync(svc);
+        Assert.All(batch.Items, item => Assert.Equal(("ready", DexLuaService.SourceName), (item.State, item.Source)));
+        Assert.Empty(fake.Installed);
+        Assert.True(svc.Apply(Game));
+        await batch.Work.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal("done", batch.Phase);
+        Assert.Equal(71, batch.Done);
+        Assert.All(batch.Items, item => Assert.Equal("installed", item.State));
+        Assert.Equal(71, fake.Installed.Count);
+        Assert.Equal(new[] { Game }, fake.PublicCalls);
+        Assert.Empty(fake.InfoCalls);
+        Assert.Empty(fake.GenerateCalls);
+        Assert.All(fake.InstalledSources.Values, source => Assert.Equal(DexLuaService.SourceName, source));
+        Assert.All(fake.Installed.Values, lua => Assert.DoesNotContain("setManifestid", lua));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyQuotaOrAuthFailureDoesNotSkipLaterDexLuaItems(bool expired)
+    {
+        var fake = new Fake
+        {
+            Declared = [Keyed, MissingKeys], Store = [],
+            PublicSource = (parent, _) => Task.FromResult(Snapshot(parent, MissingKeys)),
+            GenerateError = expired ? new AuthException("expired") : new ApiException("limit", HttpStatusCode.TooManyRequests),
+        };
+        var svc = fake.Service();
+        var batch = await CheckAsync(svc);
+        Assert.True(svc.Apply(Game));
+        await batch.Work.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(expired ? "failed" : "limit", StateOf(batch, Keyed));
+        Assert.Equal("installed", StateOf(batch, MissingKeys));
+        Assert.Equal(DexLuaService.SourceName, fake.InstalledSources[MissingKeys]);
+        Assert.Equal(2, batch.Done);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyCheckFailureDoesNotHideLaterDexLuaCoverage(bool expired)
+    {
+        var fake = new Fake
+        {
+            Declared = [Keyed, MissingKeys], Store = [],
+            PublicSource = (parent, _) => Task.FromResult(Snapshot(parent, MissingKeys)),
+            Info = (_, _) => throw (expired ? (Exception)new AuthException("expired") : new ApiException("limit", HttpStatusCode.TooManyRequests)),
+        };
+        var batch = await CheckAsync(fake.Service());
+        Assert.Equal("ready", batch.Phase);
+        Assert.Equal(expired ? "failed" : "limit", StateOf(batch, Keyed));
+        Assert.Equal("ready", StateOf(batch, MissingKeys));
+    }
+
+    [Fact]
+    public async Task StoreListedDlcUsesItsOwnParentsSnapshot()
+    {
+        var fake = new Fake
+        {
+            Declared = [Keyed], Store = [LegacyWh2],
+            PublicSource = (parent, _) => Task.FromResult(Snapshot(parent, parent == Game ? Keyed : LegacyWh2)),
+            Info = (_, _) => throw new Exception("Legacy API must not be called"),
+        };
+        var svc = fake.Service();
+        var batch = await CheckAsync(svc);
+        Assert.True(svc.Apply(Game));
+        await batch.Work.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(new[] { Game, Wh2 }, fake.PublicCalls);
+        Assert.All(batch.Items, item => Assert.Equal("installed", item.State));
+        Assert.DoesNotContain((LegacyWh2 + 1).ToString(), fake.Installed[Keyed]);
+        Assert.DoesNotContain((Keyed + 1).ToString(), fake.Installed[LegacyWh2]);
+    }
+
+    [Fact]
+    public async Task PublicOutageFallsBackOncePerParentAndFreshCheckRetries()
+    {
+        var fake = new Fake
+        {
+            Declared = [Keyed, NoDepots], Store = [],
+            PublicSource = (_, _) => throw new ApiException("offline", HttpStatusCode.ServiceUnavailable),
+        };
+        var svc = fake.Service();
+        var batch = await CheckAsync(svc);
+        Assert.All(batch.Items, item => Assert.Equal("ready", item.State));
+        Assert.Single(fake.PublicCalls);
+        await CheckAsync(svc);
+        Assert.Equal(2, fake.PublicCalls.Count);
     }
 
     [Fact]
