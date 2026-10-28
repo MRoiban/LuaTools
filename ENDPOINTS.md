@@ -281,3 +281,10 @@ calls `/api/dlc/generate`, even when signed in. A legacy source failure does not
 DexLua coverage. DLC Lua generation does not invent manifest pins or bundle raw manifests.
 The desktop's existing DLC generator and signed-out raw-manifest retrieval retain their
 previous routes; this is not an automatic coverage merge or manifest-download fallback.
+
+The Steam plugin's **Add all DLC** batch also prefers DexLua. Each check fetches one
+validated Lua/depot snapshot per actual parent game and reuses it through Apply,
+including for store-listed DLC belonging to another game. Covered items never call
+the legacy DLC info/generate endpoints. Legacy quota/auth failures are isolated to
+legacy items and cannot suppress later DexLua items. A fresh check fetches fresh
+snapshots; failed provider lookups are not cached across batches.

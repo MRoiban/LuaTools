@@ -105,6 +105,21 @@ public class DexLuaDlcTests
     }
 
     [Fact]
+    public async Task BatchSnapshotReusesValidatedKeysAcrossCoverageAndGeneration()
+    {
+        using var f = new Fixture();
+        await f.SignInAsync();
+        var snapshot = await f.Api.GetDexLuaDlcSnapshotAsync("1000");
+        Assert.Equal(1, snapshot.GetInfo("2000").HaveCount);
+        Assert.Equal(0, snapshot.GetInfo("4000").DepotCount);
+        var file = await snapshot.GenerateAsync("2000", null);
+        try { ManifestContentPolicy.ValidateLuaFile(file.FilePath, 2000); }
+        finally { ManifestJobFactory.DeleteStaged(file.FilePath); }
+        Assert.Equal(1, f.DexLuaCalls);
+        Assert.Equal(0, f.StandardCalls);
+    }
+
+    [Fact]
     public async Task FastFetchPrefersDexLuaWithoutCheckingQuotaLimitedSource()
     {
         using var f = new Fixture();
