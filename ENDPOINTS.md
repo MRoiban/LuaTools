@@ -274,5 +274,10 @@ all remaining content must pass the existing declarative Lua policy for the requ
 Server filenames are ignored. Downloads are staged as `{appid}.lua`. No Lua is evaluated,
 no manifest IDs are invented, and executable fix endpoints are not used.
 The Add and plugin source pickers include DexLua for guests and omit lua.tools quota badges.
-Signed-out DLC generation and raw manifest retrieval still use SteamML; this provider
-adds an explicit whole-game Lua source, not an automatic coverage merge or manifest fallback.
+Steam plugin DLC adds also offer DexLua: the base-game script supplies active keys only for
+that DLC's depots, mapped using public Steam app info. FastFetch prefers DexLua when it has
+coverage, without consulting the lua.tools quota. An explicitly selected DexLua DLC job never
+calls `/api/dlc/generate`, even when signed in. A legacy source failure does not hide available
+DexLua coverage. DLC Lua generation does not invent manifest pins or bundle raw manifests.
+The desktop's existing DLC generator and signed-out raw-manifest retrieval retain their
+previous routes; this is not an automatic coverage merge or manifest-download fallback.

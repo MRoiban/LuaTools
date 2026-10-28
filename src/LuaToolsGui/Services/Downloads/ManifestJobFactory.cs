@@ -59,7 +59,7 @@ public class ManifestJobFactory(
     public DownloadJob CreateDlcJob(
         long appId, string baseAppId, string? gameName,
         Action<DownloadItem, JobResult?>? onFinished = null,
-        Action? onReveal = null)
+        Action? onReveal = null, string? sourceName = null)
     {
         string title = gameName ?? appId.ToString();
         return new DownloadJob(
@@ -67,9 +67,11 @@ public class ManifestJobFactory(
             $"dlc:{appId}",
             appId,
             title,
-            Resources.Strings.Downloads_Kind_Dlc,
+            sourceName == DexLuaService.SourceName ? DexLuaService.SourceName : Resources.Strings.Downloads_Kind_Dlc,
             covers.GetLocalPath(appId),
-            (_, progress, ct) => api.GenerateDlcAsync(appId.ToString(), baseAppId, gameName, progress, ct),
+            (_, progress, ct) => sourceName == DexLuaService.SourceName
+                ? api.GenerateDexLuaDlcAsync(appId.ToString(), baseAppId, progress, ct)
+                : api.GenerateDlcAsync(appId.ToString(), baseAppId, gameName, progress, ct),
             (file, _, _) => Task.FromResult(InstallManifest(file, appId, title)),
             ConfirmAsync: null,
             OnFinished: onFinished,

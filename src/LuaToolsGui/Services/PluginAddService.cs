@@ -21,7 +21,7 @@ public class PluginAddService(
     ManifestJobFactory jobs)
 {
     private const string HubcapSourceName = "Sadie (Morrenus)";
-    /// <summary>The single row a DLC gets: lua.tools generates its unlock lua (no manifest sources).</summary>
+    /// <summary>Legacy DLC source; signed-out generation uses SteamML.</summary>
     internal const string DlcSourceName = "lua.tools DLC";
 
     public class SourceRow
@@ -249,9 +249,8 @@ public class PluginAddService(
         }
     }
 
-    /// <summary>DLC route: the parent game Steam reports for THIS DLC, then /api/dlc/info (signed out,
-    /// the same check against the base game's SteamML archive).
-    /// Generation is offered when keys exist or nothing is missing, the same rule as the Add page.</summary>
+    /// <summary>DLC sources use the parent game Steam reports for this DLC. DexLua is checked first;
+    /// the legacy source uses lua.tools when signed in and SteamML when signed out.</summary>
     private async Task CheckDlcAsync(long appId, AddState state, GameDetails details)
     {
         string? error = null;
@@ -265,27 +264,47 @@ public class PluginAddService(
         }
 
         string baseAppId = details.BaseAppId!;
-        var info = await api.GetDlcInfoAsync(appId.ToString(), baseAppId);
-        bool canGenerate = info is not null && (info.HaveCount > 0 || info.MissingCount == 0);
-        PluginLog.Log($"PluginAdd.Dlc appid={appId} base={baseAppId} depots={info?.DepotCount} have={info?.HaveCount} missing={info?.MissingCount} canGenerate={canGenerate}");
-
         state.GameName ??= details.Name;
         lock (_gate) state.DlcBaseAppId = baseAppId;
-        var row = new SourceRow
-        {
-            Name = DlcSourceName,
-            DisplayName = Resources.Strings.Downloads_Kind_Dlc,
-            Status = canGenerate ? "available" : "unavailable",
-        };
-        if (!PublishSources(state, [row], appId)) return;
+        var rows = await CheckDlcSourcesAsync(appId.ToString(), baseAppId, state.FastFetch);
+        if (!PublishSources(state, rows, appId)) return;
         if (!state.FastFetch) return;
-        if (!canGenerate)
+        var best = rows.FirstOrDefault(r => r.CanDownload);
+        if (best is null)
         {
             lock (_gate)
                 if (IsCurrent(state)) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
             return;
         }
-        await DownloadAsync(appId, state, row);
+        await DownloadAsync(appId, state, best);
+    }
+
+    internal async Task<List<SourceRow>> CheckDlcSourcesAsync(string appId, string baseAppId, bool fastFetch)
+    {
+        static async Task<string> Status(Func<Task<DlcInfo?>> getInfo, bool suppressErrors = true)
+        {
+            try
+            {
+                var info = await getInfo();
+                return info is not null && (info.HaveCount > 0 || info.MissingCount == 0) ? "available" : "unavailable";
+            }
+            catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound) { return "unavailable"; }
+            catch (Exception ex) when (suppressErrors && ex is (ApiException or System.Net.Http.HttpRequestException or OperationCanceledException))
+            { return "unknown"; }
+        }
+        var dexLua = new SourceRow
+        {
+            Name = DexLuaService.SourceName, DisplayName = DexLuaService.SourceName,
+            Status = await Status(async () => await api.GetDexLuaDlcInfoAsync(appId, baseAppId)),
+        };
+        // FastFetch prefers the public source, without even consulting lua.tools usage or generation.
+        if (fastFetch && dexLua.CanDownload) return [dexLua];
+        var legacy = new SourceRow
+        {
+            Name = DlcSourceName, DisplayName = auth.IsGuest ? SteamMlService.SourceName : "lua.tools",
+            Status = await Status(() => api.GetDlcInfoAsync(appId, baseAppId), suppressErrors: dexLua.CanDownload),
+        };
+        return [dexLua, legacy];
     }
 
     private bool PublishSources(AddState state, List<SourceRow> rows, long appId)
@@ -394,7 +413,7 @@ public class PluginAddService(
                 {
                     if (!IsCurrent(state)) return null;
                     var job = state.DlcBaseAppId is { } baseAppId
-                        ? jobs.CreateDlcJob(appId, baseAppId, state.GameName)
+                        ? jobs.CreateDlcJob(appId, baseAppId, state.GameName, sourceName: row.Name)
                         : jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
                     return state.QueueItem = queue.Enqueue(job);
                 }

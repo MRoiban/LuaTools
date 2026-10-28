@@ -766,4 +766,5 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="SteamIsolation_ContextChanged" xml:space="preserve"><value>Le contexte du plugin Steam a chang?.</value></data>
   <data name="DexLua_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement DexLua (HTTP {0}).</value></data>
   <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua a renvoyé un script Lua non valide.</value></data>
+  <data name="DexLua_NoDlcKeys" xml:space="preserve"><value>DexLua ne dispose d’aucune clé de dépôt pour ce DLC.</value></data>
 </root>
