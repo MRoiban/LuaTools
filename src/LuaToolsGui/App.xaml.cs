@@ -461,7 +461,11 @@ public partial class App : Application
 
     /// <summary>Relaunch the app (used after a language change). The single-instance mutex is released
     /// only when THIS process exits; the shared coordinator uses the existing startup parent wait.</summary>
-    private void RelaunchApp() => ApplicationCoordinator.Restart();
+    private void RelaunchApp()
+    {
+        try { ApplicationCoordinator.Restart(); }
+        catch (Exception ex) { GuiOperationFeedback.Report(_host.Services.GetRequiredService<ToastService>(), "LuaTools", LuaToolsGui.Resources.Strings.Agent_System_Failed, ex); }
+    }
 
     /// <summary>Route a luatools:// protocol URL to the appropriate page and action.</summary>
     private void HandleProtocolUrl(string url)

@@ -99,7 +99,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (request.Command is "activity-log watch" or "download watch") return Envelope.Success(new { watching = true });
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);
         var installation = new InstallationBinding(steam, steam.SelectedPath);
-        if (request.ExpectedSteam is { } expected && (installation.Identity != expected || !installation.IsCurrent))
+        if (request.ExpectedSteam is { } expected && (installation.Identity != expected || !installation.MatchesSelection))
             return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         _admission.Value = installation;
         _admittedContext.Value = PlanContext;

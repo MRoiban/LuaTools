@@ -312,7 +312,7 @@ public partial class SettingsViewModel : ObservableObject
             var (result, staged) = await RequestUpdateCheck();
             ShowUpdateResult(result, staged);
         }
-        catch { ShowUpdateResult(UpdateCheckResult.Unavailable, null); }
+        catch (Exception ex) { ShowUpdateResult(UpdateCheckResult.Unavailable, null); AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Update", Resources.Strings.Agent_System_Failed, ex); }
         finally { IsCheckingForUpdates = false; }
     }
     private bool CanCheckForUpdates() => !IsCheckingForUpdates;

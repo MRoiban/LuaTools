@@ -529,7 +529,10 @@ public class LuaVaultTests : IDisposable
         _vault.SyncDefaultFromLive(AppId);
         _vault.SetEditBase(AppId, _vault.GetVariants(AppId).Single().Hash);
 
-        _vault.SaveText(AppId, AutoUpdatingLua + "\n-- forked", "my mix");
+        // Completing a live edit may clear provenance only when the saved bytes match it.
+        string edited = AutoUpdatingLua + "\n-- forked";
+        WriteLive(edited);
+        _vault.SaveText(AppId, edited, "my mix");
 
         Assert.Null(_vault.GetEditBase(AppId));
         Assert.Equal(2, _vault.GetVariants(AppId).Count); // base kept, fork added
