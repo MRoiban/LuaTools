@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-136"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -139,7 +139,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "path",
+      "overridden",
+      "valid",
+      "running",
+      "steam_identity",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "steam",
@@ -153,11 +166,11 @@
       "C-137",
       "C-138"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -358,7 +371,7 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools steam update --auto --dry-run",
+      "luatools steam update --auto --dry-run --yes",
       "luatools steam update --path C:\\Steam --yes"
     ],
     "see_also": [
@@ -390,7 +403,13 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "path",
+      "overridden",
+      "valid",
+      "running",
+      "steam_identity",
+      "available_actions"
     ]
   },
   {
@@ -404,12 +423,12 @@
     "capability_ids": [
       "C-139"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -594,8 +613,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools steam restart",
-      "luatools steam restart --format text"
+      "luatools steam restart --yes",
+      "luatools steam restart --format text --yes"
     ],
     "see_also": [
       "luatools describe steam",
@@ -625,7 +644,13 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "path",
+      "overridden",
+      "valid",
+      "running",
+      "steam_identity",
+      "available_actions"
     ]
   }
 ]

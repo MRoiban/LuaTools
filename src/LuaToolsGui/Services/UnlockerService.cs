@@ -214,6 +214,13 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
 
     /// <summary>Download + verify a mode's files, place them in the Steam root, remove the other mode's
     /// unique files, and persist the selection. Best-effort per file (locked files land in Failed).</summary>
+    internal void RequireInstallAllowed(UnlockerMode mode)
+    {
+        if (mode == UnlockerMode.Custom) return;
+        UserAuthorizedDependencies.RequireEnabled(Def(mode).DisplayName, settings.IsExecutableWorkflowEnabled);
+        if (!steam.IsValid) throw new InvalidOperationException(Resources.Strings.Err_SteamNotFound);
+    }
+
     public async Task<ModeInstallResult> InstallAsync(
         UnlockerMode mode, IProgress<double?>? progress = null, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
@@ -353,7 +360,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
     ///
     /// Persists the match as the active mode. Returns the detected mode, or null if nothing matched.
     /// </summary>
-    public async Task<UnlockerMode?> DetectActiveModeAsync(CancellationToken ct = default)
+    public async Task<UnlockerMode?> DetectActiveModeAsync(CancellationToken ct = default, bool persist = true)
     {
         string? root = steam.EffectivePath;
         if (root is null || !steam.IsValid) return null;
@@ -404,7 +411,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
             }
         }
 
-        if (detected is { } m) settings.SelectedMode = m.ToString();
+        if (persist && detected is { } m) settings.SelectedMode = m.ToString();
         return detected;
     }
 

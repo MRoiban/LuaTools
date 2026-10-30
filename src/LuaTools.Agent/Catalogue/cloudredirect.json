@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-016"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -146,7 +146,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "status",
+      "cabinet",
+      "unlocked",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id",
+      "cabinet_connected",
+      "connected_server_host"
+    ]
   },
   {
     "resource": "cloudredirect",
@@ -161,12 +174,12 @@
       "C-018",
       "C-019"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -370,8 +383,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cloudredirect update",
-      "luatools cloudredirect update --format text"
+      "luatools cloudredirect update --yes",
+      "luatools cloudredirect update --format text --yes"
     ],
     "see_also": [
       "luatools describe cloudredirect",
@@ -405,7 +418,11 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "status",
+      "cabinet",
+      "unlocked",
+      "available_actions"
     ]
   },
   {
@@ -419,12 +436,12 @@
     "capability_ids": [
       "C-020"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -609,8 +626,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cloudredirect manage",
-      "luatools cloudredirect manage --format text"
+      "luatools cloudredirect manage --yes",
+      "luatools cloudredirect manage --format text --yes"
     ],
     "see_also": [
       "luatools describe cloudredirect",
@@ -640,7 +657,11 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "status",
+      "cabinet",
+      "unlocked",
+      "available_actions"
     ]
   }
 ]

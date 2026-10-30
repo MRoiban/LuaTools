@@ -11,8 +11,8 @@
       "C-104",
       "C-107"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -147,7 +147,16 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "status",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "plugin",
@@ -160,12 +169,12 @@
     "capability_ids": [
       "C-105"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -357,8 +366,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools plugin update --install",
-      "luatools plugin update --install --format text"
+      "luatools plugin update --install --yes",
+      "luatools plugin update --install --format text --yes"
     ],
     "see_also": [
       "luatools describe plugin",
@@ -388,7 +397,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "status",
+      "available_actions"
     ]
   },
   {
@@ -402,12 +413,12 @@
     "capability_ids": [
       "C-106"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -592,8 +603,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools plugin delete",
-      "luatools plugin delete --format text"
+      "luatools plugin delete --yes",
+      "luatools plugin delete --format text --yes"
     ],
     "see_also": [
       "luatools describe plugin",
@@ -623,7 +634,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "status",
+      "available_actions"
     ]
   }
 ]

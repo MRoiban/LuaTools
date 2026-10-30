@@ -13,8 +13,8 @@
       "C-048",
       "C-049"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -215,7 +215,26 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "name",
+      "fix_count",
+      "tags",
+      "title",
+      "description",
+      "installed",
+      "applied",
+      "fixes",
+      "provider",
+      "provider_status",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "fix",
@@ -228,8 +247,8 @@
     "capability_ids": [
       "C-050"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -364,7 +383,26 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "name",
+      "fix_count",
+      "tags",
+      "title",
+      "description",
+      "installed",
+      "applied",
+      "fixes",
+      "provider",
+      "provider_status",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "fix",
@@ -378,8 +416,8 @@
       "C-047",
       "C-051"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -528,7 +566,26 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "name",
+      "fix_count",
+      "tags",
+      "title",
+      "description",
+      "installed",
+      "applied",
+      "fixes",
+      "provider",
+      "provider_status",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "fix",
@@ -541,12 +598,12 @@
     "capability_ids": [
       "C-052"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -747,8 +804,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools fix apply example-fix --appid 570 --provider online-fix",
-      "luatools fix apply example-fix --appid 570 --provider online-fix --format text"
+      "luatools fix apply example-fix --appid 570 --provider online-fix --yes",
+      "luatools fix apply example-fix --appid 570 --provider online-fix --format text --yes"
     ],
     "see_also": [
       "luatools describe fix",
@@ -778,7 +835,19 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "name",
+      "fix_count",
+      "tags",
+      "title",
+      "description",
+      "installed",
+      "applied",
+      "fixes",
+      "provider",
+      "provider_status",
+      "available_actions"
     ]
   },
   {
@@ -792,12 +861,12 @@
     "capability_ids": [
       "C-053"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -991,8 +1060,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools fix revert example-fix --appid 570",
-      "luatools fix revert example-fix --appid 570 --format text"
+      "luatools fix revert example-fix --appid 570 --yes",
+      "luatools fix revert example-fix --appid 570 --format text --yes"
     ],
     "see_also": [
       "luatools describe fix",
@@ -1022,7 +1091,19 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "name",
+      "fix_count",
+      "tags",
+      "title",
+      "description",
+      "installed",
+      "applied",
+      "fixes",
+      "provider",
+      "provider_status",
+      "available_actions"
     ]
   }
 ]

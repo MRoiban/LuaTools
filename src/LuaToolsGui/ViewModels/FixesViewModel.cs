@@ -13,6 +13,7 @@ namespace LuaToolsGui.ViewModels;
 /// <summary>A game card in the Fixes grid.</summary>
 public partial class FixGameCardVm(DenuvoGameListing g, bool isSynthetic = false) : ObservableObject
 {
+    internal DenuvoGameListing Data { get; } = g;
     public bool IsSynthetic { get; } = isSynthetic;
     public string AppId { get; } = g.AppId;
     public string Name { get; } = g.Name;
@@ -116,6 +117,7 @@ public partial class FixItemVm(DenuvoFix f, Uri? onlineFixMeFolder = null) : Obs
 /// </summary>
 public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 {
+    private readonly FixCoordinator operations;
     private readonly LuaToolsApiClient api;
     private readonly AuthService auth;
     private readonly CoverCache covers;
@@ -136,8 +138,9 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     public FixesViewModel(
         LuaToolsApiClient api, AuthService auth, CoverCache covers, ToastService toast,
         SettingsService settings, DownloadQueue queue, ManifestJobFactory jobs,
-        SteamLibraryService library, SteamService steam, OnlineFixMeClient onlineFixMe)
+        SteamLibraryService library, SteamService steam, OnlineFixMeClient onlineFixMe, FixCoordinator? operations = null)
     {
+        this.operations = operations ?? new(api, auth, settings, steam, library, onlineFixMe, jobs);
         this.api = api;
         this.auth = auth;
         this.covers = covers;
@@ -281,31 +284,15 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         IsLoading = true;
         try
         {
-            var installedTask = Task.Run(() => library.EnumerateInstalled().ToList());
-            // Signed out, lua.tools fixes can't be downloaded, so only Online-Fix.me is shown: the grid
-            // is the installed games it can look up, without lua.tools' listing or tags.
-            bool guest = auth.IsGuest;
-            DenuvoListingsResponse? data = null;
-            if (!guest)
-            {
-                try { data = await api.GetDenuvoListingsAsync(); }
-                catch { data = null; } // The independent provider remains available during an API outage.
-            }
-            _listingUnavailable = !guest && data is null;
-            _allGames = data?.Games.Select(g => new FixGameCardVm(g)).ToList() ?? [];
-            _onlineFixMeGames = BuildOnlineFixMeCards(_allGames, await installedTask);
-            if (guest) _allGames = [.. _onlineFixMeGames];
+            var data = await operations.ListAsync();
+            _listingUnavailable = data.Unavailable;
+            _allGames = data.Games.Select(g => new FixGameCardVm(g, g.Tags.Any(t => t.Id == OnlineFixMeTagId) && g.FixCount == 0)).ToList();
+            _onlineFixMeGames = BuildOnlineFixMeCards(auth.IsGuest ? [] : _allGames,
+                data.Installed.Select(g => new SteamLibraryService.InstalledGame(long.Parse(g.AppId), g.Name, "")));
             Tags.Clear();
-            if (data is not null)
-                foreach (var t in data.Tags) Tags.Add(new TagPillVm(t));
-            if (!guest) Tags.Add(new TagPillVm(OnlineFixMeTag));
+            foreach (var t in data.Tags) Tags.Add(new TagPillVm(t));
             foreach (var pill in Tags) pill.IsSelected = pill.Id == SelectedTagId;
-
-            // "My games" filter source: the same stplug-in scan the Manage page uses, so the toggle
-            // shows only games the user actually added. Scanned once per listing load.
-            _installedAppIds = steam.StPlugInDir is { } dir
-                ? await Task.Run(() => LuaInstaller.EnumerateInstalled(dir).Select(i => i.AppId).ToHashSet())
-                : [];
+            _installedAppIds = data.Added;
             OnPropertyChanged(nameof(MyGamesHint));
 
             ApplyFilter();
@@ -360,36 +347,19 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         IReadOnlyList<FixGameCardVm> listing, IReadOnlyList<FixGameCardVm> installedCards,
         string? tagId, bool myGamesOnly, IReadOnlySet<long> addedAppIds, string query)
     {
-        IEnumerable<FixGameCardVm> shown = tagId == OnlineFixMeTagId ? installedCards : listing;
-        if (tagId is not null && tagId != OnlineFixMeTagId)
-            shown = shown.Where(g => g.TagIds.Contains(tagId));
-        if (myGamesOnly)
-            shown = shown.Where(g => long.TryParse(g.AppId, out long id) && addedAppIds.Contains(id));
-        string q = query.Trim();
-        return q.Length > 0 ? shown.Where(g => g.Matches(q)) : shown;
+        var byId = listing.Concat(installedCards).GroupBy(g => g.AppId).ToDictionary(g => g.Key, g => g.First());
+        var data = new FixCatalogue(listing.Select(g => g.Data).ToArray(), installedCards.Select(g => g.Data).ToArray(), [], addedAppIds.ToHashSet(), false);
+        return FixCoordinator.Filter(data, tagId, myGamesOnly, query).Select(g => byId[g.AppId]);
     }
-
-    // Installed Steam apps that are runtimes, not games: Steamworks Common Redistributables, Proton,
-    // Steam Linux Runtime and Steamworks SDK Redist.
-    private static readonly HashSet<long> SteamRuntimeAppIds =
-        [228980, 1007, 1070560, 1391110, 1628350, 1493710, 2180100, 1887720, 2348590, 2805730, 3658110];
 
     internal static List<FixGameCardVm> BuildOnlineFixMeCards(
         IReadOnlyList<FixGameCardVm> listing, IEnumerable<SteamLibraryService.InstalledGame> installed)
     {
         var byId = listing.GroupBy(g => g.AppId).ToDictionary(g => g.Key, g => g.First());
-        return installed.DistinctBy(g => g.AppId)
-            .Where(g => !SteamRuntimeAppIds.Contains(g.AppId))
-            .Select(g => byId.TryGetValue(g.AppId.ToString(), out var card) ? card : CreateInstalledCard(g))
-            .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        return FixCoordinator.BuildInstalled(listing.Select(g => g.Data).ToArray(), installed)
+            .Select(g => byId.GetValueOrDefault(g.AppId) ?? new FixGameCardVm(g, true)).ToList();
     }
-
-    private static FixGameCardVm CreateInstalledCard(SteamLibraryService.InstalledGame game) => new(new DenuvoGameListing
-    {
-        AppId = game.AppId.ToString(), Name = game.Name,
-        HeaderImage = $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{game.AppId}/header.jpg",
-        Tags = [OnlineFixMeTag],
-    }, isSynthetic: true);
+    private static FixGameCardVm CreateInstalledCard(SteamLibraryService.InstalledGame game) => new(FixCoordinator.InstalledCard(game), true);
 
     // ── Detail flyout ───────────────────────────────────────────────
 
@@ -479,7 +449,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     {
         try
         {
-            var data = game.IsSynthetic ? null : await api.GetDenuvoFixesAsync(game.AppId);
+            var data = game.IsSynthetic ? null : await operations.LuaToolsAsync(game.AppId);
             var installed = await installedTask;
             if (!IsCurrentDetail(game, version)) return;
             if (data is not null)
@@ -522,7 +492,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         ShowOnlineFixMeFolderInput = false;
         try
         {
-            var result = await onlineFixMe.LookupAsync(_onlineFixMeTitle, folderOverride, fresh, CancellationToken.None);
+            var result = await operations.LookupAsync(_onlineFixMeTitle, folderOverride, fresh, CancellationToken.None);
             if (!IsCurrentDetail(game, detailVersion) || lookupVersion != _onlineFixMeLookupVersion) return;
             _allFixes.RemoveAll(f => f.OnlineFixMeFolder is not null);
             if (result.Status == OnlineFixMeLookupStatus.Found && result.FolderUrl is { } folder)
@@ -571,8 +541,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 
     private void RebuildFixTags()
     {
-        var distinct = _allFixes.SelectMany(f => f.Tags).GroupBy(t => t.Id).Select(g => g.First())
-            .OrderBy(t => t.Name).ToList();
+        var distinct = FixCoordinator.DetailTags(_allFixes.Select(f => new DenuvoFix { Tags = f.Tags.ToList() })).ToList();
         if (distinct.Count < 2 || !distinct.Any(t => t.Id == SelectedFixTagId)) SelectedFixTagId = null;
         FixTags.Clear();
         if (distinct.Count > 1)
@@ -591,8 +560,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 
     private void ApplyFixFilter()
     {
-        IEnumerable<FixItemVm> shown = _allFixes;
-        if (SelectedFixTagId is { } tag) shown = shown.Where(f => f.Tags.Any(t => t.Id == tag));
+        var shown = FixCoordinator.FilterDetail(_allFixes, SelectedFixTagId, f => f.Tags);
         Fixes.Clear();
         foreach (var f in shown) Fixes.Add(f);
     }
@@ -641,7 +609,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         if (pending is not (var fix, var game)) return;
         if (!long.TryParse(game.AppId, out long appId)) return;
 
-        var result = await Task.Run(() => jobs.RevertDenuvoFix(appId, fix.Id, game.Name));
+        var result = await Task.Run(() => operations.Revert(appId, fix.Id, game.Name));
 
         // RevertDenuvoFix owns every revert toast (done / partial / conflict / not-found / no-record).
         // Showing another one here meant a failed revert fired two toasts for one action.
@@ -694,9 +662,20 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
                 if (slot == "fix" && result?.Ok == true) fix.IsApplied = true;
             };
 
-        var job = fix.OnlineFixMeFolder is { } folder
-            ? jobs.CreateOnlineFixMeJob(folder, fix.FixFilename!, appId, game.Name, onFinished)
-            : jobs.CreateDenuvoJob(fix.Id, slot, fallback, appId, game.Name, fix.Title, onFinished);
+        DownloadJob job;
+        try
+        {
+            job = operations.CreateJob(appId, game.Name, new DenuvoFix
+            {
+                Id = fix.Id, Title = fix.Title, HasFix = fix.HasFix, HasManifest = fix.HasManifest,
+                FixFilename = fix.FixFilename, ManifestFilename = fix.ManifestFilename,
+            }, fix.OnlineFixMeFolder, slot, onFinished);
+        }
+        catch (InvalidOperationException ex)
+        {
+            toast.Show(Resources.Strings.Fixes_Toast_DownloadFailed, ex.Message, error: true);
+            return;
+        }
 
         var item = queue.Enqueue(job);
         if (slot == "manifest") fix.ManifestItem = item;

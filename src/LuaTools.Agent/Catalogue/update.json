@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-143"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -139,7 +139,18 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "current_version",
+      "staged_version",
+      "staged",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "update",
@@ -152,14 +163,14 @@
     "capability_ids": [
       "C-141"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
-    "read_only": true,
-    "dry_run": false,
-    "job_behavior": "none",
+    "read_only": false,
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": false,
-    "reversible": null,
+    "reversible": false,
     "side_effects": [
       "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
@@ -253,13 +264,97 @@
         "default": null,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
       }
     ],
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools update check",
-      "luatools update check --format text"
+      "luatools update check --dry-run --json",
+      "luatools update check --json"
     ],
     "see_also": [
       "luatools describe update",
@@ -281,7 +376,18 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "current_version",
+      "staged_version",
+      "staged",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "update",
@@ -294,11 +400,11 @@
     "capability_ids": [
       "C-142"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -484,8 +590,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools update apply",
-      "luatools update apply --format text"
+      "luatools update apply --yes",
+      "luatools update apply --format text --yes"
     ],
     "see_also": [
       "luatools describe update",
@@ -506,8 +612,7 @@
       9
     ],
     "preconditions": [
-      "Settings button only staged; service silently no-op if no pending package or CabinetService.HasActiveHelpers (not reflected in button disable)",
-      "Verified signed newer release; Cabinet helpers inactive"
+      "Requires --yes. Active jobs/helpers refuse with exit 6 unless --drain; waits within --timeout. Reply precedes shutdown."
     ],
     "output_fields": [
       "plan",
@@ -515,7 +620,12 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "current_version",
+      "staged_version",
+      "staged",
+      "available_actions",
+      "new_instance_id"
     ]
   }
 ]

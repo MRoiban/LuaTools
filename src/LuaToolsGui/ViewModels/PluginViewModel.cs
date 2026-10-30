@@ -14,11 +14,13 @@ namespace LuaToolsGui.ViewModels;
 public partial class PluginViewModel : ObservableObject
 {
     private readonly PluginInstallerService _installer;
+    private readonly PluginCoordinator _operations;
     private readonly ToastService _toast;
 
-    public PluginViewModel(PluginInstallerService installer, ToastService toast)
+    public PluginViewModel(PluginInstallerService installer, ToastService toast, PluginCoordinator? operations = null)
     {
         _installer = installer;
+        _operations = operations ?? PluginCoordinator.For(installer);
         _toast = toast;
     }
 
@@ -78,7 +80,7 @@ public partial class PluginViewModel : ObservableObject
 
     private async Task RefreshAsync(bool force)
     {
-        var st = await _installer.GetStatusAsync(force);
+        var st = await _operations.ReadAsync(force);
         IsInstalled = st.FrontendInstalled && st.DllInstalled;
         InstalledVersion = st.InstalledTag ?? (IsInstalled ? Resources.Strings.Plugin_Version_Unknown : "—");
         LatestVersion = st.Offline ? Resources.Strings.Plugin_Version_Offline : (st.LatestTag ?? "—");
@@ -99,15 +101,7 @@ public partial class PluginViewModel : ObservableObject
             : null;
     }
 
-    private bool ConfirmSteamRestart()
-    {
-        var result = System.Windows.MessageBox.Show(
-            Resources.Strings.Plugin_Confirm_RestartBody,
-            Resources.Strings.Plugin_Confirm_RestartCaption,
-            System.Windows.MessageBoxButton.OKCancel,
-            System.Windows.MessageBoxImage.Warning);
-        return result == System.Windows.MessageBoxResult.OK;
-    }
+    private bool ConfirmSteamRestart() => PluginCoordinator.ConfirmSteamRestart();
 
     private IProgress<double?> MakeProgress() => new Progress<double?>(p =>
     {
@@ -126,7 +120,7 @@ public partial class PluginViewModel : ObservableObject
         Progress = 0;
         try
         {
-            var (ok, error) = await _installer.InstallAsync(MakeProgress());
+            var (ok, error) = await _operations.ChangeAsync(true, MakeProgress());
             _toast.Show(Resources.Strings.Plugin_Toast_Title, ok
                 ? Resources.Strings.Plugin_Toast_Installed
                 : string.Format(Resources.Strings.Plugin_Toast_InstallFailed, error), error: !ok);
@@ -148,7 +142,7 @@ public partial class PluginViewModel : ObservableObject
         IsProgressIndeterminate = true;
         try
         {
-            var (ok, error) = await _installer.UninstallAsync();
+            var (ok, error) = await _operations.ChangeAsync(false);
             _toast.Show(Resources.Strings.Plugin_Toast_Title, ok
                 ? Resources.Strings.Plugin_Toast_Removed
                 : string.Format(Resources.Strings.Plugin_Toast_UninstallFailed, error), error: !ok);

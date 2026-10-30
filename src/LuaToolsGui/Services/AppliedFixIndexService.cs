@@ -26,12 +26,12 @@ namespace LuaToolsGui.Services;
 /// strand backups with nothing pointing at them.
 /// </para>
 /// </remarks>
-public class AppliedFixIndexService(SteamLibraryService library, ILogger<AppliedFixIndexService> log)
+public class AppliedFixIndexService(SteamLibraryService library, ILogger<AppliedFixIndexService> log, string? directory = null)
 {
-    private static readonly string Dir =
+    private readonly string Dir = directory ??
         Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName);
 
-    private static readonly string FilePath = Path.Combine(Dir, "applied-fixes.json");
+    private string FilePath => Path.Combine(Dir, "applied-fixes.json");
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNameCaseInsensitive = true, WriteIndented = true };
@@ -132,7 +132,7 @@ public class AppliedFixIndexService(SteamLibraryService library, ILogger<Applied
         finally { _gate.Release(); }
     }
 
-    private static AppliedFixIndex Load()
+    private AppliedFixIndex Load()
     {
         try
         {
@@ -143,7 +143,7 @@ public class AppliedFixIndexService(SteamLibraryService library, ILogger<Applied
         catch { return new AppliedFixIndex(); } // corrupt or half-written: start clean, a rebuild restores it
     }
 
-    private static void Save(AppliedFixIndex index)
+    private void Save(AppliedFixIndex index)
     {
         try
         {

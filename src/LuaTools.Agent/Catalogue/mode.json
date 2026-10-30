@@ -11,8 +11,8 @@
       "C-098",
       "C-099"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -147,7 +147,22 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "selected_mode",
+      "detected_mode",
+      "modes",
+      "selected",
+      "status",
+      "latest_version",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id",
+      "cloudredirect"
+    ]
   },
   {
     "resource": "mode",
@@ -160,8 +175,8 @@
     "capability_ids": [
       "C-098"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -327,7 +342,21 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "selected_mode",
+      "detected_mode",
+      "modes",
+      "selected",
+      "status",
+      "latest_version",
+      "available_actions",
+      "id",
+      "version",
+      "plan",
+      "results",
+      "state",
+      "job_id"
+    ]
   },
   {
     "resource": "mode",
@@ -340,16 +369,17 @@
     "capability_ids": [
       "C-100"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "One confirmed workflow stops Steam (running games/downloads stop), quarantines/downloads/extracts managed ZIP, overwrites dwmapi.dll/xinput1_4.dll/OpenSteamTool.dll, records consent and selection/cache version/digest, adds config/stplug-in watch path, restarts Steam even after returned failure; Persist Custom selection; service downloads/writes no Steam payload, but VM still stops and starts Steam"
+      "One confirmed workflow stops Steam (running games/downloads stop), quarantines/downloads/extracts managed ZIP, overwrites dwmapi.dll/xinput1_4.dll/OpenSteamTool.dll, records consent and selection/cache version/digest, adds config/stplug-in watch path, restarts Steam even after returned failure; Persist Custom selection; service downloads/writes no Steam payload, but VM still stops and starts Steam",
+      "Starts selected Steam even if initially closed, including Custom; requires --yes. Running Steam additionally requires --restart-steam."
     ],
     "flags": [
       {
@@ -536,8 +566,8 @@
       "custom"
     ],
     "examples": [
-      "luatools mode update ost",
-      "luatools mode update ost --format text"
+      "luatools mode update ost --yes",
+      "luatools mode update ost --format text --yes"
     ],
     "see_also": [
       "luatools describe mode",
@@ -567,7 +597,14 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "selected_mode",
+      "detected_mode",
+      "modes",
+      "selected",
+      "status",
+      "latest_version",
+      "available_actions"
     ]
   }
 ]
