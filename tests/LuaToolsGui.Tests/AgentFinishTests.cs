@@ -22,11 +22,15 @@ public sealed class AgentFinishTests
     private sealed class Network : HttpMessageHandler
     {
         public int Calls;
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
+        public bool Delay;
+        public readonly TaskCompletionSource Preparing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
         {
+            if (Delay) { Preparing.TrySetResult(); await Release.Task.WaitAsync(ct); }
             Calls++;
-            if (r.RequestUri!.Host == "api.steamcmd.net") return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"status\":\"success\",\"data\":{\"570\":{\"depots\":{\"571\":{\"config\":{\"oslist\":\"windows\"},\"manifests\":{\"public\":{\"gid\":\"111\",\"size\":\"1\"}}}}}}}") });
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            if (r.RequestUri!.Host == "api.steamcmd.net") return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"status\":\"success\",\"data\":{\"570\":{\"depots\":{\"571\":{\"config\":{\"oslist\":\"windows\"},\"manifests\":{\"public\":{\"gid\":\"111\",\"size\":\"1\"}}}}}}}") };
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
     }
     private sealed class Cabinet : ICabinetService
@@ -63,6 +67,12 @@ public sealed class AgentFinishTests
         internal readonly BuildsViewModel Builds;
         internal int Stops;
         internal bool Running;
+        internal Action? InspectPath;
+        internal void SwitchSteam()
+        {
+            string other = Path.Combine(Root, "other-steam"); Directory.CreateDirectory(other);
+            File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture"); Settings.SteamPathOverride = other;
+        }
         private readonly byte[] _capability = RandomNumberGenerator.GetBytes(32);
         private readonly HttpClient _http;
         internal Fixture()
@@ -96,7 +106,7 @@ public sealed class AgentFinishTests
             Builds = new(Steam, Vault, names, details, covers, depots, new ToastService(), Settings, tool, Queue, factory);
             string appinfo = Path.Combine(Root, "steam", "appcache", "appinfo.vdf");
             LaunchOptionsServiceTests.WriteAppInfo(appinfo, [("0", "Original.exe", "windows")]);
-            Launch = new(() => appinfo, () => Running, () => Stops++, () => { }, new LaunchModStore(Path.Combine(Root, "launchmods.json")), Path.Combine(Root, "backups"));
+            Launch = new(() => { InspectPath?.Invoke(); return appinfo; }, () => Running, () => Stops++, () => { }, new LaunchModStore(Path.Combine(Root, "launchmods.json")), Path.Combine(Root, "backups"));
             Facade = new(Settings, Steam, auth, Queue, unlocker, new(Steam, Settings, github, null!), new(),
                 mutations: new(Path.Combine(Root, "journal.json")), vault: Vault, launch: Launch, depotInfo: depots, appList: names, appInfo: details, depotTool: tool, factory: factory,
                 libraryNames: names, libraryDetails: details, libraryCache: cache, cabinet: Cab, modes: Mode,
@@ -131,6 +141,49 @@ public sealed class AgentFinishTests
             }
         }
         public void Dispose() { _http.Dispose(); Directory.Delete(Root, true); }
+    }
+
+    [Fact]
+    public async Task ImportUnrelatedPresetPreservesPendingEditAndDefaultThroughReconcile()
+    {
+        using var f = new Fixture(); f.Live("addappid(570)\n-- default D\n"); f.Vault.SyncDefaultFromLive(570);
+        var original = f.Vault.GetActiveVariant(570)!;
+        var basis = f.Vault.SaveText(570, "addappid(570)\n-- preset B\n", "B")!; Assert.True(f.Vault.Apply(570, basis));
+        f.Vault.SetEditBase(570, basis.Hash); f.Live("addappid(570)\n-- pending E\n");
+        var imported = await f.Call("preset create", flags: new() { ["appid"] = "570", ["name"] = "Imported" }, input: "addappid(570)\n-- imported F\n", name: "570.lua");
+        Assert.True(imported.Ok, imported.Error?.Code);
+        Assert.Equal(basis.Hash, f.Vault.GetEditBase(570));
+        new DepotPresetCoordinator(f.Vault).Reconcile(570);
+        Assert.Equal(basis.Hash, f.Vault.GetEditBase(570));
+        Assert.Contains(f.Vault.GetVariants(570), v => v.Hash == original.Hash && v.Kind == LuaVariantKind.Default);
+        Assert.Equal("addappid(570)\n-- default D\n", f.Vault.ReadText(570, original.Hash));
+    }
+
+    [Fact]
+    public async Task LaunchPreparationRejectsSteamChangeDuringInspection()
+    {
+        using var f = new Fixture();
+        using var preparing = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
+        f.InspectPath = () => { preparing.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(10))); };
+        var run = f.Call("launch-option create", ["603750"], input: "{\"executable\":\"New.exe\"}");
+        Assert.True(preparing.Wait(TimeSpan.FromSeconds(5))); f.SwitchSteam(); release.Set();
+        var result = await run; Assert.False(result.Ok); Assert.True(f.Launch.Store.IsEmpty);
+        Assert.Contains(result.Error!.Code, new[] { "CONTEXT_CHANGED", "PLAN_STALE" });
+    }
+
+    [Theory]
+    [InlineData("depot download")] [InlineData("depot update")]
+    public async Task DepotPreparationRejectsSteamChangeDuringMetadata(string command)
+    {
+        using var f = new Fixture();
+        string lua = "addappid(570)\naddappid(571,0,\"" + new string('a',64) + "\")\nsetManifestid(571,\"111\",1)\n";
+        f.Live(lua); f.Settings.DepotDownloaderEnabled = true; f.Net.Delay = true;
+        var flags = command == "depot download" ? new Dictionary<string,string?> { ["depot"] = "571", ["output"] = Path.Combine(f.Root,"output"), ["yes"] = null }
+            : new() { ["appid"] = "570", ["enabled"] = "false", ["yes"] = null };
+        var run = f.Call(command, command == "depot download" ? ["570"] : ["571"], flags);
+        await f.Net.Preparing.Task.WaitAsync(TimeSpan.FromSeconds(5)); f.SwitchSteam(); f.Live(lua); f.Net.Release.SetResult();
+        var result = await run; Assert.False(result.Ok); Assert.Empty(f.Queue.Items);
+        Assert.Contains(result.Error!.Code, new[] { "CONTEXT_CHANGED", "PLAN_STALE" });
     }
 
     [Fact]

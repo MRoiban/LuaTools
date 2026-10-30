@@ -44,6 +44,25 @@ public sealed class AgentAcquisitionTests
         internal readonly byte[] Capability = RandomNumberGenerator.GetBytes(32);
         internal int Spent;
         internal bool FailHubcap;
+        internal readonly TaskCompletionSource Preparing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal bool Delay;
+        internal LuaToolsApiClient Api = null!;
+        internal AuthService Auth = null!;
+        private sealed class Delayed(Fixture owner, HttpMessageHandler inner) : DelegatingHandler(inner)
+        {
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct)
+            {
+                if (owner.Delay) { owner.Preparing.TrySetResult(); await owner.Release.Task.WaitAsync(ct); }
+                return await base.SendAsync(r, ct);
+            }
+        }
+        internal DownloadViewModel Gui() => new(Api, new HubcapService(Http), Settings, Auth, new ToastService(), Installer, AppList, AppInfo, Depots, null!, new(Installer, AppList, AppInfo, Depots, Local), Queue, Factory, Sources, Diff);
+        internal void SwitchSteam()
+        {
+            string other = Path.Combine(Root, "other-steam"); Directory.CreateDirectory(other);
+            File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture"); Settings.SteamPathOverride = other;
+        }
         internal Fixture(bool key = true, DlcBatchService? batchService = null)
         {
             Directory.CreateDirectory(Root);
@@ -71,15 +90,15 @@ public sealed class AgentAcquisitionTests
                 if (request.RequestUri.Host == new Uri(AppConfig.SteamMlCdnUrl).Host) return new(HttpStatusCode.NotFound);
                 throw new InvalidOperationException("Unexpected synthetic provider route");
             });
-            Http = new(transport) { BaseAddress = new Uri(AppConfig.ApiBaseUrl) };
-            var metadata = new Stub(_ => new(HttpStatusCode.NotFound));
+            Http = new(new Delayed(this, transport)) { BaseAddress = new Uri(AppConfig.ApiBaseUrl) };
+            var metadata = new Stub(_ => Json("{\"status\":\"success\",\"data\":{\"700\":{\"depots\":{}}}}"));
             var covers = new CoverCache(metadata, Path.Combine(Root, "covers"));
             AppInfo = new(cache, NullLogger<SteamAppInfoCache>.Instance, metadata, Path.Combine(Root, "details"));
             Depots = new(metadata);
             AppList = new(new Stub(_ => Json("[]")), Path.Combine(Root, "applist.json"));
             File.WriteAllText(Path.Combine(Root, "applist.json"), "{\"730\":\"Fixture game\",\"731\":\"Old depot\",\"732\":\"New depot\"}");
-            var auth = new AuthService(Http, Path.Combine(Root, "auth.dat"));
-            var api = new LuaToolsApiClient(auth, AppInfo, covers, Http, steamMl: new SteamMlService(Http), depots: Depots, dexLua: new DexLuaService(Http));
+            var auth = Auth = new AuthService(Http, Path.Combine(Root, "auth.dat"));
+            var api = Api = new LuaToolsApiClient(auth, AppInfo, covers, Http, steamMl: new SteamMlService(Http), depots: Depots, dexLua: new DexLuaService(Http));
             var hubcap = new HubcapService(Http);
             Installer = new(Steam, Settings, cache, Vault = new LuaVault(() => Steam.StPlugInDir, Path.Combine(Root, "vault")));
             Diff = new(Installer, AppList, AppInfo, Depots);
@@ -113,6 +132,56 @@ public sealed class AgentAcquisitionTests
         internal void Live(string text)
         { Directory.CreateDirectory(Steam.StPlugInDir!); System.IO.File.WriteAllText(Path.Combine(Steam.StPlugInDir!, "730.lua"), text); }
         public void Dispose() { Http.Dispose(); Directory.Delete(Root, true); }
+    }
+
+    [Fact]
+    public async Task SecondSourceCommandReusesActiveItemAndUpdatesBothRows()
+    {
+        using var f = new Fixture(); var vm = f.Gui(); vm.Details = new() { AppId = 730, Name = "Original" };
+        var first = new SourceRowViewModel(vm, DexLuaService.SourceName, "available");
+        var second = new SourceRowViewModel(vm, AcquisitionCoordinator.HubcapSource, "available");
+        vm.Sources.Add(first); vm.Sources.Add(second);
+        // Force both buttons through the real async command entry, including a stale enabled click.
+        await first.DownloadCommand.ExecuteAsync(null);
+        await second.DownloadCommand.ExecuteAsync(null);
+        Assert.Single(f.Queue.Items); Assert.Same(first.QueueItem, second.QueueItem);
+        Assert.False(first.CanDownload); Assert.False(second.CanDownload);
+    }
+
+    [Fact]
+    public async Task GuiSourcePreparationCannotRebindSteam()
+    {
+        using var f = new Fixture(); var vm = f.Gui(); vm.Details = new() { AppId = 730, Name = "Original" };
+        f.Delay = true;
+        var row = new SourceRowViewModel(vm, DexLuaService.SourceName, "available");
+        var run = row.DownloadCommand.ExecuteAsync(null);
+        await f.Preparing.Task.WaitAsync(TimeSpan.FromSeconds(5)); f.SwitchSteam(); f.Release.SetResult();
+        await run; Assert.Empty(f.Queue.Items); Assert.NotNull(vm.Error);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task DlcCommandSnapshotsIdentityWhileSearchChanges(bool replace)
+    {
+        using var f = new Fixture(); var vm = f.Gui();
+        vm.Details = new() { AppId = 730, Name = "Original DLC", Type = "dlc", BaseAppId = "700" };
+        f.Delay = true; var run = vm.GenerateDlcCommand.ExecuteAsync(null);
+        await f.Preparing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        vm.SearchText = ""; vm.Details = replace ? new() { AppId = 999, Name = "Other DLC", Type = "dlc", BaseAppId = "900" } : null;
+        f.Release.SetResult(); await run;
+        var item = Assert.Single(f.Queue.Items); Assert.Equal(730, item.AppId); Assert.Contains("Original DLC", item.Job.Title);
+        Assert.NotNull(item.Job.DownloadAsync); // download closes over the captured parent
+
+    }
+
+    [Fact]
+    public async Task ManifestPreparationRejectsReboundSteam()
+    {
+        using var f = new Fixture(); f.Delay = true;
+        var run = f.Facade.ExecuteAsync(f.Request("manifest add", ["fixture-fix"], new() { ["appid"] = "730", ["yes"] = null }), default);
+        await f.Preparing.Task.WaitAsync(TimeSpan.FromSeconds(5)); f.SwitchSteam(); f.Release.SetResult();
+        var result = await run; Assert.False(result.Ok); Assert.Empty(f.Queue.Items);
+        Assert.Contains(result.Error!.Code, new[] { "CONTEXT_CHANGED", "PLAN_STALE" });
     }
 
     [Fact]
