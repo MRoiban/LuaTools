@@ -51,20 +51,20 @@ public partial class LaunchEntryViewModel : ObservableObject
         _ownsDlc = option.OwnsDlc;
     }
 
-    public LaunchOption ToOption() => new()
+    public LaunchOption ToOption() => LaunchEditCoordinator.Normalize(new LaunchOption()
     {
         Index = Index,
         SourceIndex = SourceIndex,
-        Executable = Executable.Trim(),
-        Arguments = Arguments.Trim(),
-        WorkingDir = WorkingDir.Trim(),
-        Description = Description.Trim(),
-        Type = Type.Trim(),
-        OsList = OsList.Trim(),
-        OsArch = OsArch.Trim(),
-        BetaKey = BetaKey.Trim(),
-        OwnsDlc = OwnsDlc.Trim(),
-    };
+        Executable = Executable,
+        Arguments = Arguments,
+        WorkingDir = WorkingDir,
+        Description = Description,
+        Type = Type,
+        OsList = OsList,
+        OsArch = OsArch,
+        BetaKey = BetaKey,
+        OwnsDlc = OwnsDlc,
+    });
 }
 
 /// <summary>
@@ -174,6 +174,14 @@ public partial class LaunchOptionsViewModel : ObservableObject
         GameName = gameName;
         IsLoading = true;
         Error = null;
+        _state = null;
+        Entries.Clear();
+        Selected = null;
+        IsModded = false;
+        InstallPath = null;
+        _baseline = [];
+        IsDirty = false;
+        OnPropertyChanged(nameof(CanSave));
 
         try
         {
@@ -269,7 +277,7 @@ public partial class LaunchOptionsViewModel : ObservableObject
 
     /// <summary>Save is only offered when there's an actual change to write. Applying closes Steam, so
     /// a no-op save is worse than useless.</summary>
-    public bool CanSave => _state is not null && Error is null && IsDirty;
+    public bool CanSave => !IsLoading && _state is not null && Error is null && IsDirty;
 
     /// <summary>Stage the edit, then offer to write it into appinfo (which closes Steam).</summary>
     [RelayCommand]
@@ -308,8 +316,9 @@ public partial class LaunchOptionsViewModel : ObservableObject
 
         if (!Confirm(Resources.Strings.Launch_Restore_Body, Resources.Strings.Launch_Restore_Title)) return;
 
-        ApplyToSteam(new Dictionary<int, IReadOnlyList<LaunchOption>> { [(int)AppId] = original });
-        _launch.Store.Remove((int)AppId);
+        var restored = new LaunchEditCoordinator(_launch).Restore((int)AppId);
+        ShowApplyResult(restored);
+        if (!restored.Ok) return;
         IsModded = false;
         CloseWith?.Invoke(true);
     }
@@ -323,7 +332,11 @@ public partial class LaunchOptionsViewModel : ObservableObject
     /// </summary>
     private void ApplyToSteam(IReadOnlyDictionary<int, IReadOnlyList<LaunchOption>> edits)
     {
-        var result = _launch.Apply(edits, restartSteam: true);
+        ShowApplyResult(_launch.Apply(edits, restartSteam: true));
+    }
+
+    private void ShowApplyResult(ApplyResult result)
+    {
         if (result.Ok)
             _toast.Show(Resources.Strings.Launch_Title,
                 result.SteamWasRunning

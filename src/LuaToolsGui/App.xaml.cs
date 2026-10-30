@@ -152,7 +152,7 @@ public partial class App : Application
             if (launch.Store.IsEmpty) return;
 
             // Indexing the ~373 MB cache takes a couple of seconds, never on the UI thread.
-            var drifted = await Task.Run(launch.FindDrifted);
+            var drifted = await Task.Run(new Services.AppInfo.LaunchEditCoordinator(launch).FindDrifted);
             if (drifted.Count == 0) return;
 
             var toast = _host.Services.GetRequiredService<ToastService>();
@@ -189,7 +189,7 @@ public partial class App : Application
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
 
-        var result = await Task.Run(() => launch.Reapply(drifted));
+        var result = await Task.Run(() => new Services.AppInfo.LaunchEditCoordinator(launch).Reapply(drifted));
 
         if (result.Ok)
             toast.Show(LuaToolsGui.Resources.Strings.Launch_Title,

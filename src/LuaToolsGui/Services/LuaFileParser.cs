@@ -99,9 +99,14 @@ public static partial class LuaFileParser
 
     public static LuaContents? Parse(string filePath, long appIdFromName)
     {
+        try { return ParseText(File.ReadAllText(filePath), appIdFromName); }
+        catch { return null; }
+    }
+
+    public static LuaContents? ParseText(string text, long appIdFromName)
+    {
         try
         {
-            string text = File.ReadAllText(filePath);
 
             // An id can appear twice: addappid(id) then addappid(id, 1, "key"). Merge so a key from
             // ANY occurrence counts (keeping first-seen order), otherwise the keyless line wins and

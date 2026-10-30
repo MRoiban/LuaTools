@@ -91,6 +91,20 @@ public class LaunchOptionsViewModelTests : IDisposable
         Assert.False(_vm.CanSave);
     }
 
+
+    [Fact]
+    public async Task FailedSecondGameLoadClearsSingletonStateAndRestoreAvailability()
+    {
+        await _vm.LoadAsync(AppId, "Raft");
+        _vm.IsModded = true;
+        _vm.Entries[0].Arguments = "changed";
+        await _vm.LoadAsync(999999, "Missing");
+        Assert.Empty(_vm.Entries);
+        Assert.Null(_vm.Selected);
+        Assert.False(_vm.IsModded);
+        Assert.False(_vm.CanSave);
+        Assert.NotNull(_vm.Error);
+    }
     /// <summary>Minimal but structurally real v29 appinfo containing one app.</summary>
     private static void WriteAppInfo(string path, (string Index, string Exe)[] launches)
     {

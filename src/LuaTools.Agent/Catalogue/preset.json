@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-108"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -162,7 +162,7 @@
     "identity_values": [],
     "examples": [
       "luatools preset list --appid 570",
-      "luatools preset list --appid 570 --format text"
+      "luatools preset list --appid 570 --json"
     ],
     "see_also": [
       "luatools describe preset",
@@ -184,7 +184,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "current",
+      "desired",
+      "is_modded",
+      "available_actions",
+      "name",
+      "kind",
+      "build_id",
+      "captured_at",
+      "depot_count",
+      "dlc_count",
+      "active"
+    ]
   },
   {
     "resource": "preset",
@@ -197,8 +210,8 @@
     "capability_ids": [
       "C-108"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -312,8 +325,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset get a70b3d8e6c7f19a08b7db019cb547011 --appid 570",
-      "luatools preset get a70b3d8e6c7f19a08b7db019cb547011 --appid 570 --format text"
+      "luatools preset get aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570",
+      "luatools preset get aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --json"
     ],
     "see_also": [
       "luatools describe preset",
@@ -335,7 +348,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "current",
+      "desired",
+      "is_modded",
+      "available_actions",
+      "name",
+      "kind",
+      "build_id",
+      "captured_at",
+      "depot_count",
+      "dlc_count",
+      "active"
+    ]
   },
   {
     "resource": "preset",
@@ -596,20 +622,20 @@
   {
     "resource": "preset",
     "verb": "update",
-    "syntax": "luatools preset update <hash> --appid <appid> [--name <name> | --from-live]",
+    "syntax": "luatools preset update <hash> --appid <appid> --name <name>",
     "variants": [
-      "luatools preset update <hash> --appid <appid> [--name <name> | --from-live]"
+      "luatools preset update <hash> --appid <appid> --name <name>"
     ],
-    "purpose": "Rename preset in LuaTools.",
+    "purpose": "Rename stored preset metadata; from-live replacement remains disabled.",
     "capability_ids": [
       "C-111",
       "C-114"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -723,13 +749,6 @@
         "required": false
       },
       {
-        "name": "from-live",
-        "type": "bool",
-        "default": false,
-        "allowed_values": [],
-        "required": false
-      },
-      {
         "name": "dry-run",
         "type": "bool",
         "default": false,
@@ -819,8 +838,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset update a70b3d8e6c7f19a08b7db019cb547011 --appid 570",
-      "luatools preset update a70b3d8e6c7f19a08b7db019cb547011 --appid 570 --format text"
+      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset",
+      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset --json"
     ],
     "see_also": [
       "luatools describe preset",
@@ -865,11 +884,11 @@
     "capability_ids": [
       "C-109"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -1064,8 +1083,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset apply a70b3d8e6c7f19a08b7db019cb547011 --appid 570",
-      "luatools preset apply a70b3d8e6c7f19a08b7db019cb547011 --appid 570 --format text"
+      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570",
+      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --json"
     ],
     "see_also": [
       "luatools describe preset",
@@ -1109,11 +1128,11 @@
     "capability_ids": [
       "C-110"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -1308,8 +1327,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset delete a70b3d8e6c7f19a08b7db019cb547011 --appid 570",
-      "luatools preset delete a70b3d8e6c7f19a08b7db019cb547011 --appid 570 --format text"
+      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570",
+      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --json"
     ],
     "see_also": [
       "luatools describe preset",
