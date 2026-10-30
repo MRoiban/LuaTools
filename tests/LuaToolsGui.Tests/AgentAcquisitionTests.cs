@@ -121,9 +121,9 @@ public sealed class AgentAcquisitionTests
         var ready = new TaskCompletionSource<System.Windows.Threading.Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
-            SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
-            ready.SetResult(app.Dispatcher);
+            var ui = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(ui));
+            ready.SetResult(ui);
             System.Windows.Threading.Dispatcher.Run();
         }) { IsBackground = true };
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
@@ -135,7 +135,7 @@ public sealed class AgentAcquisitionTests
             // worker publishes its vault notification and synchronously needs the dispatcher.
             using var held = new ManualResetEventSlim(); using var uiEntered = new ManualResetEventSlim();
             using var uiReturned = new ManualResetEventSlim();
-            var builds = await dispatcher.InvokeAsync(() => new BuildsViewModel(f.Steam, f.Vault, f.AppList, f.AppInfo, new CoverCache(new Stub(_ => new(HttpStatusCode.NotFound)), Path.Combine(f.Root, "ui-covers")), f.Depots, new ToastService(), f.Settings, null!, f.Queue, f.Factory));
+            var builds = await dispatcher.InvokeAsync(() => new BuildsViewModel(f.Steam, f.Vault, f.AppList, f.AppInfo, new CoverCache(new Stub(_ => new(HttpStatusCode.NotFound)), Path.Combine(f.Root, "ui-covers")), f.Depots, new ToastService(), f.Settings, null!, f.Queue, f.Factory, dispatcher));
             bool notificationTimedOut = false;
             Task notificationDeadline = Task.CompletedTask;
             // Bound the actual production Builds subscriber's synchronous dispatch on the
@@ -180,13 +180,13 @@ public sealed class AgentAcquisitionTests
             bool blocked = false;
             await dispatcher.InvokeAsync(() =>
             {
-                var notify = Task.Run(() => typeof(BuildsViewModel).GetMethod("OnUi", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.Invoke(null, [(Action)(() => { })]));
+                var notify = Task.Run(() => typeof(BuildsViewModel).GetMethod("OnUi", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(builds, [(Action)(() => { })]));
                 blocked = !notify.Wait(TimeSpan.FromSeconds(2));
             });
 
 
             f.Live("addappid(730)\naddappid(731)\n");
-            var vm = await dispatcher.InvokeAsync(() => new DownloadViewModel(null!, null!, f.Settings, null!, new ToastService(), f.Installer, f.AppList, f.AppInfo, f.Depots, null!, new(f.Installer, f.AppList, f.AppInfo, f.Depots, f.Local), f.Queue, f.Factory, f.Sources, f.Diff));
+            var vm = await dispatcher.InvokeAsync(() => new DownloadViewModel(null!, null!, f.Settings, null!, new ToastService(), f.Installer, f.AppList, f.AppInfo, f.Depots, null!, new(f.Installer, f.AppList, f.AppInfo, f.Depots, f.Local), f.Queue, f.Factory, f.Sources, f.Diff, dispatcher));
             using var cancel = new CancellationTokenSource();
             var confirm = (Task<bool>)typeof(DownloadViewModel).GetMethod("ConfirmOverwriteAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(vm, [new DownloadedFile(lua, "730.lua"), "cancel-ui", 730L, "Fixture", cancel.Token])!;
             for (int i = 0; i < 100 && !vm.IsConfirmingOverwrite; i++) await Task.Delay(10);
@@ -200,7 +200,6 @@ public sealed class AgentAcquisitionTests
         {
             await dispatcher.InvokeAsync(() =>
             {
-                System.Windows.Application.Current.Shutdown();
                 dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Send);
             }).Task.ConfigureAwait(false);
             Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "dispatcher thread did not stop");

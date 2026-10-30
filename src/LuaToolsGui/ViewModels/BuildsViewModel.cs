@@ -191,11 +191,14 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     private readonly DownloadQueue _queue;
     private readonly ManifestJobFactory _jobs;
 
+    private readonly System.Windows.Threading.Dispatcher? _dispatcher;
+
     public BuildsViewModel(SteamService steam, LuaVault vault, SteamAppListCache appList,
         SteamAppInfoCache appInfo, CoverCache covers, SteamDepotInfo depotInfo, ToastService toast,
         SettingsService settings, DepotDownloaderService depotTool, DownloadQueue queue,
-        ManifestJobFactory jobs)
+        ManifestJobFactory jobs, System.Windows.Threading.Dispatcher? dispatcher = null)
     {
+        _dispatcher = dispatcher;
         _depotTool = depotTool;
         _queue = queue;
         _jobs = jobs;
@@ -1329,9 +1332,9 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         ApplyDepotFilter();
     }
 
-    private static void OnUi(Action action)
+    private void OnUi(Action action)
     {
-        var dispatcher = Application.Current?.Dispatcher;
+        var dispatcher = _dispatcher ?? Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess()) action();
         else dispatcher.BeginInvoke(action);
     }

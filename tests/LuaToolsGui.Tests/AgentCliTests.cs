@@ -81,9 +81,11 @@ public sealed partial class AgentCliTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ReconciliationFindsSingleBulkAndPartialFixReceipts(bool partial)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ReconciliationFindsSingleBulkAndPartialFixReceipts(bool partial, bool legacy)
     {
         var mutations = new MutationCoordinator(Path.Combine(_directory, "receipts.json"));
         var facade = Facade(mutations: mutations);
@@ -92,7 +94,16 @@ public sealed partial class AgentCliTests : IDisposable
         var data = Protocol.Node(new { results = new[] { new { id = "fix-a", ok = true, job_id = a, state = "queued" }, new { id = "fix-b", ok = true, job_id = b, state = "accepted" } } });
         var receipt = partial ? Envelope.Fail("PARTIAL_FAILURE", 1, "fixture") with { Error = new("PARTIAL_FAILURE", 1, "fixture", Details: data) } : Envelope.Success(data);
         var request = Request(facade, "fix apply", flags: new() { ["idempotency-key"] = "fix-receipt" });
-        await mutations.ExecuteAsync(request, _ => Task.FromResult(new PreparedMutation(new("p", "c", "v", [], [], false), _ => Task.FromResult(receipt))), default);
+        var original = Protocol.Node(receipt)!.DeepClone();
+        var accepted = await mutations.ExecuteAsync(request, _ => Task.FromResult(new PreparedMutation(new("p", "c", "v", [], [], false), _ => Task.FromResult(receipt))), default);
+        Assert.Equal(a, (accepted.Data ?? accepted.Error!.Details)!["results"]![0]!["job"]!["id"]!.ToString());
+        if (legacy)
+        {
+            string path = Path.Combine(_directory, "receipts.json");
+            var journal = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+            journal[0]!["receipt"] = original;
+            File.WriteAllText(path, journal.ToJsonString());
+        }
         var found = await facade.ExecuteAsync(Request(facade, "job list", flags: new() { ["idempotency-key"] = "fix-receipt" }), default);
         Assert.True(found.Ok, found.Error?.Code);
         Assert.Equal(new[] { a, b }.Order(), found.Data!.AsArray().Select(x => x!["id"]!.ToString()).Order());
@@ -110,7 +121,8 @@ public sealed partial class AgentCliTests : IDisposable
         string id = facade.Jobs.Register("fixture", _ => release.Task, default);
         if (state != "running")
         {
-            release.SetResult(state == "completed" ? Envelope.Success(new { }) : Envelope.Fail(state == "cancelled" ? "CANCELLED" : "FAIL", 1, "fixture"));
+            if (state == "cancelled") release.SetCanceled();
+            else release.SetResult(state == "completed" ? Envelope.Success(new { }) : Envelope.Fail("FAIL", 1, "fixture"));
             for (int i = 0; i < 100 && Protocol.Node(facade.Jobs.Get(id))!["state"]!.ToString() == "running"; i++) await Task.Delay(10);
         }
         var parsed = CommandParser.Parse(["job", "wait", id, "--fields", "id"]);
@@ -121,7 +133,12 @@ public sealed partial class AgentCliTests : IDisposable
         var reply = await facade.ExecuteAsync(Request(facade, "job wait", [id], flags), default);
         var outcome = AgentClient.WaitOutcome(reply);
         if (state == "running") Assert.Null(outcome);
-        else Assert.Equal(state == "completed", outcome!.Ok);
+        else
+        {
+            Assert.Equal(state == "completed", outcome!.Ok);
+            if (state != "completed") Assert.Equal(state == "cancelled" ? "JOB_CANCELLED" : "JOB_FAILED", outcome.Error!.Code);
+            else Assert.Null(Results.Project(outcome, "id").Data!["state"]);
+        }
         release.TrySetResult(Envelope.Success(new { }));
     }
 

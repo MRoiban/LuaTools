@@ -77,6 +77,7 @@ public record FeaturedItem(long AppId, string Name, string? Image);
 
 public partial class DownloadViewModel : ObservableObject
 {
+    private readonly System.Windows.Threading.Dispatcher? _confirmDispatcher;
     private readonly LuaToolsApiClient _api;
     private readonly HubcapService _hubcap;
     private readonly SettingsService _settings;
@@ -325,8 +326,9 @@ public partial class DownloadViewModel : ObservableObject
         AuthService auth, ToastService toast, LuaInstaller installer,
         SteamAppListCache appList, SteamAppInfoCache appInfo, SteamDepotInfo depotInfo,
         HardwareAppIdService hardware, DropInstallViewModel drop,
-        DownloadQueue queue, ManifestJobFactory jobs, AcquisitionCoordinator? acquisition = null, LuaOverwriteCoordinator? overwrites = null)
+        DownloadQueue queue, ManifestJobFactory jobs, AcquisitionCoordinator? acquisition = null, LuaOverwriteCoordinator? overwrites = null, System.Windows.Threading.Dispatcher? confirmDispatcher = null)
     {
+        _confirmDispatcher = confirmDispatcher;
         _api = api;
         _hubcap = hubcap;
         _settings = settings;
@@ -703,7 +705,7 @@ public partial class DownloadViewModel : ObservableObject
         {
             var diff = await _overwrites.InspectAsync(file.FilePath, appId, ct: ct);
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await App.Current.Dispatcher.InvokeAsync(() =>
+            await (_confirmDispatcher ?? App.Current.Dispatcher).InvokeAsync(() =>
             {
                 DiffAdded = diff.Added.Select(r => new DiffRow(r.Title, r.Meta, r.IsDlc, r.IsShared, r.SteamDbUrl)).ToList();
                 DiffRemoved = diff.Removed.Select(r => new DiffRow(r.Title, r.Meta, r.IsDlc, r.IsShared, r.SteamDbUrl)).ToList();
@@ -718,7 +720,7 @@ public partial class DownloadViewModel : ObservableObject
             try { return await Services.Agent.ConsentCoordinator.WaitWithGuiAsync(jobId, tcs.Task, ct, diff); }
             finally
             {
-                await App.Current.Dispatcher.InvokeAsync(() =>
+                await (_confirmDispatcher ?? App.Current.Dispatcher).InvokeAsync(() =>
                 {
                     if (ReferenceEquals(_pendingConfirm, tcs))
                     {
