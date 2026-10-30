@@ -39,7 +39,16 @@ public sealed partial class AgentCommandService
             return await _mutations.ExecuteAsync(r, async token =>
             {
                 int[] ids = r.Command == "launch-option revert" ? [(int)DepotAppId(r)]
-                    : await Task.Run(() => launch.FindDrifted().ToArray(), token);
+                    : await Task.Run(() =>
+                    {
+                        var drifted = launch.FindDrifted().ToArray();
+                        if (!r.Flags.ContainsKey("ids") && !r.Flags.ContainsKey("where")) return drifted;
+                        string[] selected;
+                        try { selected = BulkSelection.Select(r, Protocol.Node(drifted.Select(id => new { appid = id, drifted = true }))!.AsArray(), "appid", ["appid", "drifted"]); }
+                        catch (ArgumentException) { throw new MutationRejectedException("INVALID_SELECTION", 2); }
+                        if (selected.Any(id => !int.TryParse(id, out int value) || !drifted.Contains(value))) throw new MutationRejectedException("INVALID_SELECTION", 2);
+                        return selected.Select(int.Parse).ToArray();
+                    }, token);
                 return await Snapshot(() => PrepareLaunch(r, ids), token);
             }, ct);
         }

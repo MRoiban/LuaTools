@@ -25,8 +25,12 @@ public class SteamService(SettingsService settings)
     // Keep stop/install/start on the admitted installation across awaits and concurrent selection changes.
     internal IDisposable PinSelectedInstallation()
     {
+        return PinInstallation(EffectivePath);
+    }
+    internal IDisposable PinInstallation(string? path)
+    {
         string? previous = _operationPath.Value;
-        _operationPath.Value = EffectivePath;
+        _operationPath.Value = path;
         return new SelectionScope(() => _operationPath.Value = previous);
     }
     private sealed class SelectionScope(Action restore) : IDisposable { public void Dispose() => restore(); }
@@ -37,6 +41,13 @@ public class SteamService(SettingsService settings)
         get
         {
             if (_operationPath.Value is { } selected) return selected;
+            return SelectedPath;
+        }
+    }
+    internal string? SelectedPath
+    {
+        get
+        {
             string? overridePath = Environment.GetEnvironmentVariable(SteamProcessControl.SteamVariable) is { Length: > 0 } inherited
                 ? Path.GetDirectoryName(inherited) : settings.SteamPathOverride;
             return !string.IsNullOrWhiteSpace(overridePath) ? Normalize(overridePath) : AutoDetectedPath;

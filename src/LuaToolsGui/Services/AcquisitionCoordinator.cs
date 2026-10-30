@@ -108,17 +108,19 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null)
     {
         if (!source.CanDownload) throw new MutationRejectedException(source.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", 6);
+        var installation = installer?.CaptureInstallation();
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
             : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal);
         string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
         string acceptedVersion = CurrentVersion();
         job = job with { ConfirmAsync = async (file, item, ct) =>
         {
+            if (installation is { IsCurrent: false }) return false;
             if (confirm is null) return CurrentVersion() == acceptedVersion;
             // A GUI decision describes the target visible when its diff opens. Remote agents supply
             // their own version binding and can request a new decision after acquisition.
             string before = CurrentVersion();
-            if (!await confirm(file, item, ct)) return false;
+            if (!await confirm(file, item, ct) || installation is { IsCurrent: false }) return false;
             if (installVersion is null && CurrentVersion() != before) return false;
             acceptedVersion = CurrentVersion();
             return true;
@@ -130,6 +132,8 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             {
                 lock (LuaInstaller.InstallGate)
                 {
+                    if (installation is { IsCurrent: false }) return Task.FromResult(new JobResult(false, Resources.Strings.Agent_Add_GateChanged));
+                    using var selected = installation?.Pin();
                     if (CurrentVersion() != (installVersion?.Invoke() ?? acceptedVersion)) return Task.FromResult(new JobResult(false, Resources.Strings.Agent_Add_GateChanged));
                     return install(file, item, ct);
                 }
@@ -138,11 +142,12 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         var original = job.DownloadAsync;
         job = job with { DownloadAsync = async (item, progress, ct) =>
         {
+            if (installation is { IsCurrent: false }) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
             // A queued job is never authorized by a stale GUI badge. Recheck current credentials/usage.
             var fresh = baseAppId is null ? (await CheckAsync(appId, false, ct)).Sources
                 : await CheckDlcSourcesAsync(appId.ToString(), baseAppId, false, ct);
             var selected = fresh.FirstOrDefault(r => r.Name == source.Name);
-            if (selected?.CanDownload != true) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
+            if (selected?.CanDownload != true || installation is { IsCurrent: false }) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
             return await original(item, progress, ct);
         }};
         var active = queue.Items.FirstOrDefault(i => i.IsActive && i.Job.DedupeKey == job.DedupeKey);

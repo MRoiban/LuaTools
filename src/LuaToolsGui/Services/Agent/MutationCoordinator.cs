@@ -14,7 +14,31 @@ public sealed record PreparedMutation(MutationPlan Plan, Func<CancellationToken,
 /// <summary>One admission boundary for all resources. Work returned by Commit must be short or return a job.</summary>
 public sealed class MutationCoordinator(string? journalPath = null)
 {
-    private readonly byte[] _secretDigestKey = RandomNumberGenerator.GetBytes(32);
+    private static readonly object SecretKeyGate = new();
+    private byte[]? _secretDigestKey;
+    private byte[] SecretDigestKey()
+    {
+        lock (SecretKeyGate)
+        {
+            if (_secretDigestKey is not null) return _secretDigestKey;
+            string path = _path + ".digest-key";
+            if (File.Exists(path))
+            {
+                if (new FileInfo(path).Length > 8192) throw new IOException();
+                _secretDigestKey = LocalDiscovery.Protect(File.ReadAllBytes(path), true);
+                if (_secretDigestKey.Length != 32) throw new IOException();
+                return _secretDigestKey;
+            }
+            // Persist only a DPAPI CurrentUser protected random HMAC key. A missing or
+            // corrupt key fails closed; no unkeyed digest of short login codes is stored.
+            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+            byte[] key = RandomNumberGenerator.GetBytes(32);
+            byte[] protectedKey = LocalDiscovery.Protect(key, false);
+            using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            { file.Write(protectedKey); file.Flush(true); }
+            return _secretDigestKey = key;
+        }
+    }
     private readonly SemaphoreSlim _admission = new(1);
     private readonly Dictionary<string, (DateTimeOffset Time, MutationPlan Plan, string Digest)> _plans = [];
     private readonly string _path = journalPath ?? Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName, "agent-journal.json");
@@ -29,7 +53,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
         try
         {
             // Fingerprints exclude rendering and consent, but include all operands and actor attribution.
-            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam, request.Files, secret_digest = request.Secret is null ? null : Convert.ToHexString(HMACSHA256.HashData(_secretDigestKey, Encoding.UTF8.GetBytes(request.Secret))),
+            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam, request.Files, secret_digest = request.Secret is null ? null : Convert.ToHexString(HMACSHA256.HashData(SecretDigestKey(), Encoding.UTF8.GetBytes(request.Secret))),
                 flags = request.Flags.Where(f => f.Key is not ("yes" or "dry-run" or "plan-id" or "json" or "format" or "no-input" or "timeout" or "no-start" or "verbose" or "quiet" or "no-color" or "expect-instance" or "expect-steam" or "fields" or "idempotency-key")).OrderBy(f => f.Key).ToDictionary(f => f.Key, f => CanonicalFlag(f.Key, f.Value)) }, Protocol.Json));
             string key = Hash(request.Flags.GetValueOrDefault("idempotency-key") ?? request.RequestId);
             List<Entry> journal = [];
@@ -77,6 +101,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
             catch (OperationCanceledException) { throw; } // keep intent: outcome may be unknown
             catch { receipt = Failure("MUTATION_FAILED", 1); }
             // Only allowlisted, secret-free receipts belong here. Never journal request payloads.
+            receipt = JobReceipts.Normalize(receipt);
             journal[^1] = intent with { State = "accepted", Receipt = receipt }; Save(journal);
             AppEventLog.Shared.Write(LogLevel.Information, "Agent", $"actor=agent command={request.Command} outcome={(receipt.Ok ? "success" : receipt.Error?.Code)} note={LogRedactor.Redact(request.Flags.GetValueOrDefault("actor-note") ?? "")}");
             return receipt;
@@ -85,7 +110,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
         catch (JsonException) { return Failure("INVALID_DATA", 2); }
         catch (ArgumentException) { return Failure("INVALID_USAGE", 2); }
         catch (InvalidOperationException) { return Failure("INVALID_DATA", 2); }
-        catch (IOException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
+        catch (Exception ex) when (ex is IOException or CryptographicException or UnauthorizedAccessException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
         finally { _admission.Release(); }
     }
     public async Task<Envelope?> FindAsync(string idempotencyKey, CancellationToken ct)

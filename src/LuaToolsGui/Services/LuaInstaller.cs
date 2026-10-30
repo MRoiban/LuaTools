@@ -26,6 +26,10 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
 {
     internal static readonly object InstallGate = new();
 
+    internal InstallationBinding CaptureInstallation() => new(steam, steam.EffectivePath);
+    internal string? SelectedInstallationPath => steam.SelectedPath;
+    internal IDisposable PinInstallation(string path) => steam.PinInstallation(path);
+
     private bool AutoUpdate => settings.AutoUpdateApps;
 
     /// <summary>Raised (with the appid) whenever a lua is successfully installed, via any path (plugin,

@@ -11,12 +11,8 @@ public sealed partial class AgentCommandService
             if (r.Flags.GetValueOrDefault("idempotency-key") is { } key)
             {
                 var receipt = await _mutations.FindAsync(key, ct);
-                if (receipt is { Ok: false }) return receipt;
-                var ids = new HashSet<string>();
-                if (receipt?.Data?["id"]?.ToString() is { } id) ids.Add(id);
-                if (receipt?.Data?["job_id"]?.ToString() is { } jobId) ids.Add(jobId);
-                if (receipt?.Data?["results"] is System.Text.Json.Nodes.JsonArray results)
-                    foreach (var row in results) if (row?["job"]?["id"]?.ToString() is { } childId) ids.Add(childId);
+                var ids = JobReceipts.Ids(receipt);
+                if (receipt is { Ok: false } && ids.Length == 0) return receipt;
                 return await Snapshot(() => List(r, Protocol.Node(ids.Select(Jobs.Get).Where(x => x is not null).ToArray())!.AsArray()), ct);
             }
             return await Snapshot(() => List(r, Protocol.Node(Jobs.List(r.Flags.ContainsKey("active")))!.AsArray()), ct);

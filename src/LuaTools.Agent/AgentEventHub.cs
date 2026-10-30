@@ -34,8 +34,13 @@ public sealed class AgentEventHub(string instanceId)
             if (_readers.Count >= 16) backlog = [Envelope.Fail("BUSY", 7, "Event reader limit reached.")];
             else
             {
-                var retained = _recent.ToArray(); int index = cursor is null ? retained.Length - 1 : Array.FindIndex(retained, x => x.Cursor == cursor);
-                backlog = cursor is not null && index < 0 && cursor != instanceId + ":" + _sequence && !(cursor == instanceId + ":0" && _sequence <= 1000) ? [Envelope.Fail("RESET_REQUIRED", 3, "Refresh the resource snapshot before resuming events.")]
+                var retained = _recent.ToArray();
+                long oldest = _sequence - retained.Length + 1;
+                bool valid = cursor is null || cursor.StartsWith(instanceId + ":", StringComparison.Ordinal)
+                    && long.TryParse(cursor.AsSpan(instanceId.Length + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long after)
+                    && after >= oldest - 1 && after <= _sequence;
+                int index = cursor is null ? retained.Length - 1 : Array.FindIndex(retained, x => x.Cursor == cursor);
+                backlog = !valid ? [Envelope.Fail("RESET_REQUIRED", 3, "Refresh the resource snapshot before resuming events.")]
                     : retained.Skip(index + 1).Select(x => x.Frame).ToArray();
                 if (backlog.Length == 0 || backlog.All(x => x.Ok)) _readers.Add(channel);
             }

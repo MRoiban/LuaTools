@@ -16,12 +16,21 @@ public static class AgentCliInstallation
         return path.Split(';').Any(p => string.Equals(Normalize(p), Normalize(directory), StringComparison.OrdinalIgnoreCase))
             ? path : path + (path.Length > 0 && !path.EndsWith(';') ? ";" : "") + directory;
     }
+    // Leave unsupported data and overlong values untouched. Never cast a non-string
+    // registry value into the same state as an absent value.
     public static bool RegisterPath(RegistryKey environment, string directory)
     {
-        string? previous = environment.GetValue("Path", null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+        bool exists = environment.GetValueNames().Contains("Path", StringComparer.OrdinalIgnoreCase);
+        var kind = exists ? environment.GetValueKind("Path") : RegistryValueKind.ExpandString;
+        if (kind is not (RegistryValueKind.String or RegistryValueKind.ExpandString)) throw new InvalidDataException("Unsupported user PATH registry type.");
+        object? raw = environment.GetValue("Path", null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        if (exists && raw is not string) throw new InvalidDataException("Invalid user PATH value.");
+        string? previous = raw as string;
         string updated = AddToPath(previous, directory);
+        // Windows' environment variable limit includes its terminating null. Bound both
+        // the stored and expanded text, preserving expandable entries verbatim.
+        if (updated.Length > 32766 || Environment.ExpandEnvironmentVariables(updated).Length > 32766) throw new InvalidDataException("User PATH length limit exceeded.");
         if (updated == previous) return false;
-        var kind = previous is null ? RegistryValueKind.ExpandString : environment.GetValueKind("Path");
         environment.SetValue("Path", updated, kind);
         return true;
     }

@@ -1333,6 +1333,6 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     {
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null || dispatcher.CheckAccess()) action();
-        else dispatcher.Invoke(action);
+        else dispatcher.BeginInvoke(action);
     }
 }

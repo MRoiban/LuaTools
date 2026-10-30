@@ -19,6 +19,7 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
     public async Task<IReadOnlyList<LocalInstallOutcome>> InstallAsync(IEnumerable<string> paths,
         Func<string, OverwriteDiff, CancellationToken, Task<bool>> decide, CancellationToken ct = default)
     {
+        var installation = installer.CaptureInstallation();
         await _batches.WaitAsync(ct);
         var operation = new Batch();
         foreach (var old in _operations.Values.Where(b => b.State != "running").Take(Math.Max(0, _operations.Count - 999))) _operations.TryRemove(old.Id, out _);
@@ -48,14 +49,18 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
                         if (!replace) { results.Add(new(name, true, true, false, 0)); continue; }
                     }
                 }
-                InstallResult result;
-                lock (LuaInstaller.InstallGate)
+                var result = await Task.Run(() =>
                 {
-                    // Compare again in the same install turn, including after a queued decision.
-                    if (id is { } target && versions.GetValueOrDefault(target) is { } expected && overwrites.Version(target) != expected)
-                    { results.Add(new(name, false, false, false, 0)); continue; }
-                    result = ext == ".manifest" ? installer.InstallManifestFile(path) : ext == ".zip" ? installer.InstallZip(path, id!.Value) : installer.InstallLuaFile(path, id!.Value);
-                }
+                    lock (LuaInstaller.InstallGate)
+                    {
+                        if (!installation.IsCurrent) return InstallResult.Fail(Resources.Strings.Agent_Add_GateChanged);
+                        using var selected = installation.Pin();
+                        // Compare and install in one worker turn; never block the dispatcher on InstallGate.
+                        if (id is { } target && versions.GetValueOrDefault(target) is { } expected && overwrites.Version(target) != expected)
+                            return InstallResult.Fail(Resources.Strings.Agent_Add_GateChanged);
+                        return ext == ".manifest" ? installer.InstallManifestFile(path) : ext == ".zip" ? installer.InstallZip(path, id!.Value) : installer.InstallLuaFile(path, id!.Value);
+                    }
+                }, ct);
                 results.Add(new(name, !result.AnyFailed, false, result.LuaInstalled, result.ManifestCount, result.Failed.Count, result.Error));
             }
             operation.Results = results.ToArray();

@@ -715,17 +715,18 @@ public partial class DownloadViewModel : ObservableObject
 
             // Cancelling the download while the overlay is open closes it and declines.
             await using var reg = ct.Register(() => tcs.TrySetResult(false));
-            bool answer = await Services.Agent.ConsentCoordinator.WaitWithGuiAsync(jobId, tcs.Task, ct, diff);
-
-            await App.Current.Dispatcher.InvokeAsync(() =>
+            try { return await Services.Agent.ConsentCoordinator.WaitWithGuiAsync(jobId, tcs.Task, ct, diff); }
+            finally
             {
-                if (ReferenceEquals(_pendingConfirm, tcs))
+                await App.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    _pendingConfirm = null;
-                    IsConfirmingOverwrite = false;
-                }
-            });
-            return answer;
+                    if (ReferenceEquals(_pendingConfirm, tcs))
+                    {
+                        _pendingConfirm = null;
+                        IsConfirmingOverwrite = false;
+                    }
+                });
+            }
         }
         finally
         {

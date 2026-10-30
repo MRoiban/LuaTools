@@ -56,6 +56,7 @@ public sealed partial class AgentCommandService
                 {
                     AddSteamGate();
                     if (PlanContext != context || diffs.Any(d => AddVersion(d.AppId) != d.Version)) throw new MutationRejectedException("PLAN_STALE", 6);
+                    var installation = Acquisition.Installer.CaptureInstallation();
                     string[] paths = r.InputPaths;
                     r.RetainInputs = true;
                     string job;
@@ -63,6 +64,8 @@ public sealed partial class AgentCommandService
                     {
                         try
                         {
+                            if (!installation.IsCurrent) throw new MutationRejectedException("PLAN_STALE", 6);
+                            using var selected = installation.Pin();
                             var results = await Acquisition.Local.InstallAsync(paths, (_, diff, _) => diffs.Any(d => d.AppId == diff.AppId && d.Version == diff.Version) ? Task.FromResult(true) : throw new MutationRejectedException("PLAN_STALE", 6), lifetime);
                             return results.Any(x => !x.Ok) ? Envelope.Fail("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed) with { Error = new("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed, Details: Protocol.Node(new { results })) } : Envelope.Success(new { results });
                         }

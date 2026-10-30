@@ -39,7 +39,7 @@ public class ManifestJobFactory(
         Action? onReveal = null)
     {
         string title = gameName ?? appId.ToString();
-        return new DownloadJob(
+        return installer.CaptureInstallation().Bind(new DownloadJob(
             DownloadKind.Manifest,
             $"manifest:{appId}",
             appId,
@@ -52,7 +52,7 @@ public class ManifestJobFactory(
             (file, _, _) => Task.FromResult(InstallManifest(file, appId, title)),
             confirm,
             onFinished,
-            onReveal);
+            onReveal));
     }
 
     /// <summary>DLC unlock lua. Installed silently: it's an unlock, so there's nothing to confirm.</summary>
@@ -62,7 +62,7 @@ public class ManifestJobFactory(
         Action? onReveal = null, string? sourceName = null)
     {
         string title = gameName ?? appId.ToString();
-        return new DownloadJob(
+        return installer.CaptureInstallation().Bind(new DownloadJob(
             DownloadKind.Dlc,
             $"dlc:{appId}",
             appId,
@@ -75,7 +75,7 @@ public class ManifestJobFactory(
             (file, _, _) => Task.FromResult(InstallManifest(file, appId, title)),
             ConfirmAsync: null,
             OnFinished: onFinished,
-            OnReveal: onReveal);
+            OnReveal: onReveal));
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ public class ManifestJobFactory(
         Action<DownloadItem, JobResult?>? onFinished = null)
     {
         bool isManifestSlot = slot == "manifest";
-        return new DownloadJob(
+        var job = new DownloadJob(
             isManifestSlot ? DownloadKind.DenuvoManifest : DownloadKind.DenuvoFix,
             $"denuvo:{fixId}:{slot}",
             appId,
@@ -114,6 +114,7 @@ public class ManifestJobFactory(
                 : ApplyDenuvoFix(file, appId, fixId, gameName)),
             ConfirmAsync: null,
             OnFinished: onFinished);
+        return isManifestSlot ? installer.CaptureInstallation().Bind(job) : job;
     }
 
     /// <summary>An executable Fix Repair archive, using the existing fix apply and undo contract.</summary>

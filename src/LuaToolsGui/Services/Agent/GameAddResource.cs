@@ -54,7 +54,7 @@ public sealed partial class AgentCommandService
                 AddSteamGate();
                 if (PlanContext != context.Context || AddVersion(id) != context.Version || current?.CanDownload != true || fresh.Details?.BaseAppId != sources.Details?.BaseAppId)
                     throw new MutationRejectedException("PLAN_STALE", 6);
-                bool deduplicated = queue.Items.Any(i => i.IsActive && i.Job.DedupeKey == (isDlc ? "dlc:" : "manifest:") + id);
+                var activeIds = queue.Items.Where(i => i.IsActive).Select(i => i.Id).ToHashSet();
                 string approvedVersion = context.Version;
                 var item = Acquisition.Sources.Enqueue(id, sources.Details?.Name, current, parent,
                     confirm: async (file, queued, lifetime) =>
@@ -65,7 +65,7 @@ public sealed partial class AgentCommandService
                         approvedVersion = diff.Version;
                         return AddVersion(id) == approvedVersion;
                     }, installVersion: () => approvedVersion);
-                return Envelope.Success(new { id = item.Id, job_id = item.Id, state = "queued", deduplicated, source = row.Name });
+                return Envelope.Success(new { id = item.Id, job_id = item.Id, state = "queued", deduplicated = activeIds.Contains(item.Id), source = row.Name });
             }, commitToken);
         });
     }, ct);
