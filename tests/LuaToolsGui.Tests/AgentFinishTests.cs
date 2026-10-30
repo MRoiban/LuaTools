@@ -112,7 +112,7 @@ public sealed class AgentFinishTests
                 libraryNames: names, libraryDetails: details, libraryCache: cache, cabinet: Cab, modes: Mode,
                 acquisition: new(new(api, hubcap, Settings, auth, Queue, factory, installer), diff, Local, installer, api, new(api, depots, details, installer), factory));
         }
-        internal void Live(string text) => File.WriteAllText(Path.Combine(Steam.StPlugInDir!, "570.lua"), text);
+        internal void Live(string text) { Directory.CreateDirectory(Steam.StPlugInDir!); File.WriteAllText(Path.Combine(Steam.StPlugInDir!, "570.lua"), text); }
         internal Task<Envelope> Call(string command, string[]? args = null, Dictionary<string, string?>? flags = null, string? input = null, string name = "input.json") => Pipe(new(1, Convert.ToBase64String(_capability), Facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], Facade.SteamIdentity), input, name);
         private async Task<Envelope> Pipe(AgentRequest request, string? input, string name)
         {

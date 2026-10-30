@@ -91,7 +91,7 @@ public sealed class AgentAcquisitionTests
                 throw new InvalidOperationException("Unexpected synthetic provider route");
             });
             Http = new(new Delayed(this, transport)) { BaseAddress = new Uri(AppConfig.ApiBaseUrl) };
-            var metadata = new Stub(_ => Json("{\"status\":\"success\",\"data\":{\"700\":{\"depots\":{}}}}"));
+            var metadata = new Delayed(this, new Stub(_ => Json("{\"status\":\"success\",\"data\":{\"700\":{\"depots\":{},\"extended\":{\"listofdlc\":\"730\"}}}}")));
             var covers = new CoverCache(metadata, Path.Combine(Root, "covers"));
             AppInfo = new(cache, NullLogger<SteamAppInfoCache>.Instance, metadata, Path.Combine(Root, "details"));
             Depots = new(metadata);
