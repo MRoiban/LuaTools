@@ -176,6 +176,20 @@ public sealed class AgentAcquisitionTests
     }
 
     [Fact]
+    public async Task ManifestInstallRejectsAnEditMadeWhileWaitingForTheInstallSlot()
+    {
+        using var f = new Fixture(); f.Live("addappid(730)\n");
+        string admitted = f.Diff.Version(730);
+        var job = AgentCommandService.AdmittedOnly(f.Factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture"), () => f.Diff.Version(730), admitted);
+        var item = f.Queue.Enqueue(job);
+        f.Live("addappid(730)\n-- edited after consent\n");
+        string file = f.CreateFile("730.lua", "addappid(730)\n");
+        Assert.False((await job.InstallAsync(new(file, "730.lua"), item, default)).Ok);
+        Assert.Contains("edited after consent", File.ReadAllText(Path.Combine(f.Steam.StPlugInDir!, "730.lua")));
+        Assert.False(File.Exists(file));
+    }
+
+    [Fact]
     public async Task ManifestPreparationRejectsReboundSteam()
     {
         using var f = new Fixture(); f.Delay = true;

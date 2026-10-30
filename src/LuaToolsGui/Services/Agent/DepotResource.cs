@@ -176,13 +176,17 @@ public sealed partial class AgentCommandService
                 DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
                 if (size > 0 && DepotDownloaderService.FreeSpaceFor(output!) is { } free && free < size) throw new MutationRejectedException("NO_SPACE", 6);
                 string selectedSteam = SteamIdentity;
-                var item = queue.Enqueue(factory.CreateDepotJob(id, appList?.GetName(id) ?? id.ToString(), selections, output!, revalidate: () =>
+                var job = factory.CreateDepotJob(id, appList?.GetName(id) ?? id.ToString(), selections, output!, revalidate: () =>
                 {
                     if (selectedSteam != SteamIdentity) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
                     RequireGate("DepotDownloader");
                     DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
-                }));
-                return Envelope.Success(new { id = item.Id, job_id = item.Id, state = item.Status.ToString() });
+                }) with { Payload = string.Join(',', selections.Select(s => s.DepotId + ":" + s.ManifestId).Order(StringComparer.Ordinal)) + "|" + Path.GetFullPath(output!).ToUpperInvariant() };
+                // One depot job per app: only an identical request may share the active item.
+                var active = queue.Items.FirstOrDefault(i => i.IsActive && i.Job.DedupeKey == job.DedupeKey);
+                if (active is not null && active.Job.Payload != job.Payload) throw new MutationRejectedException("JOB_ACTIVE", 6);
+                var item = queue.Enqueue(job);
+                return Envelope.Success(new { id = item.Id, job_id = item.Id, state = item.Status.ToString(), deduplicated = active is not null });
             }, commit));
         }, ct);
     }

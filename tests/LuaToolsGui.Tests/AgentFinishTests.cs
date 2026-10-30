@@ -257,6 +257,9 @@ public sealed class AgentFinishTests
         f.Settings.DepotDownloaderEnabled = true;
         var accepted = await f.Call("depot download", ["570"], flags); Assert.True(accepted.Ok, accepted.Error?.Code);
         Assert.Equal(Assert.Single(f.Queue.Items).Id, accepted.Data!["job_id"]!.ToString());
+        var repeat = await f.Call("depot download", ["570"], flags); Assert.True(repeat.Ok, repeat.Error?.Code);
+        Assert.Equal(accepted.Data["job_id"]!.ToString(), repeat.Data!["job_id"]!.ToString()); Assert.True(repeat.Data["deduplicated"]!.GetValue<bool>());
+        Assert.Equal("JOB_ACTIVE", (await f.Call("depot download", ["570"], new() { ["depot"] = "571", ["output"] = Path.Combine(f.Root, "other"), ["yes"] = null })).Error!.Code);
         var queued = Assert.Single(f.Queue.Items); queued.Status = DownloadStatus.Downloading;
         Assert.True((await f.Call("job pause", [queued.Id])).Ok); Assert.Equal(DownloadStatus.Paused, queued.Status);
         Assert.True((await f.Call("job resume", [queued.Id])).Ok); Assert.True(queued.NeedsValidate); Assert.Equal(DownloadStatus.Queued, queued.Status);

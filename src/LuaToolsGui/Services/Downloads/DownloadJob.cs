@@ -96,4 +96,10 @@ public sealed record DownloadJob(
     /// Exists so a cancel can offer to delete what was written. The path is otherwise captured only
     /// inside the job's own closure, leaving nothing outside able to name it.
     /// </remarks>
-    string? OutputPath = null);
+    string? OutputPath = null,
+
+    /// <summary>
+    /// What the job will produce, for callers that must tell an identical active job from a conflicting
+    /// one sharing its <see cref="DedupeKey"/>. Null when nothing compares it.
+    /// </summary>
+    string? Payload = null);

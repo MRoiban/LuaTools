@@ -338,6 +338,25 @@ public partial class SettingsViewModel : ObservableObject
     /// App provides the toast + restart action.</summary>
     public Action? RequestRestartPrompt { get; set; }
 
+    /// <summary>Show a consent change made elsewhere. Writes the backing fields, because the property
+    /// setters would record a second consent change.</summary>
+    private void RefreshExecutableSwitches()
+    {
+#pragma warning disable MVVMTK0034
+        _executableGameFixesEnabled = _settings.ExecutableGameFixesEnabled;
+        _betterSteamToolsEnabled = _settings.BetterSteamToolsEnabled;
+        _openSteamToolsEnabled = _settings.OpenSteamToolsEnabled;
+        _steamPluginEnabled = _settings.SteamPluginEnabled;
+        _depotDownloaderEnabled = _settings.DepotDownloaderEnabled;
+        _steamlessEnabled = _settings.SteamlessEnabled;
+        _steamAutoCrackEnabled = _settings.SteamAutoCrackEnabled;
+        _cloudRedirectEnabled = _settings.CloudRedirectEnabled;
+#pragma warning restore MVVMTK0034
+        foreach (string name in new[] { nameof(ExecutableGameFixesEnabled), nameof(BetterSteamToolsEnabled), nameof(OpenSteamToolsEnabled),
+            nameof(SteamPluginEnabled), nameof(DepotDownloaderEnabled), nameof(SteamlessEnabled), nameof(SteamAutoCrackEnabled), nameof(CloudRedirectEnabled) })
+            OnPropertyChanged(name);
+    }
+
     public SettingsViewModel(SettingsService settings, AuthService auth, SteamService steam,
         HubcapService hubcap, ICabinetService cabinet, ICabinetCloud? cloud = null)
     {
@@ -349,6 +368,12 @@ public partial class SettingsViewModel : ObservableObject
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher is null || dispatcher.CheckAccess()) RefreshCloud();
             else dispatcher.BeginInvoke(RefreshCloud);
+        };
+        settings.ExecutableWorkflowChanged += (_, _) =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) RefreshExecutableSwitches();
+            else dispatcher.BeginInvoke(RefreshExecutableSwitches);
         };
         _cabinetEnabled = settings.CabinetEnabled;
         _cabinetLivePlaytime = settings.CabinetLivePlaytime;

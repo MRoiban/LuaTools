@@ -63,6 +63,18 @@ public sealed class CabinetSettingsTests
         finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
     [Fact]
+    public void ConsentChangedOutsideTheViewModelReachesItsSwitch()
+    {
+        var settings = new SettingsService(new AppSettings());
+        var vm = new SettingsViewModel(settings, new AuthService(), new SteamService(settings), new HubcapService(), new FakeCabinetService());
+        Assert.False(vm.SteamPluginEnabled);
+        ExecutableConsentCoordinator.Set(settings, "SteamPluginEnabled", true, "agent");
+        Assert.True(vm.SteamPluginEnabled);
+        ExecutableConsentCoordinator.Set(settings, "SteamPluginEnabled", false, "agent");
+        Assert.False(vm.SteamPluginEnabled);
+    }
+
+    [Fact]
     public void ViewModelInitializesWithoutSavingThenEveryCabinetChangeNotifiesEngine()
     {
         var settings = new SettingsService(new AppSettings()); var service = new FakeCabinetService();
