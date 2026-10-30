@@ -6,7 +6,9 @@ public sealed partial class AgentCommandService
     private Task<Envelope> CloudSaveAsync(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
     {
         ValidateScalarInput(r, "enabled");
-        if (r.Flags.GetValueOrDefault("enabled") != "true") throw new MutationRejectedException("UNSUPPORTED", 5);
+        var data = BulkSelection.Data(r, "enabled");
+        bool enabled = r.Flags.GetValueOrDefault("enabled") is { } value ? bool.Parse(value) : data["enabled"]?.GetValue<bool>() ?? throw new MutationRejectedException("INVALID_USAGE", 2);
+        if (!enabled) throw new MutationRejectedException("UNSUPPORTED", 5);
         void Gate()
         {
             if (modes is null || !modes.CloudUnlocked) throw new MutationRejectedException("MODE_REQUIRED", 6);

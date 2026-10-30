@@ -237,6 +237,8 @@ public sealed class AgentFinishTests
         int before = f.Net.Calls;
         var get = await f.Call("game get", ["570"], new() { ["installed"] = null, ["fields"] = "id,installed,add_status" }); Assert.True(get.Ok); Assert.NotNull(get.Data!["add_status"]); Assert.Equal(before, f.Net.Calls);
         var dry = await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["dry-run"] = null }); Assert.True(dry.Ok, dry.Error?.Code); Assert.False(f.Settings.CloudRedirectEnabled); Assert.Equal(0, f.Mode.Enables);
+        Assert.True((await f.Call("cloud-save update", flags: new() { ["data"] = "{\"enabled\":true}", ["dry-run"] = null })).Ok);
+        Assert.Equal("UNSUPPORTED", (await f.Call("cloud-save update", flags: new() { ["data"] = "{\"enabled\":true}", ["enabled"] = "false", ["dry-run"] = null })).Error!.Code);
         Assert.Equal("CONSENT_REQUIRED", (await f.Call("cloud-save update", flags: new() { ["enabled"] = "true" })).Error!.Code);
         var done = await f.Result(await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["yes"] = null })); Assert.Equal("completed", done.Data!["state"]!.ToString()); Assert.True(f.Settings.CloudRedirectEnabled); Assert.Equal(1, f.Mode.Enables);
         var install = await f.Call("game install", ["570"], new() { ["yes"] = null }); Assert.Equal("STEAM_PROTOCOL_ISOLATION_UNPROVEN", install.Error!.Code);
