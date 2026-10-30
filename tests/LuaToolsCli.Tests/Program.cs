@@ -94,12 +94,39 @@ await AsyncTest("fresh-process fake-host ping", async () =>
         string name = "LuaTools-test-" + Guid.NewGuid().ToString("N");
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-        var host = Task.Run(async () => { await server.WaitForConnectionAsync(cts.Token); var req = await Protocol.ReadAsync<AgentRequest>(server, Protocol.MaxRequest, cts.Token); Assert(req.Command == "ping", "ping request"); await Protocol.WriteAsync(server, Envelope.Success(new { protocol = 1, ready = true }), Protocol.MaxFrame, cts.Token); });
+        var host = Task.Run(async () => { await server.WaitForConnectionAsync(cts.Token); var req = await Protocol.ReadAsync<AgentRequest>(server, Protocol.MaxRequest, cts.Token); Assert(req.Command == "ping" && req.Flags.ContainsKey("no-input"), "ping request is noninteractive"); await Protocol.WriteAsync(server, Envelope.Success(new { protocol = 1, ready = true }), Protocol.MaxFrame, cts.Token); });
         var psi = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true, UseShellExecute = false };
         psi.ArgumentList.Add(Assembly.GetExecutingAssembly().Location); psi.ArgumentList.Add("--probe"); psi.ArgumentList.Add(name);
         var clock = Stopwatch.StartNew(); using var child = Process.Start(psi)!; child.StandardInput.Close(); string output = await child.StandardOutput.ReadToEndAsync(); string errors = await child.StandardError.ReadToEndAsync(); await child.WaitForExitAsync(cts.Token); times.Add(clock.Elapsed.TotalMilliseconds); await host;
         Assert(child.ExitCode == 0 && JsonNode.Parse(output)!["ok"]!.GetValue<bool>() && errors == "", output + errors);
     }
     times.Sort(); Console.WriteLine($"MEASURE fresh-process fake-host CLI ping n=12 median_ms={times[6]:F2} p95_ms={times[11]:F2} min_ms={times[0]:F2}");
+});
+foreach (var (arguments, expected) in new (string[], int)[]
+{
+    (["version", "--json"], 0), (["help", "setting", "--json"], 0), (["commands", "--json"], 0),
+    (["completion", "bash", "--json"], 0), (["setting", "update", "Language", "--value", "fr", "--json"], 5),
+    (["statuz", "--json"], 2), (["activity-log", "list", "--severity", "bad", "--limit", "0", "--json"], 2),
+    (["ping", "--no-start", "--json"], 9),
+})
+await AsyncTest("entrypoint " + string.Join(' ', arguments), async () =>
+{
+    var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet") { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+    start.ArgumentList.Add(typeof(Cli).Assembly.Location);
+    foreach (string argument in arguments) start.ArgumentList.Add(argument);
+    using var child = Process.Start(start)!; child.StandardInput.Close();
+    string output = await child.StandardOutput.ReadToEndAsync(); string error = await child.StandardError.ReadToEndAsync();
+    await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    Assert(child.ExitCode == expected, output + error);
+    var envelope = JsonNode.Parse(output)!;
+    Assert(envelope["ok"]!.GetValue<bool>() == (expected == 0), output);
+    if (arguments[0] == "commands")
+    {
+        var keys = envelope["data"]!["commands"]!.AsArray().Select(c => c!["key"]!.GetValue<string>()).ToHashSet();
+        foreach (string line in File.ReadLines(Path.Combine(root, "docs/cli/capability-map.md")).Where(l => l.StartsWith("| C-", StringComparison.Ordinal)))
+        foreach (Match m in Regex.Matches(line.Split(" | ")[^2], @"luatools ([a-z-]+)(?: ([a-z][a-z-]*))?"))
+            Assert(keys.Contains((m.Groups[1].Value + " " + m.Groups[2].Value).Trim()), m.Value);
+    }
+    if (arguments[0] == "activity-log") Assert(envelope["error"]!["problems"]!.AsArray().Count == 2, output);
 });
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;

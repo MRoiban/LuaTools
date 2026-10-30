@@ -11,6 +11,7 @@ public sealed class AgentClient
     public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
+        if (LocalDiscovery.IsElevated()) return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "Run the agent and LuaTools unelevated in the same Windows session.");
         bool started = false;
         var watch = Stopwatch.StartNew();
         while (true)
@@ -27,7 +28,7 @@ public sealed class AgentClient
                 byte[] capability = LocalDiscovery.Protect(Convert.FromBase64String(record.Capability), true);
                 try
                 {
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, parsed.Value("expect-steam"));
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, parsed.Value("expect-steam"), typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
                     return await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
                 }

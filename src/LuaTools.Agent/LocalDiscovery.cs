@@ -95,19 +95,33 @@ public static class LocalDiscovery
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint pid) || pid != record.Pid) throw new UnauthorizedAccessException();
         VerifyProcess(record);
+        VerifyToken(record.Pid);
     }
     public static void VerifyClient(NamedPipeServerStream pipe)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         // CurrentUserOnly enforces account AND elevation. Independently reject remote/session clients
         // before reading a capability, using kernel-reported computer name and client PID/session.
-        var computer = new StringBuilder(256);
+        var computer = new StringBuilder(512);
         // Local NPFS clients return ERROR_PIPE_LOCAL (229). A successful lookup means a
         // remote SMB client, even if its supplied computer name matches this machine.
         if (GetNamedPipeClientComputerName(pipe.SafePipeHandle, computer, 512) || Marshal.GetLastWin32Error() != 229) throw new UnauthorizedAccessException();
         if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle, out uint pid)) throw new UnauthorizedAccessException();
         using var client = Process.GetProcessById(checked((int)pid));
         if (client.SessionId != Process.GetCurrentProcess().SessionId) throw new UnauthorizedAccessException();
+        VerifyToken(client.Id);
+    }
+    private static void VerifyToken(int pid)
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        using var process = Process.GetProcessById(pid);
+        if (!OpenProcessToken(process.SafeHandle, 8, out var token)) throw new UnauthorizedAccessException();
+        using (token)
+        {
+            using var peer = new WindowsIdentity(token.DangerousGetHandle());
+            if (!Equals(peer.User, WindowsIdentity.GetCurrent().User) || !GetTokenInformation(token, 20, out int elevated, 4, out _) || elevated != 0)
+                throw new UnauthorizedAccessException();
+        }
     }
     public static bool IsElevated()
     {
@@ -115,6 +129,10 @@ public static class LocalDiscovery
         using var identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool OpenProcessToken(SafeProcessHandle process, uint access, out SafeAccessTokenHandle token);
+    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetTokenInformation(SafeAccessTokenHandle token, int informationClass, out int information, int length, out int returned);
     [StructLayout(LayoutKind.Sequential)] private struct Blob { public int Length; public IntPtr Data; }
     [DllImport("crypt32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CryptProtectData(ref Blob input, string? description, IntPtr entropy, IntPtr reserved, IntPtr prompt, int flags, out Blob output);

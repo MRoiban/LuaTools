@@ -69,7 +69,7 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
     internal async Task ServeAsync(NamedPipeServerStream pipe, CancellationToken shutdown)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
-        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
         await using var owned = pipe;
         try
         {

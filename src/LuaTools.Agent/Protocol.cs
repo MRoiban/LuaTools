@@ -11,7 +11,7 @@ public static class Protocol
     public const int Version = 1;
     public const int MaxFrame = 1024 * 1024;
     public const int MaxRequest = 64 * 1024;
-    public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
+    public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     public static JsonNode? Node(object? value) => JsonSerializer.SerializeToNode(value, Json);
 
     public static async Task<T> ReadAsync<T>(Stream stream, int maximum, CancellationToken ct)
@@ -73,5 +73,5 @@ internal sealed class EnvelopeConverter : JsonConverter<Envelope>
     }
 }
 public sealed record AgentRequest(int Protocol, string Capability, string InstanceId, string RequestId, string Command,
-    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null);
+    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown");
 public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability);

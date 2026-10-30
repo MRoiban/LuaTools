@@ -40,7 +40,7 @@ public sealed class AgentCommandService(SettingsService settings, SteamService s
             "ping" or "application start" => Ping(),
             "status" => await StatusAsync(ct),
             "whoami" => Whoami(),
-            "doctor" => await DoctorAsync(ct),
+            "doctor" => await DoctorAsync(ct, request.ClientVersion),
             "setting list" => List(request, Protocol.Node(ReadSettings(settings))!.AsArray()),
             "setting get" => GetSetting(request.Arguments[0]),
             "download list" or "queue list" => List(request, await DownloadSnapshotAsync(ct)),
@@ -50,13 +50,20 @@ public sealed class AgentCommandService(SettingsService settings, SteamService s
         return Results.Project(result, request.Flags.GetValueOrDefault("fields"));
     }
     public Envelope Ping() => Envelope.Success(new { protocol = Protocol.Version, instance_id = InstanceId, ready = true });
+    private bool? SelectedSteamRunning()
+    {
+        if (!steam.IsValid) return null;
+        try { return steam.IsSelectedSteamRunning(); }
+        catch (InvalidOperationException) { return null; }
+        catch (System.ComponentModel.Win32Exception) { return null; }
+    }
     public async Task<Envelope> StatusAsync(CancellationToken ct)
     {
         var counts = await Snapshot(() => new { active = queue.ActiveCount, total = queue.Items.Count, failed = queue.History.Count(i => i.Failed) }, ct);
         return Envelope.Success(new
         {
             protocol = Protocol.Version, instance_id = InstanceId, version = UpdateService.CurrentVersion.ToString(),
-            steam = new { identity = SteamIdentity, valid = steam.IsValid, running = steam.IsSelectedSteamRunning() }, queue = counts,
+            steam = new { identity = SteamIdentity, valid = steam.IsValid, running = SelectedSteamRunning() }, queue = counts,
             helpers = Cabinet.CabinetService.HasActiveHelpers ? 1 : 0,
             capabilities = Catalogue.Commands.Select(c => new { command = c.Key, enabled = c.Status == "enabled" }), health = "ready", available_actions = Actions("application"),
         });
@@ -109,15 +116,15 @@ public sealed class AgentCommandService(SettingsService settings, SteamService s
         string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
         return _pager.List(key, rows, request.Flags);
     }
-    public async Task<Envelope> DoctorAsync(CancellationToken ct)
+    public async Task<Envelope> DoctorAsync(CancellationToken ct, string clientVersion = "unknown")
     {
         var downloads = await DownloadSnapshotAsync(ct);
         int failed = await Snapshot(() => queue.History.Count(x => x.Failed), ct);
         var addon = await unlocker.GetCloudRedirectStateAsync(checkUpdate: false, ct: ct);
         var findings = new List<object>();
         void Add(string severity, string code, string message, string? fix, object? details = null) => findings.Add(new { severity, code, message, fix_command = fix, details, available_actions = Actions("doctor") });
-        Add("info", "APP_VERSION", Resources.Strings.Agent_DoctorVersion, null, new { app = UpdateService.CurrentVersion.ToString(), cli_protocol = Protocol.Version });
-        Add(steam.IsValid ? "info" : "warn", "STEAM_LOCATION", Resources.Strings.Agent_DoctorSteam, steam.IsValid ? null : "luatools steam update --auto", new { path = steam.EffectivePath, valid = steam.IsValid, running = steam.IsSelectedSteamRunning(), identity = SteamIdentity });
+        Add("info", "APP_VERSION", Resources.Strings.Agent_DoctorVersion, null, new { app = UpdateService.CurrentVersion.ToString(), cli = Version.TryParse(clientVersion, out var cliVersion) ? cliVersion.ToString() : "unknown", cli_protocol = Protocol.Version });
+        Add(steam.IsValid ? "info" : "warn", "STEAM_LOCATION", Resources.Strings.Agent_DoctorSteam, steam.IsValid ? null : "luatools steam update --auto", new { path = steam.EffectivePath, valid = steam.IsValid, running = SelectedSteamRunning(), identity = SteamIdentity });
         Add(settings.SelectedMode is null ? "warn" : "info", "MODE_STATE", Resources.Strings.Agent_DoctorMode, settings.SelectedMode is null ? "luatools mode update ost --yes" : null, new { selected_mode = settings.SelectedMode, cloudredirect = addon, plugin_installed = plugin.IsInstalledLocally() });
         Add(auth.IsSignedIn ? "info" : "warn", "LOGIN_STATE", Resources.Strings.Agent_DoctorLogin, auth.IsSignedIn ? null : "luatools account login --browser", new { signed_in = auth.IsSignedIn, public_sources_available = true });
         bool key = !string.IsNullOrWhiteSpace(settings.HubcapApiKey);

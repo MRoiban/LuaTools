@@ -61,6 +61,7 @@ public sealed class AgentCliTests : IDisposable
         Assert.True((await facade.ExecuteAsync(Request(facade, "ping"), default)).Data!["ready"]!.GetValue<bool>());
         Assert.Equal("guest", (await facade.ExecuteAsync(Request(facade, "whoami"), default)).Data!["state"]!.GetValue<string>());
         Assert.Empty((await facade.ExecuteAsync(Request(facade, "download list"), default)).Data!.AsArray());
+        Assert.True((await facade.ExecuteAsync(Request(facade, "status"), default)).Ok);
         var doctor = await facade.ExecuteAsync(Request(facade, "doctor"), default);
         Assert.True(doctor.Ok);
         var codes = doctor.Data!.AsArray().Select(n => n!["code"]!.GetValue<string>()).ToArray();

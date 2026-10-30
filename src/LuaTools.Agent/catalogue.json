@@ -746,7 +746,10 @@
       9
     ],
     "preconditions": [],
-    "output_fields": []
+    "output_fields": [
+      "version",
+      "commands"
+    ]
   },
   {
     "resource": "describe",
@@ -873,7 +876,11 @@
       9
     ],
     "preconditions": [],
-    "output_fields": []
+    "output_fields": [
+      "resource",
+      "commands",
+      "settings"
+    ]
   },
   {
     "resource": "session",
@@ -1131,7 +1138,9 @@
       9
     ],
     "preconditions": [],
-    "output_fields": []
+    "output_fields": [
+      "help"
+    ]
   },
   {
     "resource": "version",
@@ -1256,7 +1265,10 @@
       9
     ],
     "preconditions": [],
-    "output_fields": []
+    "output_fields": [
+      "version",
+      "protocol"
+    ]
   },
   {
     "resource": "completion",
@@ -1388,7 +1400,10 @@
       9
     ],
     "preconditions": [],
-    "output_fields": []
+    "output_fields": [
+      "shell",
+      "script"
+    ]
   },
   {
     "resource": "account",

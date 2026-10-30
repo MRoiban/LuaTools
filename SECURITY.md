@@ -107,7 +107,7 @@ Capabilities never appear in arguments, environment, stdout or logs. Same-user h
 are inside this trust boundary; DPAPI does not isolate hostile applications under one account.
 
 Control requests are bounded to 64 KiB, replies to 1 MiB. Eight independent connections each have
-a ten-second deadline and shutdown cancellation; a stalled client cannot block other reads.
+a five-second deadline and shutdown cancellation; a stalled client cannot block other reads.
 Only typed facade operations are exposed. No arbitrary DI resolution, plugin route forwarding,
 shell execution or generic state-file access exists. Queue snapshots briefly use the dispatcher;
 transport, log reads and installation work run off it. The client never opens business state files.
