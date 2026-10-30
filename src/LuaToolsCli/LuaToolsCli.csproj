@@ -10,6 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../LuaTools.Agent/*.cs" Link="Agent/%(Filename)%(Extension)" />
-    <EmbeddedResource Include="../LuaTools.Agent/Catalogue/*.json" LogicalName="LuaTools.Agent.Catalogue.%(Filename).json" />
   </ItemGroup>
+  <Import Project="../LuaTools.Agent/Catalogue.targets" />
 </Project>

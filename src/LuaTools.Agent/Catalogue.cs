@@ -16,11 +16,8 @@ public sealed record Command(string Resource, string Verb, string Syntax, string
 }
 public static class Catalogue
 {
-    public static readonly Command[] Commands = typeof(Catalogue).Assembly.GetManifestResourceNames()
-        .Where(n => n.StartsWith("LuaTools.Agent.Catalogue.", StringComparison.Ordinal) && n.EndsWith(".json", StringComparison.Ordinal))
-        .OrderBy(n => n, StringComparer.Ordinal)
-        .SelectMany(n => JsonSerializer.Deserialize<Command[]>(typeof(Catalogue).Assembly.GetManifestResourceStream(n)!, Protocol.Json)!)
-        .ToArray();
+    public static readonly Command[] Commands = JsonSerializer.Deserialize<Command[]>(
+        typeof(Catalogue).Assembly.GetManifestResourceStream("LuaTools.Agent.catalogue.json")!, Protocol.Json)!;
     public static Command? Find(string key) => Commands.FirstOrDefault(c => c.Key == key);
     public static string[] Suggest(string input) => Commands.Select(c => c.Key).OrderBy(c => Distance(input, c)).Take(3).ToArray();
     private static int Distance(string a, string b)

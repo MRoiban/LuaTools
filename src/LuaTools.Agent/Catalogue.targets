@@ -1,0 +1,36 @@
+<Project>
+  <!-- Shared by client and GUI. New resource files need no central registration edit. -->
+  <UsingTask TaskName="MergeAgentCatalogue" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Sources ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <Destination ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var parts = Sources.OrderBy(s => s.ItemSpec, StringComparer.Ordinal).Select(s => {
+          string json = File.ReadAllText(s.ItemSpec).Trim();
+          if (json.Length < 2 || json[0] != '[' || json[json.Length - 1] != ']')
+            throw new InvalidDataException("Resource catalogue must be a JSON array: " + s.ItemSpec);
+          return json.Substring(1, json.Length - 2).Trim();
+        }).Where(s => s.Length != 0);
+        string merged = "[\n" + String.Join(",\n", parts) + "\n]\n";
+        Directory.CreateDirectory(Path.GetDirectoryName(Destination));
+        if (!File.Exists(Destination) || File.ReadAllText(Destination) != merged)
+          File.WriteAllText(Destination, merged, new System.Text.UTF8Encoding(false));
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <PropertyGroup>
+    <_AgentCatalogueOutput>$(BaseIntermediateOutputPath)$(Configuration)/$(TargetFramework)/agent-catalogue.json</_AgentCatalogueOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <_AgentCatalogueSource Include="$(MSBuildThisFileDirectory)Catalogue/*.json" />
+    <EmbeddedResource Include="$(_AgentCatalogueOutput)" LogicalName="LuaTools.Agent.catalogue.json" />
+  </ItemGroup>
+  <Target Name="GenerateAgentCatalogue" BeforeTargets="AssignTargetPaths">
+    <MergeAgentCatalogue Sources="@(_AgentCatalogueSource)" Destination="$(_AgentCatalogueOutput)" />
+  </Target>
+</Project>
