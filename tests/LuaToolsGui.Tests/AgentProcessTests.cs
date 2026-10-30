@@ -96,6 +96,13 @@ public sealed class AgentProcessTests
             var owner = await Ready(); children.Add(Process.GetProcessById(owner.Pid));
             foreach (var args in new[] { new[] { "status" }, ["doctor"], ["setting", "list"], ["download", "list"], ["activity-log", "list"] }) await Cli(args);
             await Task.WhenAll(Cli("status"), Cli("ping"));
+            // The acknowledged restart rotates the owner; the same CLI invocation rediscovers it.
+            var beforeRestart = owner;
+            var restarted = await Cli("application", "restart", "--yes", "--drain");
+            owner = await Ready(); children.Add(Process.GetProcessById(owner.Pid));
+            Assert.NotEqual(beforeRestart.InstanceId, owner.InstanceId);
+            Assert.Equal(owner.InstanceId, restarted["data"]!["new_instance_id"]!.GetValue<string>());
+            Assert.True((await Cli("ping"))["data"]!["ready"]!.GetValue<bool>());
             // Production CLI, production pipe, live settings gate, no direct state-file access by client.
             var dry = await Cli("setting", "update", "FastFetch", "--value", "true", "--dry-run");
             Assert.NotNull(dry["data"]!["plan"]);

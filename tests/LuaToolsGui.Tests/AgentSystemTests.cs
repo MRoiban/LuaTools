@@ -23,8 +23,9 @@ public sealed class AgentSystemTests : IDisposable
     private sealed class BlockNetwork : HttpMessageHandler
     {
         public int Requests;
+        public Func<HttpRequestMessage, HttpResponseMessage>? Respond;
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        { Requests++; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)); }
+        { Requests++; return Task.FromResult(Respond?.Invoke(request) ?? new HttpResponseMessage(HttpStatusCode.NotFound)); }
     }
     private sealed class FakeSteam(SettingsService settings) : SteamService(settings)
     {
@@ -134,6 +135,18 @@ public sealed class AgentSystemTests : IDisposable
         Assert.True(result.Ok, result.Message); Assert.False(File.Exists(record)); Assert.False(File.Exists(Path.Combine(_game, "added.txt"))); Assert.Equal(0, _network.Requests);
     }
     [Fact]
+    public async Task DetectedModeIsReadOnlyUntilAnExplicitMutation()
+    {
+        _settings.SelectedMode = null;
+        byte[] bytes = [1, 2, 3, 4];
+        File.WriteAllBytes(Path.Combine(_root, "OpenSteamTool.dll"), bytes);
+        string hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        _network.Respond = _ => new(HttpStatusCode.OK) { Content = new StringContent($"version = \"1.0.0\"\npath = \"opensteamtool/1.0.0/OpenSteamTool.dll\"\nsha256 = \"{hash}\"") };
+        var state = await Run("mode get");
+        Assert.True(state.Ok); Assert.Equal("bst", state.Data!["detected_mode"]!.GetValue<string>());
+        Assert.Null(_settings.SelectedMode); Assert.Equal(0, _steam.Stops);
+    }
+    [Fact]
     public async Task SteamSelectionIsPinnedAcrossAnAcceptedOperation()
     {
         string admitted = _steam.EffectivePath!;
@@ -178,6 +191,8 @@ public sealed class AgentSystemTests : IDisposable
             await serving; return reply;
         }
         foreach (string command in new[] { "steam get", "mode list", "plugin get", "update get", "cloudredirect get", "fix list" }) Assert.True((await Pipe(command)).Ok, command);
+        Assert.True((await Pipe("update check", flags: new() { ["dry-run"] = null })).Ok);
+        Assert.Equal("READ_ONLY", (await Pipe("update check", flags: new() { ["read-only"] = null })).Error!.Code);
         Assert.Equal("READ_ONLY", (await Pipe("steam update", flags: new() { ["path"] = _root, ["read-only"] = null })).Error!.Code);
         var dry = await Pipe("steam update", flags: new() { ["path"] = _root, ["dry-run"] = null }); Assert.True(dry.Ok);
         Assert.Equal("CONSENT_REQUIRED", (await Pipe("steam update", flags: new() { ["path"] = _root })).Error!.Code);

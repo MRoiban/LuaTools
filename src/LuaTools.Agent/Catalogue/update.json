@@ -166,9 +166,9 @@
     "status": "enabled",
     "disabled_code": null,
     "aliases": [],
-    "read_only": true,
-    "dry_run": false,
-    "job_behavior": "none",
+    "read_only": false,
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": false,
     "reversible": null,
     "side_effects": [
@@ -264,13 +264,97 @@
         "default": null,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
       }
     ],
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools update check",
-      "luatools update check --format text"
+      "luatools update check --dry-run --json",
+      "luatools update check --json"
     ],
     "see_also": [
       "luatools describe update",
@@ -540,7 +624,8 @@
       "current_version",
       "staged_version",
       "staged",
-      "available_actions"
+      "available_actions",
+      "new_instance_id"
     ]
   }
 ]

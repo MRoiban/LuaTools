@@ -29,7 +29,7 @@ public sealed partial class AgentCommandService
                     _exiting = true;
                     _shutdownReplies.TryAdd(r.RequestId, () =>
                     {
-                        if (r.Command == "application restart") ApplicationCoordinator.Restart();
+                        if (r.Command == "application restart") ApplicationCoordinator.Restart(minimized: true);
                         else if (r.Command == "update apply")
                         {
                             try { (lifecycle ?? new(updates)).Apply(); }

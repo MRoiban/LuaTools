@@ -451,8 +451,7 @@ public partial class App : Application
     }
 
     /// <summary>Relaunch the app (used after a language change). The single-instance mutex is released
-    /// only when THIS process exits, so we start the new instance via a short delayed shell command. By
-    /// the time it launches the exe, our mutex is free and the new instance won't bow out.</summary>
+    /// only when THIS process exits; the shared coordinator uses the existing startup parent wait.</summary>
     private void RelaunchApp() => ApplicationCoordinator.Restart();
 
     /// <summary>Route a luatools:// protocol URL to the appropriate page and action.</summary>

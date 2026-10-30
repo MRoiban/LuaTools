@@ -468,7 +468,8 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "new_instance_id"
     ]
   },
   {

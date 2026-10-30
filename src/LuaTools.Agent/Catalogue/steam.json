@@ -171,7 +171,7 @@
     "aliases": [],
     "read_only": false,
     "dry_run": true,
-    "job_behavior": "job",
+    "job_behavior": "none",
     "destructive": true,
     "reversible": false,
     "side_effects": [

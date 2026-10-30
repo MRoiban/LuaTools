@@ -29,7 +29,7 @@ public sealed partial class AgentCommandService
             var detail = await fixes.DetailAsync(appId, r.Flags.GetValueOrDefault("folder-url"), r.Flags.ContainsKey("refresh") || r.Flags.ContainsKey("folder-url"), ct);
             var entries = detail.Fixes.Where(f => provider is null || (f.Folder is null ? "lua.tools" : "online-fix.me") == provider)
                 .Where(f => r.Flags.GetValueOrDefault("tag") is not { } tag || f.Fix.Tags.Any(t => t.Id == tag))
-                .Select(f => new { id = f.Fix.Id, appid = detail.AppId, provider = f.Folder is null ? "lua.tools" : "online-fix.me", title = f.Fix.Title, description = f.Fix.Description, tags = f.Fix.Tags, installed = f.Installed, applied = f.Applied, version = FixVersion(appId, f.Fix.Id), available_actions = FixActions(r, f.Installed, f.Applied, f.Folder is not null) }).ToArray();
+                .Select(f => new { id = f.Fix.Id, appid = detail.AppId, provider = f.Folder is null ? "lua.tools" : "online-fix.me", title = f.Fix.Title, description = f.Fix.Description, tags = f.Fix.Tags, installed = f.Installed, applied = f.Applied, version = FixVersion(appId, f.Fix.Id), available_actions = FixActions(r, f.Installed, f.Applied, f.Folder is not null, f.Fix.Id, appId) }).ToArray();
             return r.Command == "fix get" ? Envelope.Success(new { appid = detail.AppId, name = detail.Name, fixes = entries, provider_status = detail.ProviderStatus.ToString() }) : List(r, Protocol.Node(entries)!.AsArray());
         }
         return await _mutations.ExecuteAsync(r, async token =>
@@ -96,7 +96,7 @@ public sealed partial class AgentCommandService
         string stamp = File.Exists(path) ? new FileInfo(path).LastWriteTimeUtc.Ticks + ":" + new FileInfo(path).Length : "absent";
         return MutationCoordinator.Hash(PlanContext + dir + id + stamp);
     }
-    private object[] FixActions(AgentRequest r, bool installed, bool applied = false, bool online = false) => AvailableActions.ForReasons("fix", c =>
+    private object[] FixActions(AgentRequest r, bool installed, bool applied = false, bool online = false, string? fixId = null, long appId = 0) => AvailableActions.ForReasons("fix", c =>
     {
         var reasons = new List<string>();
         if (c.Verb is "apply" or "revert" && !installed) reasons.Add("GAME_NOT_INSTALLED");
@@ -105,6 +105,7 @@ public sealed partial class AgentCommandService
             if (!settings.IsExecutableWorkflowEnabled("DenuvoFix")) reasons.Add("WORKFLOW_DISABLED");
             if (!online && auth.IsGuest) reasons.Add("AUTH_REQUIRED");
             if (applied) reasons.Add("ALREADY_APPLIED");
+            if (fixId is not null && queue.FindActive(online ? $"onlinefixme:{appId}:{fixId}" : $"denuvo:{fixId}:fix") is not null) reasons.Add("FIX_ACTIVE");
         }
         if (c.Verb == "revert" && !applied) reasons.Add("NOT_APPLIED");
         return reasons.ToArray();
