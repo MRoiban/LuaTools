@@ -149,16 +149,11 @@
     "output_fields": [
       "status",
       "cabinet",
-      "unlocked",
-      "available_actions",
-      "id",
-      "version",
-      "plan",
-      "results",
-      "state",
-      "job_id",
       "cabinet_connected",
-      "connected_server_host"
+      "connected_server_host",
+      "unlocked",
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -168,7 +163,7 @@
     "variants": [
       "luatools cloudredirect update [--enabled <bool>] [--refresh]"
     ],
-    "purpose": "Enable add-on in LuaTools.",
+    "purpose": "Enable, disable or configure the CloudRedirect add-on.",
     "capability_ids": [
       "C-017",
       "C-018",
@@ -383,8 +378,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cloudredirect update --yes",
-      "luatools cloudredirect update --format text --yes"
+      "luatools cloudredirect update --dry-run",
+      "luatools cloudredirect update --yes"
     ],
     "see_also": [
       "luatools describe cloudredirect",
@@ -418,11 +413,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "status",
-      "cabinet",
-      "unlocked",
-      "available_actions"
+      "job_id"
     ]
   },
   {
@@ -626,8 +617,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cloudredirect manage --yes",
-      "luatools cloudredirect manage --format text --yes"
+      "luatools cloudredirect manage --dry-run",
+      "luatools cloudredirect manage --yes"
     ],
     "see_also": [
       "luatools describe cloudredirect",
@@ -657,11 +648,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "status",
-      "cabinet",
-      "unlocked",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

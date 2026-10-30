@@ -6,7 +6,7 @@
     "variants": [
       "luatools fix list [--appid <appid>] [--refresh] [--my-games] [--tag <tag>] [--provider <provider>]"
     ],
-    "purpose": "List fixes, counts and provider catalogue.",
+    "purpose": "List fixes for an App ID or browse games, counts and provider catalogues.",
     "capability_ids": [
       "C-045",
       "C-046",
@@ -216,24 +216,18 @@
       "Authenticated same-user GUI owner"
     ],
     "output_fields": [
+      "id",
       "appid",
       "name",
       "fix_count",
       "tags",
+      "provider",
       "title",
       "description",
       "installed",
       "applied",
-      "fixes",
-      "provider",
-      "provider_status",
-      "available_actions",
-      "id",
       "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "available_actions"
     ]
   },
   {
@@ -386,22 +380,10 @@
     "output_fields": [
       "appid",
       "name",
-      "fix_count",
-      "tags",
-      "title",
-      "description",
-      "installed",
-      "applied",
       "fixes",
-      "provider",
-      "provider_status",
-      "available_actions",
-      "id",
-      "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "fixes.id",
+      "fixes.provider",
+      "provider_status"
     ]
   },
   {
@@ -411,7 +393,7 @@
     "variants": [
       "luatools fix search [--query <text>] [--appid <appid> --folder-url <url>]"
     ],
-    "purpose": "Search fix catalogue in LuaTools.",
+    "purpose": "Search fix games and provider catalogues by name or App ID.",
     "capability_ids": [
       "C-047",
       "C-051"
@@ -567,24 +549,12 @@
       "Authenticated same-user GUI owner"
     ],
     "output_fields": [
+      "id",
       "appid",
       "name",
       "fix_count",
       "tags",
-      "title",
-      "description",
-      "installed",
-      "applied",
-      "fixes",
-      "provider",
-      "provider_status",
-      "available_actions",
-      "id",
-      "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "available_actions"
     ]
   },
   {
@@ -804,8 +774,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools fix apply example-fix --appid 570 --provider online-fix --yes",
-      "luatools fix apply example-fix --appid 570 --provider online-fix --format text --yes"
+      "luatools fix apply example-fix --appid 570 --provider online-fix --dry-run",
+      "luatools fix apply example-fix --appid 570 --provider online-fix --yes"
     ],
     "see_also": [
       "luatools describe fix",
@@ -826,7 +796,7 @@
       9
     ],
     "preconditions": [
-      "Visible HasFix; disabled if game uninstalled, applied or own FixItem active. Hints: \u201cInstall the game first to apply a fix.\u201d / \u201cThis fix is already applied. Revert it if you want to install another.\u201d Recheck install dir before queue AND download; Same HasFix/installed/applied/active slot conditions as R16; archive must still exist in fresh Fix Repair listing; valid anonymous session required",
+      "Visible HasFix; disabled if game uninstalled, applied or own FixItem active. Hints: “Install the game first to apply a fix.” / “This fix is already applied. Revert it if you want to install another.” Recheck install dir before queue AND download; Same HasFix/installed/applied/active slot conditions as R16; archive must still exist in fresh Fix Repair listing; valid anonymous session required",
       "ExecutableGameFixesEnabled at acquisition and every write; bounded immutable archive, paths/CRC; installed game. Discord and quota only for lua.tools; Online-Fix anonymous cookie, no human account/password."
     ],
     "output_fields": [
@@ -835,19 +805,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "appid",
-      "name",
-      "fix_count",
-      "tags",
-      "title",
-      "description",
-      "installed",
-      "applied",
-      "fixes",
-      "provider",
-      "provider_status",
-      "available_actions"
+      "job_id"
     ]
   },
   {
@@ -870,7 +828,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Confirm \u201cRevert \"{0}\"? Modified files will be restored from backup and files added by the fix will be deleted.\u201d Restore originals, delete added files, clean backups/record/index only on success; conflict/partial/not-found/no-record toasts"
+      "Confirm “Revert \"{0}\"? Modified files will be restored from backup and files added by the fix will be deleted.” Restore originals, delete added files, clean backups/record/index only on success; conflict/partial/not-found/no-record toasts"
     ],
     "flags": [
       {
@@ -1060,8 +1018,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools fix revert example-fix --appid 570 --yes",
-      "luatools fix revert example-fix --appid 570 --format text --yes"
+      "luatools fix revert example-fix --appid 570 --dry-run",
+      "luatools fix revert example-fix --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe fix",
@@ -1091,19 +1049,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "appid",
-      "name",
-      "fix_count",
-      "tags",
-      "title",
-      "description",
-      "installed",
-      "applied",
-      "fixes",
-      "provider",
-      "provider_status",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

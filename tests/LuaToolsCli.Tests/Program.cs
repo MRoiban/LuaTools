@@ -54,6 +54,49 @@ foreach (var c in Catalogue.Commands)
         foreach (string example in c.Examples) Assert(CommandParser.Parse(example.Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Example invalid: " + example);
     });
 }
+Test("catalogue byte budgets", () =>
+{
+    int Bytes(object value) => System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(Envelope.Success(value), Protocol.Json));
+    Assert(Bytes(CatalogueDocument.Create(Catalogue.Commands)) < 80000, "commands must stay under 80 KB");
+    Assert(Bytes(new { resource = "game", catalogue = CatalogueDocument.Create(Catalogue.Commands.Where(c => c.Resource == "game")), settings = (object?)null }) < 8000, "describe game must stay under 8 KB");
+});
+Test("destructive examples plan before consent", () =>
+{
+    foreach (var c in Catalogue.Commands.Where(c => c.Destructive))
+    {
+        Assert(c.Examples[0].Contains("--dry-run") && !c.Examples[0].Contains("--yes"), c.Key);
+        Assert(c.Examples[1].Contains("--yes") && !c.Examples[1].Contains("--dry-run"), c.Key);
+    }
+});
+Test("identifiers have discoverable producers", () =>
+{
+    var producers = Catalogue.Commands.Where(c => c.ReadOnly && c.Verb is "list" or "get").SelectMany(c => c.OutputFields).ToHashSet();
+    foreach (var c in Catalogue.Commands)
+    foreach (string identity in c.Identities)
+    {
+        if (identity.Contains('|')) continue;
+        if (identity.StartsWith("appid")) { Assert(producers.Contains("appid"), c.Key); continue; }
+        string field = identity switch { "id-or-all-or-pending-added" => "id", "fixid" => "id", "jobid" => "id", "depotid" => "id", "entryid" => "id", "appid" => "appid", "hash" => "hash", _ => identity };
+        if (identity is "ost-or-bst-or-custom" or "tool" or "resource" or "shell" or "mode" or "kind" or "target" or "entry" or "index" or "installation" or "name") continue;
+        Assert(producers.Contains(field), c.Key + " requires undiscoverable " + identity);
+    }
+});
+Test("relative activity boundary parses", () =>
+{
+    foreach (string value in new[] { "3h", "30m", "2026-10-30T00:00:00Z" })
+        Assert(CommandParser.Parse(["activity-log", "list", "--since", value, "--severity", "warn"]).Problems.Length == 0, value);
+});
+await AsyncTest("file validation precedes transport", async () =>
+{
+    foreach (string[] arguments in new[] { new[] { "lua", "add", "--file", "missing-570.lua", "--dry-run", "--json" }, ["launch-option", "update", "730", "--file", "missing-opts.json", "--dry-run", "--json"] })
+    {
+        var old = Console.Out; var capture = new StringWriter(); Console.SetOut(capture);
+        int exit;
+        try { exit = await Cli.RunAsync(arguments, (_, _) => throw new Exception("transport must not run")); }
+        finally { Console.SetOut(old); }
+        Assert(exit == 2 && capture.ToString().Contains(arguments[Array.IndexOf(arguments, "--file") + 1]), capture.ToString());
+    }
+});
 Test("parser aggregates", () => Assert(CommandParser.Parse(["activity-log", "list", "--limit", "0", "--severity", "bad", "--quiet", "--verbose", "--since", "yesterday"]).Problems.Length == 4, "all problems"));
 Test("unknown suggestions", () => Assert(CommandParser.Parse(["statuz"]).Problems.Any(p => p.Message.Contains("status")), "suggestion"));
 Test("enum allowed values", () => Assert(CommandParser.Parse(["completion", "bad"]).Problems.Single().AllowedValues!.Contains("bash"), "values"));

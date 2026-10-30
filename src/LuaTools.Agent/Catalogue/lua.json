@@ -6,7 +6,7 @@
     "variants": [
       "luatools lua get <appid> [--content] [--diff-file <path>]"
     ],
-    "purpose": "Inspect overwrite diff before replacing downloaded or local Lua.",
+    "purpose": "Read live Lua or inspect the overwrite diff for supplied Lua files.",
     "capability_ids": [
       "C-093",
       "C-112"
@@ -189,7 +189,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Validate and install local data files in order; keep inputs; update vault/loaded IDs and return per-file outcomes. Includes Views/DropZone.xaml OnDrop and OnBrowseClick \u2192 HandleDropAsync. No executable acquisition."
+      "Validate and install local data files in order; keep inputs; update vault/loaded IDs and return per-file outcomes. Includes Views/DropZone.xaml OnDrop and OnBrowseClick → HandleDropAsync. No executable acquisition."
     ],
     "flags": [
       {
@@ -377,8 +377,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools lua add --file C:\\Lua\\570.lua --yes",
-      "luatools lua add --file C:\\Lua\\570.lua --format text --yes"
+      "luatools lua add --file C:\\Lua\\570.lua --dry-run",
+      "luatools lua add --file C:\\Lua\\570.lua --yes"
     ],
     "see_also": [
       "luatools describe lua",
@@ -399,7 +399,7 @@
       9
     ],
     "preconditions": [
-      "No extension matches \u2192 Nothing to install; unidentified Lua/ZIP skipped; file picker has combined filter plus All files; content/path/archive validation may fail; no busy guard on drop/browse",
+      "No extension matches → Nothing to install; unidentified Lua/ZIP skipped; file picker has combined filter plus All files; content/path/archive validation may fail; no busy guard on drop/browse",
       "No login, Hubcap key or executable opt-in; Steam path/writes required. Does not require Steam closed; locked files reported Close Steam and retry"
     ],
     "output_fields": [
@@ -627,8 +627,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools lua update 570 --file C:\\Lua\\570.lua",
-      "luatools lua update 570 --file C:\\Lua\\570.lua --format text"
+      "luatools lua update 570 --file C:\\Lua\\570.lua --dry-run",
+      "luatools lua update 570 --file C:\\Lua\\570.lua --yes"
     ],
     "see_also": [
       "luatools describe lua",

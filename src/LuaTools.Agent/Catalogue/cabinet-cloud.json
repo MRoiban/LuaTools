@@ -364,8 +364,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cabinet-cloud connect --secret-stdin",
-      "luatools cabinet-cloud connect --secret-stdin --format text"
+      "luatools cabinet-cloud connect --secret-stdin --dry-run",
+      "luatools cabinet-cloud connect --secret-stdin --yes"
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
@@ -599,8 +599,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cabinet-cloud disconnect",
-      "luatools cabinet-cloud disconnect --format text"
+      "luatools cabinet-cloud disconnect --dry-run",
+      "luatools cabinet-cloud disconnect --yes"
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
@@ -844,8 +844,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cabinet-cloud update --friend-labels true",
-      "luatools cabinet-cloud update --friend-labels true --format text"
+      "luatools cabinet-cloud update --friend-labels true --dry-run",
+      "luatools cabinet-cloud update --friend-labels true --yes"
     ],
     "see_also": [
       "luatools describe cabinet-cloud",

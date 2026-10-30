@@ -145,13 +145,8 @@
       "valid",
       "running",
       "steam_identity",
-      "available_actions",
-      "id",
       "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "available_actions"
     ]
   },
   {
@@ -161,7 +156,7 @@
     "variants": [
       "luatools steam update [--path <path> | --auto]"
     ],
-    "purpose": "Change selected Steam folder.",
+    "purpose": "Select a Steam folder explicitly or restore automatic detection.",
     "capability_ids": [
       "C-137",
       "C-138"
@@ -371,8 +366,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools steam update --auto --dry-run --yes",
-      "luatools steam update --path C:\\Steam --yes"
+      "luatools steam update --auto --dry-run",
+      "luatools steam update --auto --yes"
     ],
     "see_also": [
       "luatools describe steam",
@@ -403,13 +398,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "path",
-      "overridden",
-      "valid",
-      "running",
-      "steam_identity",
-      "available_actions"
+      "job_id"
     ]
   },
   {
@@ -432,7 +421,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Confirm \u201cRestart Steam now?\u201d; stop/start selected Steam; running games/downloads affected; failure shown in modal; Confirms kill/relaunch selected Steam in current Windows session respecting inherited isolation route; failure warning MessageBox"
+      "Confirm “Restart Steam now?”; stop/start selected Steam; running games/downloads affected; failure shown in modal; Confirms kill/relaunch selected Steam in current Windows session respecting inherited isolation route; failure warning MessageBox"
     ],
     "flags": [
       {
@@ -613,8 +602,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools steam restart --yes",
-      "luatools steam restart --format text --yes"
+      "luatools steam restart --dry-run",
+      "luatools steam restart --yes"
     ],
     "see_also": [
       "luatools describe steam",
@@ -644,13 +633,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "path",
-      "overridden",
-      "valid",
-      "running",
-      "steam_identity",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

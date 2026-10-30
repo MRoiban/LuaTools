@@ -204,8 +204,8 @@
       "steamautocrack"
     ],
     "examples": [
-      "luatools tool launch steamautocrack --yes",
-      "luatools tool launch steamautocrack --format text --yes"
+      "luatools tool launch steamautocrack --dry-run",
+      "luatools tool launch steamautocrack --yes"
     ],
     "see_also": [
       "luatools describe tool",
@@ -235,8 +235,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

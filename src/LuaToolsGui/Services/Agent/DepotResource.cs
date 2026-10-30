@@ -147,7 +147,7 @@ public sealed partial class AgentCommandService
             if (r.Command == "depot download") RequireGate("DepotDownloader");
             var info = await depotInfo.GetAsync(id, token) ?? throw new MutationRejectedException("METADATA_UNAVAILABLE", 7);
             var rows = DepotProjection.BuildRows(info, LuaFileParser.ParseText(vault!.ReadLiveText(id), id), appid => appList?.GetName(appid)).InLua;
-            var picks = await Task.Run(() => DepotDownloadPlanning.Build(rows, depotTool, id, SteamService.SteamLanguage), token);
+            var picks = await Task.Run(() => DepotDownloadPlanning.Build(rows, depotTool, id, r.Flags.GetValueOrDefault("language") ?? SteamService.SteamLanguage, r.Flags.GetValueOrDefault("os") ?? "windows"), token);
             var requested = (r.Flags.GetValueOrDefault("depot") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
             if (r.Flags.ContainsKey("all-depots") && requested.Length > 0) throw new MutationRejectedException("INVALID_SELECTION", 2);
             if (requested.Any(key => !picks.Any(p => p.DepotId.ToString() == key))) throw new MutationRejectedException("NOT_FOUND", 3);

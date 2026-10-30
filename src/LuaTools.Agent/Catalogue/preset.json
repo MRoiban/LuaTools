@@ -185,18 +185,18 @@
       "Authenticated same-user GUI owner"
     ],
     "output_fields": [
+      "id",
+      "hash",
       "appid",
-      "current",
-      "desired",
-      "is_modded",
-      "available_actions",
       "name",
       "kind",
       "build_id",
       "captured_at",
       "depot_count",
       "dlc_count",
-      "active"
+      "active",
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -349,18 +349,18 @@
       "Authenticated same-user GUI owner"
     ],
     "output_fields": [
+      "id",
+      "hash",
       "appid",
-      "current",
-      "desired",
-      "is_modded",
-      "available_actions",
       "name",
       "kind",
       "build_id",
       "captured_at",
       "depot_count",
       "dlc_count",
-      "active"
+      "active",
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -593,8 +593,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools preset create --appid 570",
-      "luatools preset create --appid 570 --format text"
+      "luatools preset create --appid 570 --dry-run",
+      "luatools preset create --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe preset",
@@ -636,7 +636,7 @@
     "variants": [
       "luatools preset update <hash> --appid <appid> --name <name>"
     ],
-    "purpose": "Rename stored preset metadata; from-live replacement remains disabled.",
+    "purpose": "Rename a saved preset or replace its originating content from the edited live Lua.",
     "capability_ids": [
       "C-111",
       "C-114"
@@ -856,8 +856,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset",
-      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset --json"
+      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset --dry-run",
+      "luatools preset update aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --name MyPreset --yes"
     ],
     "see_also": [
       "luatools describe preset",
@@ -913,7 +913,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Validate bytes against SHA-256 and app ID, capture outgoing Default where appropriate, overwrite live Lua verbatim with pins intact, stamp timestamps, clear edit base; toast \u201cNow using \u201c{0}\u201d.\u201d or failure. Pending unsaved build edits can be lost"
+      "Validate bytes against SHA-256 and app ID, capture outgoing Default where appropriate, overwrite live Lua verbatim with pins intact, stamp timestamps, clear edit base; toast “Now using “{0}”.” or failure. Pending unsaved build edits can be lost"
     ],
     "flags": [
       {
@@ -1103,8 +1103,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570",
-      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --json"
+      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --dry-run",
+      "luatools preset apply aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe preset",
@@ -1159,7 +1159,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "OK/Cancel \u201cDelete this preset?\u201d; remove index entry and stored Lua. Does not delete live game file"
+      "OK/Cancel “Delete this preset?”; remove index entry and stored Lua. Does not delete live game file"
     ],
     "flags": [
       {
@@ -1349,8 +1349,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570",
-      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --json"
+      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --dry-run",
+      "luatools preset delete aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe preset",
@@ -1371,7 +1371,7 @@
       9
     ],
     "preconditions": [
-      "Only inactive selected preset. Disabled tooltip \u201cCan't delete the preset that's currently in use.\u201d Service separately rejects exact active hash",
+      "Only inactive selected preset. Disabled tooltip “Can't delete the preset that's currently in use.” Service separately rejects exact active hash",
       "None"
     ],
     "output_fields": [

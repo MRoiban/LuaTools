@@ -2,11 +2,11 @@
   {
     "resource": "activity-log",
     "verb": "list",
-    "syntax": "luatools activity-log list [--since <UTC>] [--severity <level>] [--category <name>]",
+    "syntax": "luatools activity-log list [--since <UTC-or-duration>] [--severity <level>] [--category <name>]",
     "variants": [
       "luatools activity-log list [--since <UTC>] [--severity <level>] [--category <name>]"
     ],
-    "purpose": "Read redacted activity and log directory.",
+    "purpose": "Read redacted activity since a UTC timestamp or relative duration (3h, 30m); severity is a minimum threshold (warn includes errors and critical).",
     "capability_ids": [
       "C-005"
     ],

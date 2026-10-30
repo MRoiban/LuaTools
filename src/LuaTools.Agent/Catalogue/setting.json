@@ -350,7 +350,7 @@
     "variants": [
       "luatools setting update <key> --value <value>"
     ],
-    "purpose": "Persist GUI result page size.",
+    "purpose": "Persist allowlisted settings including UI, language, downloads and executable workflow consent.",
     "capability_ids": [
       "C-103",
       "C-116",
@@ -569,8 +569,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools setting update Language --value fr",
-      "luatools setting update SteamlessEnabled --value true --yes --actor-note maintenance"
+      "luatools setting update Language --value fr --dry-run",
+      "luatools setting update Language --value fr --yes"
     ],
     "see_also": [
       "luatools describe setting",
@@ -596,10 +596,9 @@
       "Cabinet subordinate options require Cabinet enabled; host read-only policy and target/context versions are enforced."
     ],
     "output_fields": [
-      "total",
-      "version",
       "plan",
       "results",
+      "version",
       "id",
       "state",
       "job_id"

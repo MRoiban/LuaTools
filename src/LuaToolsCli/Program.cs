@@ -37,11 +37,11 @@ public static class Program
                 result = Envelope.Success(new { guide });
             }
             else if (parsed.Command.Key == "version") result = Envelope.Success(new { version = typeof(Program).Assembly.GetName().Version?.ToString(), protocol = Protocol.Version });
-            else if (parsed.Command.Key == "commands") result = Envelope.Success(new { version = Protocol.Version, commands = Catalogue.Commands }, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled catalogue; query ping for authenticated runtime availability.", new { runtime_available = false }));
+            else if (parsed.Command.Key == "commands") result = Envelope.Success(CatalogueDocument.Create(Catalogue.Commands, parsed.Has("brief")), null, new Warning("RUNTIME_NOT_QUERIED", "Compiled catalogue; query ping for authenticated runtime availability.", new { runtime_available = false }));
             else if (parsed.Command.Key == "describe")
             {
                 var commands = Catalogue.Commands.Where(c => c.Resource == parsed.Arguments[0]).ToArray();
-                result = commands.Length == 0 ? Envelope.Fail("NOT_FOUND", 3, "Unknown resource.") : Envelope.Success(new { resource = parsed.Arguments[0], commands, settings = parsed.Arguments[0] == "setting" ? SettingSchema.All : null }, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled schema; runtime_available:false."));
+                result = commands.Length == 0 ? Envelope.Fail("NOT_FOUND", 3, "Unknown resource.") : Envelope.Success(new { resource = parsed.Arguments[0], catalogue = CatalogueDocument.Create(commands), settings = parsed.Arguments[0] == "setting" ? SettingSchema.All : null }, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled schema; runtime_available:false."));
             }
             else if (parsed.Command.Key == "completion")
             {
@@ -56,7 +56,7 @@ public static class Program
             else
             {
                 parsed = await CommandInput.LoadAsync(parsed, cancellation.Token);
-                result = parsed.Problems.Length > 0 ? Envelope.Fail("INVALID_USAGE", 2, "Invalid input data.", problems: parsed.Problems) : await transport(parsed, cancellation.Token);
+                result = parsed.Problems.Length > 0 ? Envelope.Fail("INVALID_USAGE", 2, "Invalid input data.", hint: "Check the named input file exists and is readable; correct its path or contents, then retry the dry-run.", problems: parsed.Problems) : await transport(parsed, cancellation.Token);
             }
             result = Results.Project(result, parsed.Value("fields"));
         }

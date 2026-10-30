@@ -8,7 +8,7 @@ public sealed partial class AgentCommandService
     {
         if (r.Command == "history list") return Snapshot(() => r.Flags.GetValueOrDefault("kind") == "pending-added"
             ? List(r, Protocol.Node((libraryCache?.GetLoadedAppIds() ?? []).Select(id => new { id, appid = id }))!.AsArray())
-            : List(r, HistoryRows()), ct);
+            : List(r, HistoryRows(r)), ct);
         return _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
             if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);
@@ -35,5 +35,9 @@ public sealed partial class AgentCommandService
             }, commit));
         }, token), ct);
     }
-    private System.Text.Json.Nodes.JsonArray HistoryRows() => Protocol.Node(queue.History.Select(h => new { id = h.Id, appid = h.AppId, title = LogRedactor.Redact(h.Title), subtitle = LogRedactor.Redact(h.SubTitle), state = h.Status.ToString().ToLowerInvariant(), bytes = h.Record.Bytes, completed_at = DateTimeOffset.FromUnixTimeMilliseconds(h.Record.CompletedAtMs), available_actions = AvailableActions.For("history") }))!.AsArray();
+    private System.Text.Json.Nodes.JsonArray HistoryRows(AgentRequest? request = null) => Protocol.Node(queue.History
+        .Where(h => request?.Flags.GetValueOrDefault("status") is not { } status || h.Status.ToString().Equals(status, StringComparison.OrdinalIgnoreCase))
+        .Where(h => request?.Flags.GetValueOrDefault("kind") is not { } kind || kind == "download" || h.Record.Kind == kind)
+        .OrderByDescending(h => h.Record.CompletedAtMs).ThenBy(h => h.Id, StringComparer.Ordinal)
+        .Select(h => new { id = h.Id, appid = h.AppId, title = LogRedactor.Redact(h.Title), subtitle = LogRedactor.Redact(h.SubTitle), state = h.Status.ToString().ToLowerInvariant(), kind = h.Record.Kind, message = LogRedactor.Redact(h.Message ?? ""), bytes = h.Record.Bytes, completed_at = DateTimeOffset.FromUnixTimeMilliseconds(h.Record.CompletedAtMs), available_actions = AvailableActions.For("history") }))!.AsArray();
 }

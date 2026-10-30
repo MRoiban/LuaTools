@@ -779,7 +779,7 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         /// pulled down. A depot with no declared OS is shared content and counts as ours.
         /// </summary>
         public bool IsOtherPlatform =>
-            Os is { Length: > 0 } && !Os.Contains("windows", StringComparison.OrdinalIgnoreCase);
+            !DepotDownloadPlanning.WantedOs(Os, "windows");
 
         /// <summary>
         /// A shared redistributable (VC++/DirectX runtimes) owned by another app. Selectable, but not

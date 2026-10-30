@@ -90,7 +90,7 @@ public sealed partial class AgentCommandService
         try { return BulkSelection.Select(request, rows, identity, fields); }
         catch (ArgumentException) { throw new MutationRejectedException("INVALID_SELECTION", 2); }
     }
-    private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, installed = e.FilePath.Length > 0,
+    private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, added = e.FilePath.Length > 0, installed = libraryInstalls?.GetInstallDir(e.AppId) is { } install && Directory.Exists(install),
         paths = new { lua = e.FilePath, install = libraryInstalls?.GetInstallDir(e.AppId) }, urls = new { store = $"steam://store/{e.AppId}", library = $"steam://nav/games/details/{e.AppId}", steamdb = $"https://steamdb.info/app/{e.AppId}/" },
         details = libraryDetails!.GetFilterData(e.AppId), overview = libraryDetails.GetOverview(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.ForReasons("game", c => GameReasons(c, e)) };
     private string[] GameReasons(Command command, LibraryEntry entry)

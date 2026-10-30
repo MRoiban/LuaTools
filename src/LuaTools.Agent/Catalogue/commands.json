@@ -111,6 +111,13 @@
         "default": null,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "brief",
+        "type": "bool",
+        "default": null,
+        "allowed_values": [],
+        "required": false
       }
     ],
     "identities": [],
@@ -141,6 +148,10 @@
     ],
     "output_fields": [
       "version",
+      "schema",
+      "global_flag_definitions",
+      "command_defaults",
+      "definitions",
       "commands"
     ]
   }

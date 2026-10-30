@@ -143,13 +143,8 @@
       "current_version",
       "staged_version",
       "staged",
-      "available_actions",
-      "id",
       "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "available_actions"
     ]
   },
   {
@@ -590,8 +585,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools update apply --yes",
-      "luatools update apply --format text --yes"
+      "luatools update apply --dry-run",
+      "luatools update apply --yes"
     ],
     "see_also": [
       "luatools describe update",

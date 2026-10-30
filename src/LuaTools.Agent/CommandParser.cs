@@ -75,7 +75,7 @@ public static class CommandParser
                 if (flag.AllowedValues.Length > 0 && value is not null && !flag.AllowedValues.Contains(value)) problems.Add(new(name, "Invalid value.", flag.AllowedValues));
                 if (flag.Type == "integer" && (!int.TryParse(value, out int n) || n < 1 || n > 200)) problems.Add(new(name, "Expected integer 1–200."));
                 if (flag.Type == "duration" && Duration(value ?? "") is null) problems.Add(new(name, "Expected a positive duration, e.g. 500ms, 30s, 5m (maximum 24h)."));
-                if (name == "since" && (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var time) || time.Offset != TimeSpan.Zero || !(value?.EndsWith('Z') == true || value?.EndsWith("+00:00", StringComparison.Ordinal) == true))) problems.Add(new(name, "Expected RFC3339 UTC timestamp."));
+                if (name == "since" && Duration(value ?? "") is null && (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var time) || time.Offset != TimeSpan.Zero || !(value?.EndsWith('Z') == true || value?.EndsWith("+00:00", StringComparison.Ordinal) == true))) problems.Add(new(name, "Expected RFC3339 UTC timestamp or positive relative duration, e.g. 3h or 30m (maximum 24h)."));
             }
             if (flags.TryGetValue("fields", out var fields))
                 foreach (var field in (fields ?? "").Split(','))

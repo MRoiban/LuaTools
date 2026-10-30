@@ -7,7 +7,7 @@
       "luatools game list [--featured | --pending-added | --cabinet] [--refresh]",
       "luatools game list [--type <type>] [--genre <genre>] [--year <year>] [--price <free-or-paid>]"
     ],
-    "purpose": "List installed games, count, recent games, loading and empty states.",
+    "purpose": "List added games (games with a live Lua), including those not installed in Steam; filter, sort, count or show recent and pending additions.",
     "capability_ids": [
       "C-054",
       "C-062",
@@ -32,7 +32,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
+      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
     ],
     "flags": [
       {
@@ -260,7 +260,7 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -277,7 +277,11 @@
       "details",
       "version",
       "available_actions",
-      "overview"
+      "overview",
+      "added",
+      "paths.install",
+      "image",
+      "category"
     ]
   },
   {
@@ -287,7 +291,7 @@
     "variants": [
       "luatools game get <appid-or-supported-Steam-link> [--installed] [--fields <field,...>]"
     ],
-    "purpose": "Get game details or resolve a Steam link for Add/Manage.",
+    "purpose": "Inspect an added game, its Steam installation, details, paths and acquisition status, or resolve a Steam link.",
     "capability_ids": [
       "C-057",
       "C-058",
@@ -304,7 +308,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
+      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
     ],
     "flags": [
       {
@@ -431,8 +435,7 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner",
-      "Add-flow status is observational: does not start a source check."
+      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -460,7 +463,10 @@
       "add_status.install_failed",
       "add_status.error",
       "add_status.cancelled",
-      "add_status.sources"
+      "add_status.sources",
+      "added",
+      "image",
+      "category"
     ]
   },
   {
@@ -470,7 +476,7 @@
     "variants": [
       "luatools game search [--installed] --query <text>"
     ],
-    "purpose": "Search installed library by name or App ID.",
+    "purpose": "Search added games by name or App ID with --installed (legacy flag name); without it search the remote game catalogue, including featured lists.",
     "capability_ids": [
       "C-055",
       "C-056"
@@ -484,7 +490,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
+      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
     ],
     "flags": [
       {
@@ -616,7 +622,7 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -632,7 +638,12 @@
       "urls.steamdb",
       "details",
       "version",
-      "available_actions"
+      "available_actions",
+      "added",
+      "paths.install",
+      "overview",
+      "image",
+      "category"
     ]
   },
   {
@@ -655,7 +666,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Fetches archive or bare Lua, validates content; may overwrite {appid}.lua; installs manifests; captures vault/default/build state; records loaded App ID and refreshes library; shared queue history and Add result banner. Standard/Hubcap downloads can spend quota even if overwrite is declined. Staged download removed after use; Check source availability; FastFetch downloads automatically (Hubcap priority then available source; DLC prefers DexLua); queue/install Lua and vault/cache history and installed events; display installed/error; retry new generation; Read source name, Available/Not found/Needs key/Limit reached/Downloading, usage stats and progress. Download chooses row (or click row); key/settings actions open app Settings; source order premium first"
+      "Acquire Lua from the selected source, possibly consuming quota; queue installation with overwrite decisions."
     ],
     "flags": [
       {
@@ -845,8 +856,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools game add 570 --source auto --yes",
-      "luatools game add 570 --source auto --format text --yes"
+      "luatools game add 570 --source auto --dry-run",
+      "luatools game add 570 --source auto --yes"
     ],
     "see_also": [
       "luatools describe game",
@@ -867,8 +878,7 @@
       9
     ],
     "preconditions": [
-      "Positive App ID; eligible available source; no conflicting active job; valid writable selected Steam. Standard source requires signed-in session; Hubcap needs valid key and remaining quota.",
-      "Approved HTTPS and manifest content policy; no executable opt-in for data-only content; explicit quota/overwrite consent; same GUI job queue."
+      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
     ],
     "output_fields": [
       "plan",
@@ -876,9 +886,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "deduplicated",
-      "source"
+      "job_id"
     ]
   },
   {
@@ -901,7 +909,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Delete selected live Lua files; plugin variant also removes matching disabled file when active path exists and clears pending-added ID. Vault is retained but an exact recovery copy is not guaranteed. Report per-file partial failures; no Steam restart."
+      "Delete selected live Lua files; the Steam plugin removes their added entries. Steam game files are retained."
     ],
     "flags": [
       {
@@ -1084,8 +1092,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools game delete 570",
-      "luatools game delete 570 --format text"
+      "luatools game delete 570 --dry-run",
+      "luatools game delete 570 --yes"
     ],
     "see_also": [
       "luatools describe game",
@@ -1106,24 +1114,15 @@
       9
     ],
     "preconditions": [
-      "Tile exists; no busy gate. No recycle bin or undo; saved vault copies can survive; At least one selected; includes hidden/off-page selections; Menu removal only current c.exists; submit disabled while in flight; errors stay in modal; no automatic Steam restart",
-      "No Steam-closed gate; OST/BST watch directory live; No Steam restart or close requirement; B; no login or executable-fix gate"
+      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
     ],
     "output_fields": [
-      "id",
-      "appid",
-      "name",
-      "added_at",
-      "installed",
-      "paths",
-      "paths.lua",
-      "urls",
-      "urls.store",
-      "urls.library",
-      "urls.steamdb",
-      "details",
+      "plan",
+      "results",
       "version",
-      "available_actions"
+      "id",
+      "state",
+      "job_id"
     ]
   },
   {
@@ -1146,7 +1145,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Warning OK/Cancel; obtains executable tool, patches launch-config executables or filtered recursive EXE scan. First .bak preserved, originals deleted and replaced by .unpacked.exe. Progress bar, patched/unchanged totals or missing-install/tool/error toast"
+      "Queue Steamless against the installed game executable; executable workflow consent is required."
     ],
     "flags": [
       {
@@ -1329,8 +1328,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools game remove-drm 570",
-      "luatools game remove-drm 570 --format text"
+      "luatools game remove-drm 570 --dry-run",
+      "luatools game remove-drm 570 --yes"
     ],
     "see_also": [
       "luatools describe game",
@@ -1351,24 +1350,16 @@
       9
     ],
     "preconditions": [
-      "Installed game with EXEs; null tile/busy return; flyout disabled while busy, context menu still clickable but guard ignores",
-      "IsExecutableWorkflowEnabled(\"Steamless\"); DependencyQuarantine and UserAuthorizedDependencies digest/receipt checks; explicit action; approved network. No login/Hubcap/Steam-closed gate"
+      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes.",
+      "Steamless executable workflow must be enabled; select exactly one installed game."
     ],
     "output_fields": [
-      "id",
-      "appid",
-      "name",
-      "added_at",
-      "installed",
-      "paths",
-      "paths.lua",
-      "urls",
-      "urls.store",
-      "urls.library",
-      "urls.steamdb",
-      "details",
+      "plan",
+      "results",
       "version",
-      "available_actions"
+      "id",
+      "state",
+      "job_id"
     ]
   },
   {
@@ -1391,7 +1382,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Hands steam://install/<appid> to the verified selected Steam protocol executable; returns handed_off. Native Steam controls installation."
+      "Hand off installation of a pending added game to the selected Steam installation."
     ],
     "flags": [
       {
@@ -1574,8 +1565,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools game install 570",
-      "luatools game install 570 --format text"
+      "luatools game install 570 --dry-run",
+      "luatools game install 570 --yes"
     ],
     "see_also": [
       "luatools describe game",
@@ -1596,7 +1587,7 @@
       9
     ],
     "preconditions": [
-      "Pending-added ID and selected valid Steam. Runtime disabled with STEAM_PROTOCOL_ISOLATION_UNPROVEN unless the effective, nondelegated Steam protocol handler exactly matches the selected ordinary installation. Portable/isolation routes fail closed."
+      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
     ],
     "output_fields": [
       "plan",
@@ -1604,8 +1595,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "appid"
+      "job_id"
     ]
   }
 ]

@@ -149,13 +149,8 @@
     ],
     "output_fields": [
       "status",
-      "available_actions",
-      "id",
       "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "available_actions"
     ]
   },
   {
@@ -178,7 +173,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Writes bundled winmm.dll, system winmm_real.dll, loader config and receipt; disables Millennium LuaTools entries; creates CDP marker junction; activates plugin; rollback on failure; toast and status refresh. Stops Steam and starts it again only if previously running; OK/Cancel dialog \u201cThis will close and restart Steam to apply the loader. Continue?\u201d; write bundled winmm.dll, Windows winmm_real.dll, loader path config, receipt, CDP marker junction; disable Millennium luatools entries; reload injector/activate; rollback snapshots on failure; restart Steam only if previously running"
+      "Writes bundled winmm.dll, system winmm_real.dll, loader config and receipt; disables Millennium LuaTools entries; creates CDP marker junction; activates plugin; rollback on failure; toast and status refresh. Stops Steam and starts it again only if previously running; OK/Cancel dialog “This will close and restart Steam to apply the loader. Continue?”; write bundled winmm.dll, Windows winmm_real.dll, loader path config, receipt, CDP marker junction; disable Millennium luatools entries; reload injector/activate; rollback snapshots on failure; restart Steam only if previously running"
     ],
     "flags": [
       {
@@ -366,8 +361,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools plugin update --install --yes",
-      "luatools plugin update --install --format text --yes"
+      "luatools plugin update --install --dry-run --restart-steam",
+      "luatools plugin update --install --yes --restart-steam"
     ],
     "see_also": [
       "luatools describe plugin",
@@ -397,9 +392,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "status",
-      "available_actions"
+      "job_id"
     ]
   },
   {
@@ -603,8 +596,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools plugin delete --yes",
-      "luatools plugin delete --format text --yes"
+      "luatools plugin delete --dry-run --restart-steam",
+      "luatools plugin delete --yes --restart-steam"
     ],
     "see_also": [
       "luatools describe plugin",
@@ -634,9 +627,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "status",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

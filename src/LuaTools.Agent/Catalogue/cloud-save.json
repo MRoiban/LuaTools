@@ -210,8 +210,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cloud-save update --enabled true",
-      "luatools cloud-save update --enabled true --format text"
+      "luatools cloud-save update --enabled true --dry-run",
+      "luatools cloud-save update --enabled true --yes"
     ],
     "see_also": [
       "luatools describe cloud-save",
