@@ -128,6 +128,21 @@ public class ApiContractTests
     }
 
     [Fact]
+    public async Task HubcapDownloadIgnoresTheTitleInItsServerFileName()
+    {
+        using var http = AppHttp.CreateForTesting(TimeSpan.FromSeconds(5), new Stub(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1,2,3]) };
+            Assert.True(response.Content.Headers.TryAddWithoutValidation("Content-Disposition",
+                "attachment; filename*=utf-8''3591180_Harvest_Moon%C2%AE%3A_Echoes_of_Teradea.zip"));
+            return response;
+        }));
+        var downloaded = await new HubcapService(http).DownloadManifestAsync("3591180", "smm_" + new string('a',96), null);
+        Assert.Equal("3591180.zip", downloaded.FileName);
+        File.Delete(downloaded.FilePath);
+    }
+
+    [Fact]
     public async Task SourceQualifiedFixIdentifierIsPreserved()
     {
         const string fixId = "online-fix:5e01e852-6f21-4d26-b6ae-893116d72d16";

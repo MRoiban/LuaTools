@@ -90,6 +90,9 @@ public partial class HubcapService
             };
             throw new ApiException(message, res.StatusCode);
         }
+        // Hubcap's name embeds the game title, and a title such as "Game: Subtitle" is not a valid file name.
+        // Only the app-ID name is trusted, and the file is installed by its contents.
+        res.Content.Headers.ContentDisposition = null;
         return await HttpFileDownloader.SaveResponseAsync(res, $"{appid}.zip", progress, ct);
     }
 
