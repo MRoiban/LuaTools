@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Windows;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services.Downloads;
@@ -18,8 +18,9 @@ public class PluginAddService(
     SettingsService settings,
     AuthService auth,
     DownloadQueue queue,
-    ManifestJobFactory jobs)
+    ManifestJobFactory jobs, AcquisitionCoordinator? acquisition = null)
 {
+    private readonly AcquisitionCoordinator _acquisition = acquisition ?? new(api, hubcap, settings, auth, queue, jobs);
     private const string HubcapSourceName = "Sadie (Morrenus)";
     /// <summary>Legacy DLC source; signed-out generation uses SteamML.</summary>
     internal const string DlcSourceName = "lua.tools DLC";
@@ -36,6 +37,8 @@ public class PluginAddService(
         public double Progress { get; set; }
         public bool Indeterminate { get; set; }
         public bool Available => Status == "available";
+        public string[] DisabledReasons { get; set; } = [];
+        public bool IsSupporter { get; set; }
         public bool CanDownload => Available && !Locked;
     }
 
@@ -138,174 +141,26 @@ public class PluginAddService(
     {
         try
         {
-            // DLC never has manifests of its own on the sources. Mirror DownloadViewModel.FetchAsync,
-            // which branches on the app type before any source lookup.
-            var details = await SafeGetDetailsAsync(appId);
-            if (details?.IsDlc == true)
-            {
-                await CheckDlcAsync(appId, state, details);
-                return;
-            }
-            state.GameName ??= details?.Name;
-
-            string? key = settings.HubcapApiKey;
-
-            // Hubcap/Sadie is the priority source. When a key is set, check ITS availability first, and in
-            // FastFetch, if Hubcap can serve this game, download straight from it and skip the lua.tools
-            // CheckSources call entirely (a lua.tools source would never be picked over Hubcap anyway).
-            bool hubcapAvailable = false;
-            if (!string.IsNullOrEmpty(key))
-            {
-                var hs = await hubcap.CheckStatusAsync(key, appId.ToString());
-                hubcapAvailable = hs?.ManifestFileExists == true;
-            }
-
-            if (state.FastFetch && hubcapAvailable)
-            {
-                var stats = await hubcap.GetStatsAsync(key!);
-                if (stats?.CanMakeRequests == true)
-                {
-                    var hubMeta = SourceMeta.Get(HubcapSourceName);
-                    var hubRow = new SourceRow
-                    {
-                        Name = HubcapSourceName,
-                        DisplayName = hubMeta.DisplayName ?? HubcapSourceName,
-                        Status = "available",
-                        NeedsKey = true,
-                        Stats = $"{stats.DailyUsage}/{stats.DailyLimit}",
-                    };
-                    if (!PublishSources(state, new List<SourceRow> { hubRow }, appId)) return;
-                    await DownloadAsync(appId, state, hubRow);
-                    return;
-                }
-                // Hubcap is out of daily quota → fall through and let a lua.tools source take over.
-            }
-
-            Dictionary<string, string> statuses;
-            try { statuses = await api.CheckSourcesAsync(appId.ToString()); }
-            catch (ApiException) { statuses = []; }
-
-            // Synthesize the Hubcap/Sadie row from the availability already checked above (or "unknown"
-            // when no key is set, so it shows locked with the "needs a key" hint).
-            statuses[HubcapSourceName] = string.IsNullOrEmpty(key)
-                ? "unknown"
-                : (hubcapAvailable ? "available" : "unavailable");
-
-            // Premium (key-gated) sources first, mirroring the website/app ordering.
-            var rows = statuses
-                .OrderByDescending(kv => SourceMeta.Get(kv.Key).RequiresUserKey ? 1 : 0)
-                .Select(kv =>
-                {
-                    var meta = SourceMeta.Get(kv.Key);
-                    return new SourceRow
-                    {
-                        Name = kv.Key,
-                        DisplayName = meta.DisplayName ?? kv.Key,
-                        Status = kv.Value,
-                        NeedsKey = meta.RequiresUserKey,
-                    };
-                }).ToList();
-
-            // Premium rows stay locked until quota is known. Keyed rows get their
-            // real lock state from the Hubcap stats call in FillBadgesAsync.
-            var keyRows = rows.Where(r => r.NeedsKey).ToList();
-            foreach (var r in keyRows) r.Locked = true;
-
+            var result = await _acquisition.CheckAsync(appId, state.FastFetch);
+            state.GameName ??= result.Details?.Name;
+            state.DlcBaseAppId = result.Details?.IsDlc == true ? result.Details.BaseAppId : null;
+            if (!PublishSources(state, result.Sources, appId)) return;
             if (state.FastFetch)
             {
-                // Reached only when Hubcap couldn't serve it (no key / not on Hubcap / out of quota). No
-                // picker, so resolve just the Hubcap lock that CanDownload needs (skip the cosmetic X/25
-                // badges), then pick the best remaining source.
-                if (keyRows.Count > 0 && !string.IsNullOrEmpty(key))
-                    await FillHubcapBadgeAsync(keyRows, key);
-                if (!PublishSources(state, rows, appId)) return;
-
-                var best = rows.FirstOrDefault(r => r.CanDownload);
-                if (best is null)
-                {
-                    lock (_gate)
-                        if (IsCurrent(state)) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
-                    return;
-                }
-                await DownloadAsync(appId, state, best);
-                return;
+                var best = result.Sources.FirstOrDefault(r => r.CanDownload);
+                if (best is null) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
+                else await DownloadAsync(appId, state, best);
             }
-
-            // FastFetch off: publish the picker as soon as availability is known, then lazy-fill the usage
-            // badges. The plugin polls state (~350ms), so the "12/25" / "X/Unlimited" counters and the real
-            // Hubcap lock pop in on the next tick instead of blocking the whole list.
-            if (!PublishSources(state, rows, appId)) return;
-            await FillBadgesAsync(rows, keyRows, key);
         }
         catch (Exception ex)
         {
-            lock (_gate)
-            {
-                if (!IsCurrent(state)) return;
-                state.Error = ex.Message;
-                state.Checking = false;
-            }
+            lock (_gate) if (IsCurrent(state)) { state.Checking = false; state.Error = ex is ApiException ? ex.Message : ex is Agent.MutationRejectedException { Code: "BASE_APP_REQUIRED" } ? Resources.Strings.Add_Err_BaseGame : Resources.Strings.Add_Err_Generic; }
             PluginLog.Error($"PluginAdd.Check appid={appId} failed", ex);
         }
     }
 
-    /// <summary>DLC sources use the parent game Steam reports for this DLC. DexLua is checked first;
-    /// the legacy source uses lua.tools when signed in and SteamML when signed out.</summary>
-    private async Task CheckDlcAsync(long appId, AddState state, GameDetails details)
-    {
-        string? error = null;
-        if (!ApiContract.IsAppId(details.BaseAppId)) error = Resources.Strings.Add_Err_BaseGame;
-        if (error is not null)
-        {
-            PluginLog.Log($"PluginAdd.Dlc appid={appId} base={(ApiContract.IsAppId(details.BaseAppId) ? details.BaseAppId : "invalid")} rejected guest={auth.IsGuest}");
-            lock (_gate)
-                if (IsCurrent(state)) { state.Checking = false; state.Error = error; }
-            return;
-        }
-
-        string baseAppId = details.BaseAppId!;
-        state.GameName ??= details.Name;
-        lock (_gate) state.DlcBaseAppId = baseAppId;
-        var rows = await CheckDlcSourcesAsync(appId.ToString(), baseAppId, state.FastFetch);
-        if (!PublishSources(state, rows, appId)) return;
-        if (!state.FastFetch) return;
-        var best = rows.FirstOrDefault(r => r.CanDownload);
-        if (best is null)
-        {
-            lock (_gate)
-                if (IsCurrent(state)) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
-            return;
-        }
-        await DownloadAsync(appId, state, best);
-    }
-
-    internal async Task<List<SourceRow>> CheckDlcSourcesAsync(string appId, string baseAppId, bool fastFetch)
-    {
-        static async Task<string> Status(Func<Task<DlcInfo?>> getInfo, bool suppressErrors = true)
-        {
-            try
-            {
-                var info = await getInfo();
-                return info is not null && (info.HaveCount > 0 || info.MissingCount == 0) ? "available" : "unavailable";
-            }
-            catch (ApiException ex) when (ex.Status == System.Net.HttpStatusCode.NotFound) { return "unavailable"; }
-            catch (Exception ex) when (suppressErrors && ex is (ApiException or System.Net.Http.HttpRequestException or OperationCanceledException))
-            { return "unknown"; }
-        }
-        var dexLua = new SourceRow
-        {
-            Name = DexLuaService.SourceName, DisplayName = DexLuaService.SourceName,
-            Status = await Status(async () => await api.GetDexLuaDlcInfoAsync(appId, baseAppId)),
-        };
-        // FastFetch prefers the public source, without even consulting lua.tools usage or generation.
-        if (fastFetch && dexLua.CanDownload) return [dexLua];
-        var legacy = new SourceRow
-        {
-            Name = DlcSourceName, DisplayName = auth.IsGuest ? SteamMlService.SourceName : "lua.tools",
-            Status = await Status(() => api.GetDlcInfoAsync(appId, baseAppId), suppressErrors: dexLua.CanDownload),
-        };
-        return [dexLua, legacy];
-    }
+    internal Task<List<SourceRow>> CheckDlcSourcesAsync(string appId, string baseAppId, bool fastFetch) =>
+        _acquisition.CheckDlcSourcesAsync(appId, baseAppId, fastFetch);
 
     private bool PublishSources(AddState state, List<SourceRow> rows, long appId)
     {
@@ -319,56 +174,6 @@ public class PluginAddService(
         }
         PluginLog.Log($"PluginAdd.Check appid={appId} sources=[{string.Join(", ", rows.Select(r => $"{r.Name}({r.Status},lock={r.Locked})"))}] fastFetch={state.FastFetch}");
         return true;
-    }
-
-    private async Task<GameDetails?> SafeGetDetailsAsync(long appId)
-    {
-        try { return await api.GetDetailsAsync(appId.ToString()); } catch { return null; }
-    }
-
-    /// <summary>Fill the usage-counter badges on the (already-published) rows, best-effort and
-    /// concurrently: the Hubcap "12/25" badge + real lock state, and the standard "X/25" badge. A failure
-    /// leaves the affected rows without a badge. The picker stays fully usable. Row fields are mutated in
-    /// place; the status poll re-serializes them, so the badges appear on the next tick.</summary>
-    private async Task FillBadgesAsync(List<SourceRow> rows, List<SourceRow> keyRows, string? key)
-    {
-        var hubcapTask = keyRows.Count > 0 && !string.IsNullOrEmpty(key)
-            ? FillHubcapBadgeAsync(keyRows, key!)
-            : Task.CompletedTask;
-        var standardTask = !auth.IsGuest ? FillStandardBadgeAsync(rows) : Task.CompletedTask;
-        await Task.WhenAll(hubcapTask, standardTask);
-    }
-
-    /// <summary>Hubcap "12/25" usage badge + lock state on the key-gated rows.</summary>
-    private async Task FillHubcapBadgeAsync(List<SourceRow> keyRows, string key)
-    {
-        try
-        {
-            var stats = await hubcap.GetStatsAsync(key);
-            foreach (var r in keyRows)
-            {
-                r.Locked = stats?.CanMakeRequests != true;
-                if (stats is not null) r.Stats = $"{stats.DailyUsage}/{stats.DailyLimit}";
-            }
-        }
-        catch { }
-    }
-
-    /// <summary>Standard "X/25" (or "X/Unlimited" for supporters) usage badge on the non-key rows.</summary>
-    private async Task FillStandardBadgeAsync(List<SourceRow> rows)
-    {
-        try
-        {
-            var usageTask = api.GetStandardUsageAsync();
-            var supporterTask = api.GetSupporterStatusAsync();
-            await Task.WhenAll(usageTask, supporterTask);
-            var usage = usageTask.Result;
-            bool isSupporter = supporterTask.Result?.IsSupporter == true;
-            foreach (var r in rows.Where(r => !r.NeedsKey && r.Name != SteamMlService.SourceName && r.Name != DexLuaService.SourceName))
-                if (usage is not null)
-                    r.Stats = isSupporter ? $"{usage.Used} / Unlimited" : $"{usage.Used}/{usage.Limit}";
-        }
-        catch { }
     }
 
     /// <summary>
@@ -412,10 +217,7 @@ public class PluginAddService(
                 lock (_gate)
                 {
                     if (!IsCurrent(state)) return null;
-                    var job = state.DlcBaseAppId is { } baseAppId
-                        ? jobs.CreateDlcJob(appId, baseAppId, state.GameName, sourceName: row.Name)
-                        : jobs.CreateManifestJob(appId, state.GameName, row.Name, row.NeedsKey);
-                    return state.QueueItem = queue.Enqueue(job);
+                    return state.QueueItem = _acquisition.Enqueue(appId, state.GameName, row, state.DlcBaseAppId);
                 }
             }
             var item = Application.Current is { } app

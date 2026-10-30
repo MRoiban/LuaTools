@@ -12,8 +12,8 @@
       "C-134",
       "C-135"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -193,6 +193,14 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "name",
+      "index",
+      "display_name",
+      "status",
+      "needs_key",
+      "usage",
+      "available_actions"
+    ]
   }
 ]

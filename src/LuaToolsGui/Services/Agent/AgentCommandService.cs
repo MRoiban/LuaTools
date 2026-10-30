@@ -12,7 +12,7 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, SteamAppListCache? libraryNames = null, SteamAppInfoCache? libraryDetails = null, CacheService? libraryCache = null, SteamlessService? librarySteamless = null, LuaToolsApiClient? libraryApi = null, HardwareAppIdService? libraryHardware = null, SteamLibraryService? libraryInstalls = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, SteamAppListCache? libraryNames = null, SteamAppInfoCache? libraryDetails = null, CacheService? libraryCache = null, SteamlessService? librarySteamless = null, LuaToolsApiClient? libraryApi = null, HardwareAppIdService? libraryHardware = null, SteamLibraryService? libraryInstalls = null, AcquisitionServices? acquisition = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
@@ -24,7 +24,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     private readonly AgentJobRegistry _jobs = new(queue);
     internal AgentJobRegistry Jobs => _jobs;
     internal void BindHost(CancellationToken lifetime) { _hostLifetime = lifetime; Jobs.Events = new AgentEventHub(InstanceId); }
-    private string PlanContext => MutationCoordinator.Hash(InstanceId + SteamIdentity + auth.IsSignedIn + string.Join(':',
+    private string PlanContext => MutationCoordinator.Hash(InstanceId + SteamIdentity + auth.IsSignedIn + auth.Email + MutationCoordinator.Hash(settings.HubcapApiKey ?? "") + string.Join(':',
         Protocol.Node(ReadSettings(settings))!.AsArray().Select(n => n!["version"]!.ToString())));
     public void AfterReply(AgentRequest request)
     {

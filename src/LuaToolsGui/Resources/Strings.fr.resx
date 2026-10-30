@@ -795,4 +795,11 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_Library_Unavailable" xml:space="preserve"><value>Cette action de bibliothèque est indisponible.</value></data>
   <data name="Agent_Library_Impact" xml:space="preserve"><value>Supprimer les fichiers Lua actifs ou modifier les exécutables installés.</value></data>
   <data name="Agent_Library_HistoryImpact" xml:space="preserve"><value>Supprimer les entrées de l’historique ; les fichiers téléchargés sont conservés.</value></data>
+  <data name="Agent_Add_GateChanged" xml:space="preserve"><value>Les conditions de la source ont changé. Vérifiez les sources et réessayez.</value></data>
+  <data name="Agent_Add_UnreadableDiff" xml:space="preserve"><value>Impossible de comparer le contenu. Le remplacement peut écraser le contenu existant.</value></data>
+  <data name="Agent_Add_InstallFailed" xml:space="preserve"><value>Un ou plusieurs fichiers n’ont pas pu être installés.</value></data>
+  <data name="Agent_Add_Impact" xml:space="preserve"><value>Acquérir le contenu ; le quota peut être consommé avant la comparaison. Installer les Lua et les manifestes ; le contenu existant peut être écrasé sans restauration.</value></data>
+  <data name="Agent_Add_Rejected" xml:space="preserve"><value>La demande d’acquisition a été refusée.</value></data>
+  <data name="Agent_Add_CancelImpact" xml:space="preserve"><value>Annuler le lot ; les installations terminées et le quota consommé sont conservés.</value></data>
+  <data name="Agent_Add_LocalImpact" xml:space="preserve"><value>Installer les données fournies dans l’ordre ; conserver les fichiers sources ; le contenu existant peut être écrasé sans restauration.</value></data>
 </root>

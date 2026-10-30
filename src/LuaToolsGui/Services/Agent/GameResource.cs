@@ -6,6 +6,7 @@ public sealed partial class AgentCommandService
     [AgentResource("game")]
     private async Task<Envelope> GameAsync(AgentRequest r, CancellationToken ct)
     {
+        if (r.Command == "game add") return await AddRemoteAsync(r, false, ct);
         if (libraryNames is null || libraryDetails is null || libraryCache is null)
             return Envelope.Fail("ACTION_UNAVAILABLE", 6, Resources.Strings.Agent_Library_Unavailable);
         string? dir = await Snapshot(() => steam.StPlugInDir, ct);

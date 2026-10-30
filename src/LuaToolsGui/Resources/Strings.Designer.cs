@@ -773,4 +773,11 @@ public static class Strings
     public static string Agent_Library_Unavailable => Get(nameof(Agent_Library_Unavailable));
     public static string Agent_Library_Impact => Get(nameof(Agent_Library_Impact));
     public static string Agent_Library_HistoryImpact => Get(nameof(Agent_Library_HistoryImpact));
+    public static string Agent_Add_GateChanged => Get(nameof(Agent_Add_GateChanged));
+    public static string Agent_Add_UnreadableDiff => Get(nameof(Agent_Add_UnreadableDiff));
+    public static string Agent_Add_InstallFailed => Get(nameof(Agent_Add_InstallFailed));
+    public static string Agent_Add_Impact => Get(nameof(Agent_Add_Impact));
+    public static string Agent_Add_Rejected => Get(nameof(Agent_Add_Rejected));
+    public static string Agent_Add_CancelImpact => Get(nameof(Agent_Add_CancelImpact));
+    public static string Agent_Add_LocalImpact => Get(nameof(Agent_Add_LocalImpact));
 }

@@ -49,8 +49,9 @@ public sealed class AgentClient
                         if (expectedSteam is null) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The owner did not advertise mutation context.");
                         continue;
                     }
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown", parsed.Files);
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
+                    await UploadAsync(pipe, parsed.FileBytes, ct).ConfigureAwait(false);
                     var reply = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
                     if (parsed.Command.Key == "job wait" && reply.Ok && reply.Data?["state"]?.ToString() is { } state)
                     {
@@ -100,6 +101,12 @@ public sealed class AgentClient
                 await Task.Delay(100, ct).ConfigureAwait(false);
             }
         }
+    }
+    public static async Task UploadAsync(Stream pipe, byte[][] files, CancellationToken ct)
+    {
+        foreach (byte[] file in files)
+            for (int offset = 0; offset < file.Length; offset += FileSubmission.ChunkBytes)
+                await Protocol.WriteAsync(pipe, new FileChunk(file.AsSpan(offset, Math.Min(FileSubmission.ChunkBytes, file.Length - offset)).ToArray()), Protocol.MaxRequest, ct);
     }
     public static Envelope Unavailable() => Envelope.Fail("GUI_NOT_RUNNING", 9, "LuaTools could not be started or discovered.", "Launch the installed LuaTools.exe once. Expected launcher: %LOCALAPPDATA%\\LuaToolsGui-SecurityHardened\\bin\\gui-path.json; retry without --no-start.");
 

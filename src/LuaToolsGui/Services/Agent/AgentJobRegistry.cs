@@ -76,7 +76,7 @@ public sealed class AgentJobRegistry
         id = item.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(item.Status.ToString()), kind = item.Job.Kind.ToString(),
         version = Version(item), bytes = item.BytesRead, total_bytes = item.TotalBytes, rate = item.BytesPerSecond,
         eta_seconds = item.Eta?.TotalSeconds, cancel_requested = item.Cts.IsCancellationRequested && !item.PauseRequested,
-        paths = new { output = item.RevealPath }, pending_decision = ConsentCoordinator.HasPending(item.Id),
+        paths = new { output = item.RevealPath }, pending_decision = ConsentCoordinator.Details(item.Id),
         result = item.Completion.IsCompletedSuccessfully && item.Completion.Result is { } result ? new { ok = result.Ok, message = LogRedactor.Redact(result.Message ?? "") } : null,
         enqueued_at = item.EnqueuedAt, available_actions = AvailableActions.For("job", c => c.Verb switch
         {
@@ -107,6 +107,14 @@ public sealed class AgentJobRegistry
 public static class ConsentCoordinator
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>> Pending = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> Descriptions = new();
+    public static object? Details(string id) => Descriptions.GetValueOrDefault(id);
+    public static async Task<bool> WaitAsync(string id, object details, CancellationToken ct)
+    {
+        Descriptions[id] = details;
+        try { return await WaitAsync(id, ct); }
+        finally { Descriptions.TryRemove(id, out _); }
+    }
     public static bool HasPending(string id) => Pending.ContainsKey(id);
     public static Task<bool> WaitAsync(string id, CancellationToken ct) => WaitWithGuiAsync(id, null, ct);
     public static async Task<bool> WaitWithGuiAsync(string id, Task<bool>? guiDecision, CancellationToken ct)

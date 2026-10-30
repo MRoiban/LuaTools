@@ -52,6 +52,7 @@ public partial class App : Application
             {
                 services.AddSingleton<SettingsService>();
                 services.AddSingleton<Services.Agent.MutationCoordinator>();
+                services.AddSingleton<Services.Agent.AcquisitionServices>(); services.AddSingleton<AcquisitionCoordinator>(); services.AddSingleton<LuaOverwriteCoordinator>(); services.AddSingleton<LocalInstallCoordinator>();
                 services.AddSingleton<Services.Agent.AgentCommandService>();
                 services.AddHostedService<Services.Agent.AgentPipeHostedService>();
                 services.AddSingleton<ICabinetSettings>(sp => sp.GetRequiredService<SettingsService>());

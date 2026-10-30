@@ -11,8 +11,8 @@
       "C-093",
       "C-112"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -156,7 +156,18 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "version",
+      "diff",
+      "entries",
+      "content",
+      "available_actions",
+      "plan",
+      "id",
+      "job_id",
+      "state"
+    ]
   },
   {
     "resource": "lua",
@@ -169,12 +180,12 @@
     "capability_ids": [
       "C-092"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "queue-or-operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -366,8 +377,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools lua add --file C:\\Lua\\570.lua",
-      "luatools lua add --file C:\\Lua\\570.lua --format text"
+      "luatools lua add --file C:\\Lua\\570.lua --yes",
+      "luatools lua add --file C:\\Lua\\570.lua --format text --yes"
     ],
     "see_also": [
       "luatools describe lua",
@@ -397,7 +408,12 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "diff",
+      "entries",
+      "content",
+      "available_actions"
     ]
   },
   {
@@ -633,7 +649,8 @@
     ],
     "preconditions": [
       "Active game; no dirty or empty check in VM (content policy may reject); no confirmation",
-      "Lua content/reparse checks; no Steam close/restart"
+      "Lua content/reparse checks; no Steam close/restart",
+      "Disabled: live-edit origin routing remains inside BuildsViewModel, outside this extraction; never replace with LuaInstaller."
     ],
     "output_fields": [
       "plan",

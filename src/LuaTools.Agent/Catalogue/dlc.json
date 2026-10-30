@@ -11,8 +11,8 @@
       "C-031",
       "C-034"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -149,7 +149,23 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "batch",
+      "batch_id",
+      "id",
+      "job_id",
+      "state",
+      "done",
+      "items",
+      "depots",
+      "depot_count",
+      "have_count",
+      "missing_count",
+      "available_actions",
+      "plan",
+      "cancel_requested"
+    ]
   },
   {
     "resource": "dlc",
@@ -162,12 +178,12 @@
     "capability_ids": [
       "C-033"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
-    "job_behavior": "none",
+    "job_behavior": "operation",
     "destructive": false,
     "reversible": null,
     "side_effects": [
@@ -300,7 +316,23 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "batch",
+      "batch_id",
+      "id",
+      "job_id",
+      "state",
+      "done",
+      "items",
+      "depots",
+      "depot_count",
+      "have_count",
+      "missing_count",
+      "available_actions",
+      "plan",
+      "cancel_requested"
+    ]
   },
   {
     "resource": "dlc",
@@ -314,12 +346,12 @@
       "C-032",
       "C-035"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "queue-or-operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -514,8 +546,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools dlc add 570",
-      "luatools dlc add 570 --format text"
+      "luatools dlc add 570 --yes",
+      "luatools dlc add 570 --format text --yes"
     ],
     "see_also": [
       "luatools describe dlc",
@@ -547,7 +579,18 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "batch",
+      "batch_id",
+      "done",
+      "items",
+      "depots",
+      "depot_count",
+      "have_count",
+      "missing_count",
+      "available_actions",
+      "cancel_requested"
     ]
   },
   {
@@ -561,12 +604,12 @@
     "capability_ids": [
       "C-036"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "queue-or-operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -784,7 +827,18 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "batch",
+      "batch_id",
+      "done",
+      "items",
+      "depots",
+      "depot_count",
+      "have_count",
+      "missing_count",
+      "available_actions",
+      "cancel_requested"
     ]
   }
 ]

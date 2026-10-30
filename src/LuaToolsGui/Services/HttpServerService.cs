@@ -44,52 +44,7 @@ public class HttpServerService : IHostedService
     {
         if (_apiSourcesLoaded) return;
         _apiSourcesLoaded = true;
-
-        string[] candidates =
-        {
-            Path.Combine(AppContext.BaseDirectory, "public", "api.json"),
-            Path.Combine(AppContext.BaseDirectory, "api.json"),
-        };
-        foreach (var path in candidates)
-        {
-            if (File.Exists(path))
-            {
-                try
-                {
-                    var json = File.ReadAllText(path);
-                    using var doc = JsonDocument.Parse(json);
-                    if (doc.RootElement.TryGetProperty("api_list", out var list))
-                    {
-                        _apiSources = new();
-                        foreach (var entry in list.EnumerateArray())
-                        {
-                            var name = entry.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
-                            var url = entry.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
-                            var successCode = entry.TryGetProperty("success_code", out var sc) ? sc.GetInt32() : 200;
-                            var enabled = !entry.TryGetProperty("enabled", out var en) || en.GetBoolean();
-                            if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(url) && enabled)
-                            {
-                                try
-                                {
-                                    new OutboundNetworkPolicy().Validate(new Uri(url.Replace("<appid>", "1")));
-                                    _apiSources.Add(new ApiSource(name, url, successCode));
-                                }
-                                catch (HttpRequestException) { }
-                                catch (UriFormatException) { }
-                            }
-                        }
-                    }
-                    _log.LogInformation("Loaded {Count} API sources from api.json", _apiSources.Count);
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning("Failed to parse api.json: {Message}", ex.Message);
-                }
-            }
-        }
-        _log.LogWarning("api.json not found; source catalogue unavailable");
-        _apiSources = new();
+        _apiSources = LegacySourceCatalogue.Read();
     }
 
     public Task StartAsync(CancellationToken cancellationToken)

@@ -4,6 +4,8 @@ namespace LuaTools.Agent;
 
 public sealed record Parsed(Command? Command, string[] Arguments, Dictionary<string, string?> Flags, Problem[] Problems)
 {
+    public byte[][] FileBytes { get; init; } = [];
+    public SubmittedFile[] Files { get; init; } = [];
     public bool Has(string flag) => Flags.ContainsKey(flag);
     public string? Value(string flag) => Flags.GetValueOrDefault(flag);
     public TimeSpan Timeout => CommandParser.Duration(Value("timeout") ?? (Command?.Key == "job wait" ? "5m" : "30s")) ?? TimeSpan.FromSeconds(30);
@@ -36,7 +38,11 @@ public static class CommandParser
                 if (i + 1 < args.Length && !args[i + 1].StartsWith("--")) value = args[++i];
                 else problems.Add(new(name, "A value is required."));
             }
-            if (!flags.TryAdd(name, value)) problems.Add(new(name, "Flag repeated."));
+            if (!flags.TryAdd(name, value))
+            {
+                if (name is "file" or "owned" && value is not null) flags[name] += "\n" + value;
+                else problems.Add(new(name, "Flag repeated."));
+            }
         }
         if (operands.Count == 0) operands.Add("help");
         var command = Catalogue.Find(string.Join(' ', operands.Take(2))) ?? Catalogue.Find(operands[0]);

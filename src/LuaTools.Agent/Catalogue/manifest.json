@@ -10,12 +10,12 @@
     "capability_ids": [
       "C-097"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "queue-or-operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -209,8 +209,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools manifest add example-fix --appid 570",
-      "luatools manifest add example-fix --appid 570 --format text"
+      "luatools manifest add example-fix --appid 570 --yes",
+      "luatools manifest add example-fix --appid 570 --format text --yes"
     ],
     "see_also": [
       "luatools describe manifest",
