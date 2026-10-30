@@ -33,7 +33,7 @@ public sealed partial class AgentCommandService
                 try
                 {
                     result = await ExecuteAsync(r with { Command = parsed.Command!.Key, Arguments = parsed.Arguments, Flags = flags,
-                        RequestId = Guid.NewGuid().ToString("N"), ExpectedSteam = SteamIdentity }, ct);
+                        RequestId = Guid.NewGuid().ToString("N"), ExpectedSteam = r.ExpectedSteam ?? Admitted.Identity }, ct);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {

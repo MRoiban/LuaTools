@@ -34,7 +34,7 @@ public sealed partial class AgentCommandService
                         return Task.FromResult(SystemResult((processes ?? new(steam)).Restart()));
                     });
                     settings.SteamPathOverride = auto ? null : path;
-                    return Envelope.Success(new { path = steam.EffectivePath, steam_identity = SteamIdentity, version = SystemVersion("steam") });
+                    return Envelope.Success(new { path = steam.SelectedPath, steam_identity = SteamIdentity, version = SystemVersion("steam") });
                 }, commit));
         }, token), ct);
     }
