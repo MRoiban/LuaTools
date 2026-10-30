@@ -19,7 +19,7 @@
     "destructive": true,
     "reversible": true,
     "side_effects": [
-      "Starts the recorded GUI minimized using the normal single-owner startup."
+      "Single-instance mutex; second launch signals first to restore (unless --minimized). Starts local event log, hosted services, auth restore even tray-only, signed-update checks, launch-option drift check, bounded hardware metadata refresh; restores approved signed release before WPF/mutex"
     ],
     "flags": [
       {
@@ -205,7 +205,9 @@
     ],
     "see_also": [
       "luatools describe application",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -220,7 +222,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Normal launch Home; --minimized tray only. Cabinet helper dispatch precedes GUI. Startup can prune files/download/stage updates; no automatic protocol install or onboarding installer",
+      "Windows/WPF; automatic writes depend on prior persisted consent/settings"
     ],
     "output_fields": [
       "protocol",
@@ -254,7 +257,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Delayed cmd.exe relaunch, then Shutdown; no flag forwarding; changes appear next launch"
     ],
     "flags": [
       {
@@ -440,7 +443,9 @@
     ],
     "see_also": [
       "luatools describe application",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -455,7 +460,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only after user changes language",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -486,7 +492,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Bypasses close-to-tray; stops plugin runtime/hosted queue/Cabinet and disposes host; Hides and enables tray icon when MinimizeToTray true; otherwise requests app shutdown and disposes tray"
     ],
     "flags": [
       {
@@ -672,7 +678,9 @@
     ],
     "see_also": [
       "luatools describe application",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -687,7 +695,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "--yes and no active jobs or Cabinet helpers; active drain remains a lifecycle extraction.",
+      "None"
     ],
     "output_fields": [
       "plan",

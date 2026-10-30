@@ -8,7 +8,7 @@
     ],
     "purpose": "List saved Lua presets for the selected game.",
     "capability_ids": [
-      "C-157"
+      "C-108"
     ],
     "status": "disabled",
     "disabled_code": "NOT_IMPLEMENTED",
@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -166,7 +166,8 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -205,7 +206,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -316,7 +317,8 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -355,7 +357,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Save editor buffer when editing, otherwise live bytes, as content-addressed preset; dedup identical bytes may return existing non-preset entry. Clear edit base; editor closes, selected saved row; no change to live bytes"
     ],
     "flags": [
       {
@@ -562,7 +564,9 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -577,7 +581,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Active game and nonblank text; header Save as new visible only HasEditBase; editor Save as preset available while editing",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -609,7 +614,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Save trims custom label, blank restores generated label; index changes only, build ID and Lua untouched. Cancel leaves label unchanged; selecting different preset closes rename",
+      "Overwrite stored origin with live bytes, preserve label/kind/build ID/source/captured time; delete old content-hash file and clear edit base. Dedup may retire origin into preexisting identical entry. Missing base falls back to Save as preset"
     ],
     "flags": [
       {
@@ -818,7 +824,9 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -833,7 +841,9 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Any selected preset, including active; inline row replaces action buttons",
+      "Header visible only HasEditBase (live divergence from non-Default build/preset); Default edits save automatically",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -864,7 +874,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Validate bytes against SHA-256 and app ID, capture outgoing Default where appropriate, overwrite live Lua verbatim with pins intact, stamp timestamps, clear edit base; toast \u201cNow using \u201c{0}\u201d.\u201d or failure. Pending unsaved build edits can be lost"
     ],
     "flags": [
       {
@@ -1059,7 +1069,9 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1074,7 +1086,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Selected inactive preset; active/no selection disabled in XAML; live path and valid stored file required",
+      "No restart or Steam-closed gate; file watchers apply live"
     ],
     "output_fields": [
       "plan",
@@ -1105,7 +1118,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "OK/Cancel \u201cDelete this preset?\u201d; remove index entry and stored Lua. Does not delete live game file"
     ],
     "flags": [
       {
@@ -1300,7 +1313,9 @@
     ],
     "see_also": [
       "luatools describe preset",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1315,7 +1330,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only inactive selected preset. Disabled tooltip \u201cCan't delete the preset that's currently in use.\u201d Service separately rejects exact active hash",
+      "None"
     ],
     "output_fields": [
       "plan",

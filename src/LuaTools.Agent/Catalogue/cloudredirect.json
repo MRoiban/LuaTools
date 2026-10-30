@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -128,7 +128,8 @@
     ],
     "see_also": [
       "luatools describe cloudredirect",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -169,7 +170,9 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Acquire verified cloud_redirect.dll unless consented existing DLL; write consent and [cloud] enabled=true; best-effort point add-on at Cabinet; enabled/error toast; applies next Steam launch",
+      "Write [cloud] enabled=false; keep DLL; toast restart hint; refresh panel",
+      "Force fresh release lookup; quarantine/verify and overwrite DLL + consent; next launch required"
     ],
     "flags": [
       {
@@ -372,7 +375,9 @@
     ],
     "see_also": [
       "luatools describe cloudredirect",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -387,7 +392,12 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "CanUseCloudRedirect: OST/BST selected and !IsBusy; valid Steam. Does not close Steam; may fail locked DLL write",
+      "OST/BST active and !IsBusy; valid Steam path; applies next launch",
+      "Only shown unlocked && update available; disabled busy; valid Steam; locked file returns close-Steam/write-failed message",
+      "IsExecutableWorkflowEnabled(\"CloudRedirectAddon\") == CloudRedirectEnabled; DependencyQuarantine + RequireFiles/consent; Cabinet credentials only if configuring connected server, not prerequisite for enable",
+      "NO executable opt-in check in DisableCloudRedirect; UI mode gate still applies",
+      "CloudRedirectAddon/CloudRedirectEnabled gate; digest/consent checks. Does not stop Steam automatically"
     ],
     "output_fields": [
       "plan",
@@ -418,7 +428,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Prepare cached original CloudRedirect.exe with consent and launch separate GUI; app does not wait for process exit"
     ],
     "flags": [
       {
@@ -604,7 +614,9 @@
     ],
     "see_also": [
       "luatools describe cloudredirect",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -619,7 +631,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Shown unlocked && add-on enabled; disabled busy; errors toast. Handler itself only checks busy, unlike toggle/update",
+      "Separate component IsExecutableWorkflowEnabled(\"CloudRedirect\") (same CloudRedirectEnabled setting); DependencyQuarantine.PrepareToolAsync explicitUserAction=true + RequireDirectory; no login"
     ],
     "output_fields": [
       "plan",

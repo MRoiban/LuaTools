@@ -20,7 +20,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -131,7 +131,8 @@
     ],
     "see_also": [
       "luatools describe dlc",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -170,7 +171,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -281,7 +282,8 @@
     ],
     "see_also": [
       "luatools describe dlc",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -321,7 +323,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Generates and installs DLC Lua (guest may bundle manifests from SteamML); overwrite is silent, without diff confirmation; quota/history/banner like A7",
+      "Install verified ready items sequentially; depotless local addappid Lua; DexLua generate from verified snapshot; legacy generation otherwise; delete staging. Legacy daily-limit hit skips later legacy downloads but continues public/local items; restart suggestion"
     ],
     "flags": [
       {
@@ -516,7 +519,9 @@
     ],
     "see_also": [
       "luatools describe dlc",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -531,7 +536,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible if DlcInfo and (HaveCount>0 or MissingCount==0); requires Details.BaseAppId. Generating reflects active queue item, but no explicit active-item IsEnabled/CanExecute guard; queue dedupes dlc:{appid}",
+      "Only ready batch; button disabled zero ready or JS busy; apply rejects no verified ready item; content policy validates Lua",
+      "No enforced login; guests generate locally from SteamML keys; signed-in generation uses account/quota. Base game must also be added per hint, not enforced in this method; Steam writable, no closed gate",
+      "B; public DexLua/no quota; legacy quota/auth as API selects; no executable-fix opt-in; no automatic Steam stop"
     ],
     "output_fields": [
       "plan",
@@ -562,7 +570,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Cancel token/reset batch state; already installed DLC and quota remain; no transactional undo."
     ],
     "flags": [
       {
@@ -750,7 +758,9 @@
     ],
     "see_also": [
       "luatools describe dlc",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -765,7 +775,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only checking/applying/ready server phases cancellable; UI controls disabled while request busy",
+      "B"
     ],
     "output_fields": [
       "plan",

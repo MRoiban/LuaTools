@@ -19,7 +19,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Queue manifest download; install forceLocked Lua and packaged depot manifests to Steam, overwrite where installer permits; delete staged download; toast result; no Steam restart"
     ],
     "flags": [
       {
@@ -214,7 +214,9 @@
     ],
     "see_also": [
       "luatools describe manifest",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -229,7 +231,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible HasManifest; disabled if its ManifestItem.IsActive; does not require game installed; queue dedupes denuvo:fixId:manifest",
+      "Discord required (guest prompts sign-in then returns without enqueue); server daily quota; NO DenuvoFix executable gate for manifest slot; Lua content policy"
     ],
     "output_fields": [
       "plan",

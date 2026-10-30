@@ -20,7 +20,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -138,7 +138,8 @@
     ],
     "see_also": [
       "luatools describe lua",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -177,7 +178,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Validate and install local data files in order; keep inputs; update vault/loaded IDs and return per-file outcomes. Includes Views/DropZone.xaml OnDrop and OnBrowseClick \u2192 HandleDropAsync. No executable acquisition."
     ],
     "flags": [
       {
@@ -370,7 +371,9 @@
     ],
     "see_also": [
       "luatools describe lua",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -385,7 +388,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "No extension matches \u2192 Nothing to install; unidentified Lua/ZIP skipped; file picker has combined filter plus All files; content/path/archive validation may fail; no busy guard on drop/browse",
+      "No login, Hubcap key or executable opt-in; Steam path/writes required. Does not require Steam closed; locked files reported Close Steam and retry"
     ],
     "output_fields": [
       "plan",
@@ -416,7 +420,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Validate editor Lua, overwrite live file, stamp timestamps; store into origin build/preset preserving identity, or Default; update failure toast; may fall back to new preset if base vanished"
     ],
     "flags": [
       {
@@ -611,7 +615,9 @@
     ],
     "see_also": [
       "luatools describe lua",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -626,7 +632,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Active game; no dirty or empty check in VM (content policy may reject); no confirmation",
+      "Lua content/reparse checks; no Steam close/restart"
     ],
     "output_fields": [
       "plan",

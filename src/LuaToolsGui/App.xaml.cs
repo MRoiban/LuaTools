@@ -219,7 +219,7 @@ public partial class App : Application
             catch { /* Each request and injection also rechecks the disabled setting. */ }
         };
 
-        _ = Task.Run(() => Services.Agent.AgentCliInstallation.Install(
+        _ = Task.Run(() => Services.Agent.AgentCliInstallation.InstallAsync(
             _host.Services.GetRequiredService<ILogger<Services.Agent.AgentCommandService>>()));
         await _host.StartAsync();
 

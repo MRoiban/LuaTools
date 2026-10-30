@@ -28,10 +28,10 @@ Test("ledger parity", () =>
         Assert(ids.Add(cells[0]), "Duplicate " + cells[0]);
         Assert(new[] { "mapped", "needs-refactor", "not-applicable", "owner-decision", "implemented" }.Contains(cells[10]), "Invalid status " + cells[0]);
         if (cells[9] == "—") continue;
-        var matches = Regex.Matches(cells[9], @"luatools ([a-z-]+)(?: ([a-z][a-z-]*))?");
-        Assert(matches.Count > 0, "Missing command " + cells[0]);
-        foreach (Match m in matches)
+        foreach (string text in System.Net.WebUtility.HtmlDecode(cells[9]).Split(';'))
         {
+            var m = Regex.Match(text.Trim(), @"^luatools ([a-z-]+)(?: ([a-z][a-z-]*))?");
+            Assert(m.Success, "Missing or malformed command " + cells[0]);
             string key = (m.Groups[1].Value + " " + m.Groups[2].Value).Trim();
             Assert(Catalogue.Find(key) is { } command && command.Resource == m.Groups[1].Value && command.Verb == m.Groups[2].Value, "Exact command not found: " + key);
         }
@@ -47,6 +47,7 @@ foreach (var c in Catalogue.Commands)
     Test("descriptor " + c.Key, () =>
     {
         Assert(c.Purpose.Trim().TrimEnd('.').ToLowerInvariant() != c.Key && c.Purpose.EndsWith('.') && c.Purpose.Split(' ').Length >= 4, "Placeholder purpose: " + c.Key);
+        Assert(!c.SideEffects.Any(s => s.Contains("disabled in this slice", StringComparison.OrdinalIgnoreCase) || s.Contains("See capability-map", StringComparison.OrdinalIgnoreCase)), "Placeholder effects " + c.Key);
         Assert(c.Flags.Length > 0 && c.Examples.Distinct().Count() >= 2 && c.SeeAlso.Length > 0 && c.SideEffects.Length > 0 && c.Preconditions.Length > 0, "Missing guide part: " + c.Key);
         foreach (var flag in c.Flags) Assert(flag.Name.Length > 0 && flag.Type.Length > 0 && flag.Default.ValueKind != JsonValueKind.Undefined && flag.AllowedValues is not null, "Incomplete flag " + c.Key);
         Assert(c.Status is "enabled" or "disabled", c.Key);

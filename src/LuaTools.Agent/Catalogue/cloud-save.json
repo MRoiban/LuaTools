@@ -19,7 +19,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Yes/No prompt; sets CloudRedirectEnabled consent; verified/quarantined DLL download and Steam-root install if needed; edits opensteamtool.toml and DPAPI CloudRedirect Cabinet config; future Steam Cloud saves sent to server. Restart Steam afterwards (manual)"
     ],
     "flags": [
       {
@@ -215,7 +215,9 @@
     ],
     "see_also": [
       "luatools describe cloud-save",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -230,7 +232,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Button shown only cloud-save state Off; card requires enabled and connected. Active reconfigures credentials; incompatible mode shows unavailable toast. Mode VM busy/unlocked guard",
+      "Already human-enabled CloudRedirect executable consent; OST/BST; Cabinet enabled and connected; valid writable Steam; explicit third-party-sharing consent. CLI never sets executable opt-in."
     ],
     "output_fields": [
       "plan",

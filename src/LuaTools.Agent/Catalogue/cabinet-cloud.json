@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -121,7 +121,8 @@
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -160,7 +161,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Sends single-use pairing code/device name to chosen origin or consumes pasted credential link; verifies /api/me; writes DPAPI cloud.json and account journal; clears input; reconciles CloudRedirect and offers cloud saves"
     ],
     "flags": [
       {
@@ -360,7 +361,9 @@
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -375,7 +378,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "CabinetEnabled required; internal VM guard CloudBusy, missing cloud service; connect command busy prevents repeat. Standalone engine owner makes connect fail. Shows CloudError",
+      "No lua.tools login/Hubcap key. Pairing code from server Connect page; advanced server must be HTTPS origin; blank uses configured default"
     ],
     "output_fields": [
       "plan",
@@ -406,7 +410,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Removes local cloud token and CloudRedirect Cabinet token/provider fields; does not revoke server token or delete remote data"
     ],
     "flags": [
       {
@@ -592,7 +596,9 @@
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -607,7 +613,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only connected card; whole card disabled Cabinet off; guard CloudBusy; engine busy fails",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -638,7 +645,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "External marker .cef-enable-remote-debugging is bool state, default absent/false; creates marker in Steam folder; allowed true/false in UI, but false setter does nothing. Applies after manual Steam restart; no persisted JSON key"
     ],
     "flags": [
       {
@@ -834,7 +841,9 @@
     ],
     "see_also": [
       "luatools describe cabinet-cloud",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -849,7 +858,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled unless CabinetEnabled && connected && !CloudBusy. Error if marker cannot be created",
+      "Steam debug marker access; no automatic restart"
     ],
     "output_fields": [
       "plan",

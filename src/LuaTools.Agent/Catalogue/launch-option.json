@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -123,7 +123,8 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -162,7 +163,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -309,7 +310,8 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -348,7 +350,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Append selected blank executable entry, type default and OS windows; changes only in-memory until Save"
     ],
     "flags": [
       {
@@ -543,7 +545,9 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -558,7 +562,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Editor visible (not loading and no error)",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -590,7 +595,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Reorder buffered entries; Save compacts keys 0,1,2\u2026 so Steam uses list order; Required nonblank on Save; free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Used as play-menu label and list title, otherwise executable fallback. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options windows / macos / linux / blank; arbitrary free text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options default / none / option1 / option2 / vr; arbitrary text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable free branch name; suggestions blank, beta, default, development, test, legacy, steam_legacy, experimental. Blank means every branch; tooltip explains. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text App ID; no numeric validation here. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences",
+      "Persist desired list in launchmods.json (first original preserved, .bak, temp swap). OK applies to appinfo: stop selected Steam if running, best-effort 1 backup beside cache if room, temp-write/swap, restart only if previously running. Cancel at apply prompt keeps staged edit and shows Saved toast; dialog closes either way. Apply success/failure toast"
     ],
     "flags": [
       {
@@ -802,7 +808,9 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -817,7 +825,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled without selection; at list boundary button stays enabled but does nothing; Requires selected entry; fields hidden when none or editor has error/loading",
+      "XAML CanSave = loaded state + no Error + dirty (does NOT include IsLoading despite notification). Blank executable sets Error and hides editor. No equality/no-op Apply button exposed",
+      "None",
+      "Confirmed apply closes Steam automatically; no need for user to close first; selected install/process isolation checks may fail"
     ],
     "output_fields": [
       "plan",
@@ -848,7 +859,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Remove selected buffered entry, select next/previous; zero entries allowed. No confirmation until Save/apply"
     ],
     "flags": [
       {
@@ -1043,7 +1054,9 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1058,7 +1071,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled without selected entry",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -1089,7 +1103,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "OK restores recorded/rebased original launch entries, may stop/restart Steam, then deletes stored edit even if Apply returned failure; closes dialog. Cancel keeps stored edit. Nothing-to-restore toast when record missing"
     ],
     "flags": [
       {
@@ -1277,7 +1291,9 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1292,7 +1308,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Button enabled only IsModded; no separate loading/error/dirty gate",
+      "Confirmation; same appinfo/selected-Steam constraints as Save"
     ],
     "output_fields": [
       "plan",
@@ -1323,7 +1340,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "After OK reapply staged desired entries for drifted IDs in one appinfo rewrite, with same backup/stop/restart effects; background success/failure toast; Stops Steam if running; backup and rewrite appinfo.vdf through .luatools.tmp; prunes old backups; restarts Steam if it was running; success/failure toast"
     ],
     "flags": [
       {
@@ -1516,7 +1533,9 @@
     ],
     "see_also": [
       "luatools describe launch-option",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1531,7 +1550,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only offered after drift found; stale IDs removed from store skipped; Explicit OK; stored edits and drifted IDs; valid appinfo path",
+      "Explicit confirmation, selected Steam control; no login/key/opt-in gate; Steam must be closed for writing; service closes/restarts it after confirmation"
     ],
     "output_fields": [
       "plan",

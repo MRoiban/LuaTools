@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -121,7 +121,8 @@
     ],
     "see_also": [
       "luatools describe cabinet",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -160,7 +161,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Forces fingerprint sync of achievements/stats, playtime tick and cloud scheduling; writes Steam and engine state; toast/balloon Already in sync or changes. ManualSync / Syncing\u2026 status; errors shown"
     ],
     "flags": [
       {
@@ -346,7 +347,9 @@
     ],
     "see_also": [
       "luatools describe cabinet",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -361,7 +364,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled when off, IsSyncing / ManualSync, or StandaloneCabinetRunning. No requirement Steam be closed for whole command; engine defers conflicting file/helper work. Does not force CloudSync.RequestSync; remote round follows its own due/request/no-game policy",
+      "CabinetEnabled; available Steam account/progress needed for meaningful work"
     ],
     "output_fields": [
       "plan",

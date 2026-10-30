@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -121,7 +121,8 @@
     ],
     "see_also": [
       "luatools describe update",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -160,7 +161,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -262,7 +263,8 @@
     ],
     "see_also": [
       "luatools describe update",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -301,7 +303,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Writes approved.txt, re-verifies and extracts unique run directory; starts new exe --fork-update-wait PID and shuts down GUI; child waits up to 30s. Rolls pointer back on launch failure"
     ],
     "flags": [
       {
@@ -487,7 +489,9 @@
     ],
     "see_also": [
       "luatools describe update",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -502,7 +506,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Settings button only staged; service silently no-op if no pending package or CabinetService.HasActiveHelpers (not reflected in button disable)",
+      "Verified signed newer release; Cabinet helpers inactive"
     ],
     "output_fields": [
       "plan",

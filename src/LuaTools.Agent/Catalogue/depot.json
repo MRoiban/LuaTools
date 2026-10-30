@@ -20,7 +20,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -181,7 +181,8 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -220,7 +221,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -345,7 +346,8 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -384,7 +386,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -495,7 +497,8 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -534,7 +537,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -650,7 +653,8 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -690,7 +694,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Navigate Depots, clear conflicting search and jump to correct game page; game-selection side effects in R31; Select game; cancels editor/rename and clears depot search. Sync can overwrite/delete old Default, adopt loose Lua and auto-apply newest build if no live Lua. Read game title/ID/latest Steam build, presets newest-captured first, Default / Build {0} / Saved \u00b7 {date}, custom names, depot/DLC counts, Pinned / Auto-updating, source, ACTIVE, unsaved",
+      "Invalidate active game depot memory cache, rescan, recompute badges and reselect existing game; repeats selection sync/adoption effects. Keeps text search"
     ],
     "flags": [
       {
@@ -885,7 +890,9 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -900,7 +907,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Installed game; deep-link rescan then not-found toast if absent; Game selected; paging keeps right-hand game. Steam metadata may fail offline; no login gate",
+      "Concurrent loads join same Task; no 1-second cooldown",
+      "None; Lua validation, bounded data and reparse-point protections on vault writes; no executable/Steam-closed gate",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -932,7 +942,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Comment/uncomment all matching setManifestid lines, preserve indentation/CRLF. Live Default overwritten immediately; active build/preset has persistent pending edit; inactive stored preset updated immediately. Quiet table reload",
+      "Comment/uncomment all matching addappid lines (DLC uses declared DLC App ID). Same live/inactive persistence as Lock; disabled entries stay in table to re-enable"
     ],
     "flags": [
       {
@@ -1154,7 +1165,9 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1169,7 +1182,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible only declared row with active or commented manifest pin. Cannot invent a missing pin",
+      "Visible only In lua; disabled for base App ID to avoid breaking entire Lua",
+      "No Steam close/restart; Lua validation/reparse protections",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -1200,7 +1216,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Queue ONE batch keyed depot:{appid} (reuse active job), leave picker, navigate Downloads. Fetch/quarantine tool; resolve all manifests/shared owners and keys, repair invalid manifest cache, install manifests; preflight space then sequential downloads to chosen directory, possible existing-file writes/validation. No game install/copy-to-library step"
     ],
     "flags": [
       {
@@ -1402,7 +1418,9 @@
     ],
     "see_also": [
       "luatools describe depot",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1417,7 +1435,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled if no selected row; selections filtered CanDownload. Rechecks space globally/per depot and key format/decryption",
+      "DepotDownloader executable opt-in and quarantine/receipt checks; selected Steam/key resolution and disk space; missing manifest via authenticated API or guest SteamML; no Steam-account password, Hubcap or Steam-closed gate."
     ],
     "output_fields": [
       "plan",

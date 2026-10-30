@@ -20,7 +20,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -129,7 +129,8 @@
     ],
     "see_also": [
       "luatools describe mode",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -157,7 +158,7 @@
     ],
     "purpose": "List supported Steam unlocker modes and current availability.",
     "capability_ids": [
-      "C-157"
+      "C-098"
     ],
     "status": "disabled",
     "disabled_code": "NOT_IMPLEMENTED",
@@ -168,7 +169,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -308,7 +309,8 @@
     ],
     "see_also": [
       "luatools describe mode",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -347,7 +349,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "One confirmed workflow stops Steam (running games/downloads stop), quarantines/downloads/extracts managed ZIP, overwrites dwmapi.dll/xinput1_4.dll/OpenSteamTool.dll, records consent and selection/cache version/digest, adds config/stplug-in watch path, restarts Steam even after returned failure; Persist Custom selection; service downloads/writes no Steam payload, but VM still stops and starts Steam"
     ],
     "flags": [
       {
@@ -539,7 +541,9 @@
     ],
     "see_also": [
       "luatools describe mode",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -554,7 +558,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Disabled IsBusy; pending card required; Steam valid/writable; upstream release/manifest and wanted files required; locked/invalid/hash failures surfaced. UpToDate active=>Reinstall; update active=>Update; other active=>Install; inactive=>Switch; Active Custom action hidden; otherwise idle and confirmed",
+      "OST: IsExecutableWorkflowEnabled(\"OpenSteamTools\"); BST: IsExecutableWorkflowEnabled(\"BetterSteamTools\"). DependencyQuarantine + UserAuthorizedDependencies gate staged/installed bytes; explicit user action. VM stops Steam BEFORE service checks opt-in; NO executable opt-in; Custom branch returns before Steam validity check"
     ],
     "output_fields": [
       "plan",

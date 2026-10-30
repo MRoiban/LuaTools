@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -166,7 +166,8 @@
     ],
     "see_also": [
       "luatools describe history",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -206,7 +207,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Immediately deletes persisted history record; no file deletion, no confirmation, no undo; Removes all {count} persisted history records; downloaded files retained",
+      "Clear pending-added history; do not remove installed Lua; close modal"
     ],
     "flags": [
       {
@@ -394,7 +396,9 @@
     ],
     "see_also": [
       "luatools describe history",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -409,7 +413,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible for each history row; original terminal live row can still exist independently; Only section with history; confirmation default No (Enter preserves history), Yes clears",
+      "Disabled during request; errors shown and button re-enabled",
+      "None; No auth gate",
+      "B"
     ],
     "output_fields": [
       "plan",

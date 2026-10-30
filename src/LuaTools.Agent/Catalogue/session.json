@@ -8,7 +8,7 @@
     ],
     "purpose": "Exchange agent commands through a persistent standard input session.",
     "capability_ids": [
-      "C-157"
+      "C-162"
     ],
     "status": "disabled",
     "disabled_code": "NOT_IMPLEMENTED",
@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -128,7 +128,8 @@
     ],
     "see_also": [
       "luatools describe session",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,

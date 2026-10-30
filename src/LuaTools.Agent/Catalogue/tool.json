@@ -19,7 +19,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Opens external tool GUI without arguments; ready local tool launches without queue/history, with background metadata update probe. Otherwise queue downloads quarantined ZIP, installs explicitly authorized bundle/receipt, checks runtime then launches. No control of tool GUI actions from this app"
     ],
     "flags": [
       {
@@ -209,7 +209,9 @@
     ],
     "see_also": [
       "luatools describe tool",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -224,7 +226,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Header button has no settings-based disabled state; async command disabled while checking/enqueueing. tool:steamautocrack dedupes",
+      "IsExecutableWorkflowEnabled(\"SteamAutoCrack\"), explicit action, authorized unchanged dependency bundle/digest receipt; existing .NET 10 WindowsDesktop runtime required. EnsureRuntimeAsync throws if missing: runtime install unavailable in this build; no actual automatic runtime installer"
     ],
     "output_fields": [
       "plan",

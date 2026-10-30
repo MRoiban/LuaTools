@@ -32,7 +32,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -231,7 +231,8 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -274,7 +275,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -385,7 +386,8 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -425,7 +427,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -541,7 +543,8 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -580,7 +583,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Fetches archive or bare Lua, validates content; may overwrite {appid}.lua; installs manifests; captures vault/default/build state; records loaded App ID and refreshes library; shared queue history and Add result banner. Standard/Hubcap downloads can spend quota even if overwrite is declined. Staged download removed after use; Check source availability; FastFetch downloads automatically (Hubcap priority then available source; DLC prefers DexLua); queue/install Lua and vault/cache history and installed events; display installed/error; retry new generation; Read source name, Available/Not found/Needs key/Limit reached/Downloading, usage stats and progress. Download chooses row (or click row); key/settings actions open app Settings; source order premium first"
     ],
     "flags": [
       {
@@ -775,7 +778,9 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -790,7 +795,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Positive App ID; eligible available source; no conflicting active job; valid writable selected Steam. Standard source requires signed-in session; Hubcap needs valid key and remaining quota.",
+      "Approved HTTPS and manifest content policy; no executable opt-in for data-only content; explicit quota/overwrite consent; same GUI job queue."
     ],
     "output_fields": [
       "plan",
@@ -821,7 +827,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Delete selected live Lua files; plugin variant also removes matching disabled file when active path exists and clears pending-added ID. Vault is retained but an exact recovery copy is not guaranteed. Report per-file partial failures; no Steam restart."
     ],
     "flags": [
       {
@@ -1009,7 +1015,9 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1024,7 +1032,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Tile exists; no busy gate. No recycle bin or undo; saved vault copies can survive; At least one selected; includes hidden/off-page selections; Menu removal only current c.exists; submit disabled while in flight; errors stay in modal; no automatic Steam restart",
+      "No Steam-closed gate; OST/BST watch directory live; No Steam restart or close requirement; B; no login or executable-fix gate"
     ],
     "output_fields": [
       "plan",
@@ -1055,7 +1064,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Warning OK/Cancel; obtains executable tool, patches launch-config executables or filtered recursive EXE scan. First .bak preserved, originals deleted and replaced by .unpacked.exe. Progress bar, patched/unchanged totals or missing-install/tool/error toast"
     ],
     "flags": [
       {
@@ -1243,7 +1252,9 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1258,7 +1269,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Installed game with EXEs; null tile/busy return; flyout disabled while busy, context menu still clickable but guard ignores",
+      "IsExecutableWorkflowEnabled(\"Steamless\"); DependencyQuarantine and UserAuthorizedDependencies digest/receipt checks; explicit action; approved network. No login/Hubcap/Steam-closed gate"
     ],
     "output_fields": [
       "plan",
@@ -1289,7 +1301,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Ask selected Steam to show/start its native install workflow. Success is protocol handoff only; human completes native Steam prompts. Not a Lua install or account login."
     ],
     "flags": [
       {
@@ -1477,7 +1489,9 @@
     ],
     "see_also": [
       "luatools describe game",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1492,7 +1506,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Valid pending-added App ID and selected Steam context; native Steam protocol handler; explicit confirmation.",
+      "Same-user GUI owner; exact selected Steam isolation must be verified before handoff; otherwise return CONTEXT_CHANGED."
     ],
     "output_fields": [
       "plan",

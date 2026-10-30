@@ -22,7 +22,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -197,7 +197,8 @@
     ],
     "see_also": [
       "luatools describe fix",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -236,7 +237,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -345,7 +346,8 @@
     ],
     "see_also": [
       "luatools describe fix",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -385,7 +387,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -508,7 +510,8 @@
     ],
     "see_also": [
       "luatools describe fix",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -547,7 +550,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Queue archive; back up modified game files, add/overwrite payload; write .luatools-fix record + AppliedFixIndexService index; delete staging; no Steam restart; partial/success/error toasts; Fresh listing and anonymous cookie acquisition; download eligible archive, convert password-protected archive to ZIP, then same backup/apply/index contract as R16; remove staged original/converted ZIP"
     ],
     "flags": [
       {
@@ -749,7 +752,9 @@
     ],
     "see_also": [
       "luatools describe fix",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -764,7 +769,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible HasFix; disabled if game uninstalled, applied or own FixItem active. Hints: \u201cInstall the game first to apply a fix.\u201d / \u201cThis fix is already applied. Revert it if you want to install another.\u201d Recheck install dir before queue AND download; Same HasFix/installed/applied/active slot conditions as R16; archive must still exist in fresh Fix Repair listing; valid anonymous session required",
+      "ExecutableGameFixesEnabled at acquisition and every write; bounded immutable archive, paths/CRC; installed game. Discord and quota only for lua.tools; Online-Fix anonymous cookie, no human account/password."
     ],
     "output_fields": [
       "plan",
@@ -795,7 +801,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Confirm \u201cRevert \"{0}\"? Modified files will be restored from backup and files added by the fix will be deleted.\u201d Restore originals, delete added files, clean backups/record/index only on success; conflict/partial/not-found/no-record toasts"
     ],
     "flags": [
       {
@@ -990,7 +996,9 @@
     ],
     "see_also": [
       "luatools describe fix",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1005,7 +1013,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible when record exists (IsApplied); selected game and numeric appid required; missing backups/locked files cause partial failure; changed file hashes block affected restores/deletes; retry retains backups",
+      "NO executable opt-in or login required to revert; installed game and valid contained paths. No automatic game/Steam stop"
     ],
     "output_fields": [
       "plan",

@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -159,7 +159,8 @@
     ],
     "see_also": [
       "luatools describe setting",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -208,7 +209,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -312,7 +313,8 @@
     ],
     "see_also": [
       "luatools describe setting",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -379,7 +381,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Persists allowlisted GUI settings through SettingsService; executable enabling records consent, a warning and a toast; Cabinet changes wake its existing service and may enable ongoing external sharing."
     ],
     "flags": [
       {
@@ -572,7 +574,9 @@
     ],
     "see_also": [
       "luatools describe setting",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -587,7 +591,9 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Valid allowlisted key and typed value; DonateKeys and SelectedMode are read-only here.",
+      "Executable enabling and Cabinet sharing require --yes; disabling executable consent does not.",
+      "Cabinet subordinate options require Cabinet enabled; host read-only policy and target/context versions are enforced."
     ],
     "output_fields": [
       "total",

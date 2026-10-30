@@ -22,7 +22,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -162,7 +162,8 @@
     ],
     "see_also": [
       "luatools describe download",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -212,7 +213,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Moves collection priority one position upward, clamped at beginning; no-op if started; Moves collection priority one position downward, clamped at end; no-op if started"
     ],
     "flags": [
       {
@@ -410,7 +411,9 @@
     ],
     "see_also": [
       "luatools describe download",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -425,7 +428,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only Queued; boundary button remains visible and is no-op. No transfer concurrency cap means practical window is brief; Only Queued; boundary button remains visible and is no-op",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -456,7 +460,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Deletes row from live collection only; retained history and files unchanged"
     ],
     "flags": [
       {
@@ -644,7 +648,9 @@
     ],
     "see_also": [
       "luatools describe download",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -659,7 +665,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only !IsActive (Done/Failed/Cancelled); successful row auto-dismisses after 3 seconds",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -690,7 +697,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -799,7 +806,8 @@
     ],
     "see_also": [
       "luatools describe download",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,

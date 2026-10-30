@@ -8,7 +8,7 @@
     ],
     "purpose": "List active and retained application jobs.",
     "capability_ids": [
-      "C-157"
+      "C-037"
     ],
     "status": "enabled",
     "disabled_code": null,
@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -173,7 +173,8 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -222,7 +223,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -326,7 +327,8 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -363,7 +365,7 @@
     ],
     "purpose": "Wait for a job to finish or need a decision.",
     "capability_ids": [
-      "C-157"
+      "C-096"
     ],
     "status": "enabled",
     "disabled_code": null,
@@ -374,7 +376,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -478,7 +480,8 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -527,7 +530,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Accepts pending confirmation and permits queued overwrite/install; Overwrites this Lua, tallies outcome, continues remaining batch and possibly another prompt",
+      "Keep installed bytes. Discard staging for downloaded job, or skip current local file and continue batch. Previously consumed quota cannot be refunded; decision itself consumes none."
     ],
     "flags": [
       {
@@ -725,7 +729,9 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -740,7 +746,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Pending overlay; separate download cancellation can dismiss it; Pending local-file overlay; async command disabled during its own execution",
+      "Pending overlay; download quota already consumed; Pending overlay; does not cancel entire batch",
+      "Same as A7; install gate serializes queue jobs; D1 install gates",
+      "None"
     ],
     "output_fields": [
       "id",
@@ -776,7 +785,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Cancel active work and invalidate add generation. Keep completed writes; optional delete-created only after completion and only tracked contained depot files. Cancellation is not rollback and late install may complete."
     ],
     "flags": [
       {
@@ -978,7 +987,9 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -993,7 +1004,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible for every active state, including Installing/Paused/Waiting for you. Depot prompt only if marker exists. Multiple Cancel dialogs permitted by AllowConcurrentExecutions=true; Checking/downloading/pick/failed states; actions disabled while JS bridge call busy; service no-op when nothing active",
+      "No auth gate; deletion cannot cancel writes already completed; see cancellation caveat; B"
     ],
     "output_fields": [
       "id",
@@ -1029,7 +1041,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Fresh item at tail using same captured job; old history remains. Depot inherits finished-depot/file tracking and requests validation. Repeats original acquisition/install/possible quota charges"
     ],
     "flags": [
       {
@@ -1217,7 +1229,9 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1232,7 +1246,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible only Failed/Cancelled; active duplicate may be reused",
+      "Original job gates reapply, including executable opt-ins if applicable; no history-row retry"
     ],
     "output_fields": [
       "id",
@@ -1268,7 +1283,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Parks depot job, keeps disk bytes, zeroes rate/ETA; item stays active and not persisted as resumable job"
     ],
     "flags": [
       {
@@ -1456,7 +1471,9 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1471,7 +1488,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only Depot and Downloading or Verifying; hidden otherwise",
+      "Original depot executable workflow gates were checked at acquisition/run"
     ],
     "output_fields": [
       "id",
@@ -1507,7 +1525,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Fresh cancellation source, Queued state, NeedsValidate=true; resumes first unfinished depot, validates interrupted depot; finished depots skipped"
     ],
     "flags": [
       {
@@ -1695,7 +1713,9 @@
     ],
     "see_also": [
       "luatools describe job",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -1710,7 +1730,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only Paused; pump restarts work",
+      "Original job/depot tool gates apply; in-memory job only"
     ],
     "output_fields": [
       "id",

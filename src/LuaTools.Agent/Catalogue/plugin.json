@@ -20,7 +20,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -129,7 +129,8 @@
     ],
     "see_also": [
       "luatools describe plugin",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -168,7 +169,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Writes bundled winmm.dll, system winmm_real.dll, loader config and receipt; disables Millennium LuaTools entries; creates CDP marker junction; activates plugin; rollback on failure; toast and status refresh. Stops Steam and starts it again only if previously running; OK/Cancel dialog \u201cThis will close and restart Steam to apply the loader. Continue?\u201d; write bundled winmm.dll, Windows winmm_real.dll, loader path config, receipt, CDP marker junction; disable Millennium luatools entries; reload injector/activate; rollback snapshots on failure; restart Steam only if previously running"
     ],
     "flags": [
       {
@@ -361,7 +362,9 @@
     ],
     "see_also": [
       "luatools describe plugin",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -376,7 +379,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible only when not installed; disabled while IsInstallingPlugin and during async command; OK required; Cancel leaves unchanged; Disabled busy; valid SteamDir, bundled PE resource/system DLL, safe paths, no .luatools-dll-update-disabled marker, acceptable CDP marker; primary Install/Update, secondary healthy Reinstall",
+      "IsExecutableWorkflowEnabled(\"LuaToolsPlugin\"); selected Steam path; valid bundled loader/system loader and safe paths; .luatools-dll-update-disabled must be absent. No login; LuaToolsPlugin == SteamPluginEnabled before mutation and rechecked; bundled bytes (NO executable download/quarantine acquisition on this branch); no Discord or key"
     ],
     "output_fields": [
       "plan",
@@ -407,7 +411,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Confirm OK/Cancel; deactivate receipt and injection first; stop Steam; delete only owned matching DLL/config/marker and receipt; restore recorded Millennium entries; preserve unfamiliar changed files with error; restart Steam only if was running"
     ],
     "flags": [
       {
@@ -593,7 +597,9 @@
     ],
     "see_also": [
       "luatools describe plugin",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -608,7 +614,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible installed; disabled !IsInstalled or busy; no receipt=>service no-op; partial installation may hide button although receipt exists",
+      "NO executable opt-in required for uninstall; safe-path/ownership checks; no login"
     ],
     "output_fields": [
       "plan",

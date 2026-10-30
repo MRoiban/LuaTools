@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -128,7 +128,8 @@
     ],
     "see_also": [
       "luatools describe hubcap-key",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -167,7 +168,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Sends trimmed key in HTTPS stats query; persists DPAPI key; clears input, shows usage card. Input is not a password control; saved key never displayed"
     ],
     "flags": [
       {
@@ -360,7 +361,9 @@
     ],
     "see_also": [
       "luatools describe hubcap-key",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -375,7 +378,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Only when no saved key; disabled while validation; format prefix smm_ + 96 lowercase hex. Null stats shows invalid/expired/unreachable error",
+      "User-provided Hubcap key; independent of lua.tools login"
     ],
     "output_fields": [
       "plan",
@@ -406,7 +410,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Deletes saved credential from settings and resets stats/status/input; reveals input to replace key"
     ],
     "flags": [
       {
@@ -592,7 +596,9 @@
     ],
     "see_also": [
       "luatools describe hubcap-key",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -607,7 +613,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible only saved key; no confirmation",
+      "None"
     ],
     "output_fields": [
       "plan",

@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -121,7 +121,8 @@
     ],
     "see_also": [
       "luatools describe account",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -162,7 +163,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Browser Discord OAuth PKCE; localhost callback listener; exchange/apply session and auth-state event; signed-in check, Waiting for browser\u2026 and error StatusLine; Opens browser Discord OAuth with PKCE; localhost callback; exchanges code; persists session. Nav shows Waiting for browser\u2026 and SignInError",
+      "Sends code to API, verifies magic-link hash at Supabase, stores session; clears input on success; CodeError on failure"
     ],
     "flags": [
       {
@@ -362,7 +364,9 @@
     ],
     "see_also": [
       "luatools describe account",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -377,7 +381,10 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Guest-only button; hidden while signing in; duplicate sign-in ignored; no cancel command in overlay; Guest UI; Main VM rejects duplicate sign-in while IsSigningIn; Settings button remains displayed. Five-minute callback timeout",
+      "Text box uppercase/max 6; VM silently returns unless trimmed length 6; service requires ASCII alphanumeric. Disabled while IsRedeemingCode",
+      "Browser/localhost callback; executable opt-ins not required; Human/browser OAuth; no password input in app",
+      "Human obtains single-use five-minute Discord /login DM code; browser not required"
     ],
     "output_fields": [
       "plan",
@@ -408,7 +415,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Clear GUI-owned in-memory session and auth.dat; no remote revocation; human can sign in again."
     ],
     "flags": [
       {
@@ -594,7 +601,9 @@
     ],
     "see_also": [
       "luatools describe account",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -609,7 +618,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Visible only IsRealUser",
+      "Signed-in session"
     ],
     "output_fields": [
       "plan",

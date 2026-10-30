@@ -19,7 +19,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "No application state changes; RPC may start the minimized owner."
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],
     "flags": [
       {
@@ -121,7 +121,8 @@
     ],
     "see_also": [
       "luatools describe steam",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools status --json"
     ],
     "exit_codes": [
       0,
@@ -161,7 +162,8 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Windows folder chooser; key SteamPathOverride, string?, default null; accepts any chosen folder (no steam.exe validation before save); refreshes display",
+      "Sets null and persists; refreshes registry detection"
     ],
     "flags": [
       {
@@ -361,7 +363,9 @@
     ],
     "see_also": [
       "luatools describe steam",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -376,7 +380,9 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "User chooses folder; cancellation no-op",
+      "Visible only custom override",
+      "None"
     ],
     "output_fields": [
       "plan",
@@ -407,7 +413,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "See capability-map intent preconditions; disabled in this slice."
+      "Confirm \u201cRestart Steam now?\u201d; stop/start selected Steam; running games/downloads affected; failure shown in modal; Confirms kill/relaunch selected Steam in current Windows session respecting inherited isolation route; failure warning MessageBox"
     ],
     "flags": [
       {
@@ -593,7 +599,9 @@
     ],
     "see_also": [
       "luatools describe steam",
-      "luatools commands --json"
+      "luatools commands --json",
+      "luatools help job",
+      "luatools activity-log list --json"
     ],
     "exit_codes": [
       0,
@@ -608,7 +616,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Restart button disabled until bridge response; Cancel dismisses; no login/Steam-closed requirement; No explicit command disabling; OK required",
+      "B; Selected Steam executable/route must be valid"
     ],
     "output_fields": [
       "plan",
