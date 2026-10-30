@@ -9,7 +9,7 @@ public static class CommandInput
         try { return await LoadCoreAsync(parsed, ct); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            string paths = string.Join(", ", new[] { "file", "diff-file", "ids-from", "data" }.Select(parsed.Value).Where(v => v is not null));
+            string paths = string.Join(", ", new[] { "file", "diff-file", "ids-from" }.Select(parsed.Value).Append(parsed.Value("data") is { } data && data.StartsWith('@') ? data[1..] : null).Where(v => v is not null));
             return parsed with { Problems = [new("input", "Cannot read or submit input: " + paths + ". Check that the file exists, is readable and within the documented size limits.")] };
         }
     }
