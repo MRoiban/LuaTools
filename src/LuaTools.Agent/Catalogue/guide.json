@@ -1,0 +1,144 @@
+[
+  {
+    "resource": "guide",
+    "verb": "",
+    "syntax": "luatools guide",
+    "variants": [
+      "luatools guide"
+    ],
+    "purpose": "Read the offline agent workflow guide.",
+    "capability_ids": [],
+    "status": "enabled",
+    "disabled_code": null,
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [],
+    "identity_values": [],
+    "examples": [
+      "luatools guide",
+      "luatools guide --json"
+    ],
+    "see_also": [
+      "luatools describe help",
+      "luatools commands --json",
+      "luatools status --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated owner in the same Windows account, session and elevation for RPC."
+    ],
+    "output_fields": [
+      "guide"
+    ]
+  }
+]

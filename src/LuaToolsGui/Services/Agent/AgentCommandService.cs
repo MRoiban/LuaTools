@@ -56,7 +56,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (_exiting && !parsed.Command.ReadOnly) return Envelope.Fail("BUSY", 7, Resources.Strings.Agent_MutationRejected);
         if (request.Flags.ContainsKey("read-only") && !parsed.Command.ReadOnly) return Envelope.Fail("READ_ONLY", 5, Resources.Strings.Agent_ReadOnly);
         if (!parsed.Command.ReadOnly && request.ExpectedSteam is null) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
-        if (parsed.Command.Status != "enabled" || request.Flags.ContainsKey("fix")) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
+        if (parsed.Command.Status != "enabled") return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
         if (request.Flags.ContainsKey("dry-run") && !parsed.Command.DryRun) return Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, Resources.Strings.Agent_MutationRejected);
         if (request.Command is "activity-log watch" or "download watch") return Envelope.Success(new { watching = true });
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);

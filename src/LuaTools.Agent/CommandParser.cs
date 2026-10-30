@@ -58,7 +58,7 @@ public static class CommandParser
         {
             if (command.Key == "help" && identities.Length > 0 && !Catalogue.Commands.Any(c => c.Resource == identities[0])) problems.Add(new("resource", "Unknown resource. Closest matches: " + string.Join(", ", Catalogue.Suggest(identities[0]))));
             if (!flags.ContainsKey("help") && !(!command.ReadOnly && (flags.ContainsKey("ids") || flags.ContainsKey("ids-from") || flags.ContainsKey("where") || flags.ContainsKey("data"))) && identities.Length < command.Identities.Length) problems.Add(new("identity", "Required: " + string.Join(", ", command.Identities)));
-            if (command.Key == "account login" && flags.ContainsKey("browser") == flags.ContainsKey("code-stdin")) problems.Add(new("login", "Select exactly one of --browser and --code-stdin."));
+            if (!flags.ContainsKey("help") && command.Key == "account login" && flags.ContainsKey("browser") == flags.ContainsKey("code-stdin")) problems.Add(new("login", "Select exactly one of --browser and --code-stdin."));
             int max = command.Key == "help" ? 2 : command.Key == "setting update" ? 1 : command.Identities.Length;
             if (identities.Length > max && !(command.Syntax.Contains(">...", StringComparison.Ordinal) && command.Identities.Length > 0)) problems.Add(new("identity", "Too many arguments."));
             if (command.IdentityValues.Length > 0 && identities.Length > 0 && !command.IdentityValues.Contains(identities[0])) problems.Add(new("identity", "Invalid value.", command.IdentityValues));

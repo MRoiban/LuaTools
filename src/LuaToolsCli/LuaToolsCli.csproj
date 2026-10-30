@@ -9,6 +9,7 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../docs/cli/AgentGuide.md" LogicalName="LuaTools.Agent.guide.md" />
     <Compile Include="../LuaTools.Agent/*.cs" Link="Agent/%(Filename)%(Extension)" />
   </ItemGroup>
   <Import Project="../LuaTools.Agent/Catalogue.targets" />

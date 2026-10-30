@@ -864,4 +864,20 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_Depot_LiveEditImpact" xml:space="preserve"><value>Target: live Lua. Writes immediately; Default sync can discard stored Default bytes. Active build/preset divergence remains pending.</value></data>
   <data name="Agent_Depot_StoredEditImpact" xml:space="preserve"><value>Target: inactive stored preset. UpdateVariant permanently deletes old content bytes and may deduplicate into another entry; live Lua is unchanged.</value></data>
   <data name="Agent_Account_Unavailable" xml:space="preserve"><value>This account or Cabinet operation is unavailable in the current state.</value></data>
+  <data name="Agent_Doctor_Consent" xml:space="preserve"><value>Review doctor --fix --dry-run, then pass --yes to consent to safe repairs.</value></data>
+  <data name="Agent_Doctor_Unsafe" xml:space="preserve"><value>Requires an explicit command, credentials or additional authority; automatic repair skipped.</value></data>
+  <data name="Agent_Doctor_Partial" xml:space="preserve"><value>Some repairs failed; inspect each result before retrying.</value></data>
+  <data name="Agent_Doctor_Version" xml:space="preserve"><value>Compare the app and client versions; use the client shipped with this app if they differ.</value></data>
+  <data name="Agent_Doctor_Steam" xml:space="preserve"><value>Steam must point to an existing installation. Automatic detection clears a saved folder override.</value></data>
+  <data name="Agent_Doctor_Mode" xml:space="preserve"><value>The selected mode must be installed; Custom mode is managed externally. CloudRedirect state is reported separately.</value></data>
+  <data name="Agent_Doctor_Plugin" xml:space="preserve"><value>The Steam plugin needs its frontend and matching loader; installation may require a Steam restart.</value></data>
+  <data name="Agent_Doctor_Login" xml:space="preserve"><value>Discord login unlocks protected sources and requires a human browser. Public sources work as a guest.</value></data>
+  <data name="Agent_Doctor_Hubcap" xml:space="preserve"><value>Hubcap credential and daily quota were checked without downloading or spending quota. Rejected keys must be cleared before replacement.</value></data>
+  <data name="Agent_Doctor_Workflow" xml:space="preserve"><value>This executable workflow is disabled; enabling it requires an explicit setting update with --yes.</value></data>
+  <data name="Agent_Doctor_Downloads" xml:space="preserve"><value>Current queue entries; jobs are lost when the app exits.</value></data>
+  <data name="Agent_Doctor_Failed" xml:space="preserve"><value>A download failed. The details contain its recorded cause and game ID; diagnose before retrying acquisition.</value></data>
+  <data name="Agent_Doctor_Activity" xml:space="preserve"><value>Recent warnings and errors include redacted failure text for diagnosis.</value></data>
+  <data name="Agent_Doctor_Repeated" xml:space="preserve"><value>This warning or error occurred repeatedly in the last 24 hours.</value></data>
+  <data name="Agent_Doctor_Update" xml:space="preserve"><value>Reports an already staged update. Use update check to search and stage; doctor never applies updates.</value></data>
+  <data name="Agent_Doctor_Disk" xml:space="preserve"><value>Downloads and staging need free disk space. Below 512 MiB, free space before accepting work.</value></data>
 </root>
