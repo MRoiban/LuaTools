@@ -56,7 +56,7 @@ foreach (var c in Catalogue.Commands)
 }
 Test("catalogue byte budgets", () =>
 {
-    int Bytes(object value) => System.Text.Encoding.UTF8.GetByteCount(Rendering.Render(Envelope.Success(value), "json"));
+    int Bytes(object value) => System.Text.Encoding.UTF8.GetByteCount(Rendering.Render(Envelope.Success(value, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled schema; runtime_available:false.")), "json")) + Environment.NewLine.Length;
     Assert(Bytes(CatalogueDocument.Create(Catalogue.Commands)) < 80000, "commands must stay under 80 KB");
     Assert(Bytes(new { resource = "game", catalogue = CatalogueDocument.Create(Catalogue.Commands.Where(c => c.Resource == "game")), settings = (object?)null }) < 8000, "describe game must stay under 8 KB");
 });
