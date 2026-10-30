@@ -58,8 +58,9 @@ public sealed partial class AgentCommandService
         }
         else Add("warn", "MODE_NOT_SELECTED", Resources.Strings.Agent_Doctor_Mode, "luatools mode update ost --yes --restart-steam");
         var pluginState = await (plugins ?? PluginCoordinator.For(plugin)).ReadAsync(false, ct);
-        bool broken = !pluginState.FrontendInstalled || !pluginState.DllInstalled || !pluginState.DllMatches;
-        Add(broken || pluginState.UpdateAvailable ? "warn" : "info", broken ? "PLUGIN_MISSING" : pluginState.UpdateAvailable ? "PLUGIN_OUTDATED" : "PLUGIN_STATE", Resources.Strings.Agent_Doctor_Plugin,
+        bool missing = !pluginState.FrontendInstalled || !pluginState.DllInstalled;
+        bool broken = missing || !pluginState.DllMatches;
+        Add(broken || pluginState.UpdateAvailable ? "warn" : "info", missing ? "PLUGIN_MISSING" : broken || pluginState.UpdateAvailable ? "PLUGIN_OUTDATED" : "PLUGIN_STATE", Resources.Strings.Agent_Doctor_Plugin,
             broken || pluginState.UpdateAvailable ? "luatools plugin update --install --yes --restart-steam" : null, pluginState);
         string loginCode = "LOGIN_STATE";
         if (auth.IsSignedIn)
@@ -74,7 +75,7 @@ public sealed partial class AgentCommandService
         string? key = await Snapshot(() => settings.HubcapApiKey, ct);
         var probe = key is not null && hubcap is not null ? await hubcap.ProbeStatsAsync(key, ct) : null;
         Add(probe?.DisabledReason is not null || key is null ? "warn" : "info", probe?.DisabledReason ?? (key is null ? "HUBCAP_KEY_MISSING" : "HUBCAP_STATE"), Resources.Strings.Agent_Doctor_Hubcap,
-            key is null ? "luatools hubcap-key update --secret-stdin --yes" : probe?.DisabledReason is "HUBCAP_KEY_REJECTED" or "HUBCAP_KEY_EXPIRED" or "HUBCAP_KEY_INVALID" ? "luatools hubcap-key delete --yes" : null, new { configured = key is not null, stats = probe?.Stats });
+            key is null ? "luatools hubcap-key update --secret-stdin --yes" : probe?.DisabledReason is "HUBCAP_KEY_REJECTED" or "HUBCAP_KEY_EXPIRED" or "HUBCAP_KEY_INVALID" ? "luatools hubcap-key delete --yes" : null, new { configured = key is not null, checked_now = probe is not null, stats = probe?.Stats });
         foreach (var row in Protocol.Node(ReadSettings(settings))!.AsArray().Where(n => n?["key"]?.GetValue<string>().EndsWith("Enabled", StringComparison.Ordinal) == true && n?["value"]?.ToString() == "false"))
         {
             string name = row!["key"]!.GetValue<string>();
