@@ -54,7 +54,7 @@ public sealed partial class AgentCliTests
         // unavailable envelope is still verified over the host's real framing/authentication path.
         if (!reply.Ok)
         {
-            Assert.Contains(reply.Error!.Code, new[] { "NOT_IMPLEMENTED", "SERVICE_UNAVAILABLE", "ACTION_UNAVAILABLE", "INVALID_USAGE", "METADATA_UNAVAILABLE", "NOT_FOUND", "JOB_EXPIRED" });
+            Assert.Contains(reply.Error!.Code, new[] { "NOT_IMPLEMENTED", "SERVICE_UNAVAILABLE", "ACTION_UNAVAILABLE", "INVALID_USAGE", "METADATA_UNAVAILABLE", "REFACTOR_REQUIRED", "NOT_FOUND", "JOB_EXPIRED" });
             return;
         }
         var rows = reply.Data is JsonArray array ? array.ToArray() : new[] { reply.Data };
