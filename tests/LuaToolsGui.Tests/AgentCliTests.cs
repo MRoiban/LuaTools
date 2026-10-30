@@ -29,7 +29,7 @@ public sealed partial class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), libraryNames: Names(), libraryDetails: new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance), libraryCache: cache);
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), libraryNames: Names(), libraryDetails: new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), Path.Combine(_directory, "details")), libraryCache: cache);
     }
     private SteamAppListCache Names()
     {
@@ -217,6 +217,18 @@ public sealed partial class AgentCliTests : IDisposable
                         var host = Task.Run(async () => { await server.WaitForConnectionAsync(timeout.Token); await service.ServeAsync(server, timeout.Token); });
                         var reply = await AgentClient.ExchangeAsync(name, Request(facade, command, args, flags, Convert.ToBase64String(capability)), timeout.Token); await host; return reply;
                     }
+                    DownloadJob Pending(string key) => new(DownloadKind.Manifest, key, 570, "Pending", "No network", null,
+                        (_, _, _) => Task.FromResult(new DownloadedFile(Path.Combine(_directory, "absent.bin"), "absent.bin")),
+                        (_, _, _) => Task.FromResult(new JobResult(true, null)));
+                    var firstQueued = queue.Enqueue(Pending("move:first"));
+                    var secondQueued = queue.Enqueue(Pending("move:second"));
+                    Assert.True((await Call("download update", [secondQueued.Id], new() { ["move"] = "up", ["dry-run"] = null })).Ok);
+                    Assert.Equal(firstQueued, queue.Items[0]);
+                    Assert.Equal("READ_ONLY", (await Call("download update", [secondQueued.Id], new() { ["move"] = "up", ["read-only"] = null })).Error!.Code);
+                    Assert.True((await Call("download update", [secondQueued.Id], new() { ["move"] = "up" })).Ok);
+                    Assert.Equal(secondQueued, queue.Items[0]);
+                    Assert.Equal("PARTIAL_FAILURE", (await Call("download delete", [firstQueued.Id])).Error!.Code);
+                    queue.Cancel(firstQueued); queue.Cancel(secondQueued); queue.Remove(firstQueued); queue.Remove(secondQueued);
                     await queue.StartAsync(default);
                     try
                     {

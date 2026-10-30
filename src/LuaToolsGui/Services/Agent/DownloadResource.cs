@@ -33,6 +33,6 @@ public sealed partial class AgentCommandService
     {
         id = i.Id, appid = i.AppId, title = LogRedactor.Redact(i.Title), state = JsonNamingPolicy.SnakeCaseLower.ConvertName(i.Status.ToString()),
         bytes = i.BytesRead, total_bytes = i.TotalBytes, rate = i.BytesPerSecond, eta_seconds = i.Eta?.TotalSeconds,
-        enqueued_at = i.EnqueuedAt.ToUniversalTime(), available_actions = Actions("download"),
+        enqueued_at = i.EnqueuedAt.ToUniversalTime(), available_actions = AvailableActions.For("download", c => c.Verb == "update" && i.Status != DownloadStatus.Queued ? "NOT_QUEUED" : c.Verb == "delete" && i.IsActive ? "JOB_ACTIVE" : null),
     }).ToArray())!.AsArray(), ct);
 }

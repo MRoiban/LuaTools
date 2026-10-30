@@ -76,6 +76,7 @@ public sealed partial class AgentCommandService
         string Version() => MutationCoordinator.Hash(string.Join(':', targets.Select(e => e is null ? "missing" : LibraryCoordinator.Version(e.FilePath))));
         string version = Version(), context = PlanContext;
         bool drm = r.Command == "game remove-drm";
+        if (drm && targets.Length != 1) throw new MutationRejectedException("INVALID_SELECTION", 2);
         if (drm && (librarySteamless is null || !settings.IsExecutableWorkflowEnabled("Steamless"))) throw new MutationRejectedException("WORKFLOW_DISABLED", 5);
         return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, ids, [Resources.Strings.Agent_Library_Impact], true), commit => Snapshot(() =>
         {

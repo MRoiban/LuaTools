@@ -18,7 +18,7 @@ public sealed partial class AgentCliTests
         File.WriteAllText(Path.Combine(dir, "Steamtools.lua"), "support");
         var settings = new SettingsService(new AppSettings { SteamPathOverride = steamRoot });
         var cache = new CacheService(Path.Combine(_directory, "library.json"));
-        var info = new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance);
+        var info = new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), Path.Combine(_directory, "gui-details"));
         var covers = new CoverCache(new LibraryNoNetwork(), Path.Combine(_directory, "covers"));
         var names = Names(); var steam = new SteamService(settings);
         var entries = await LibraryCoordinator.ScanAsync(dir, names, info);

@@ -410,7 +410,7 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
 
         try
         {
-            if (File.Exists(tile.FilePath)) File.Delete(tile.FilePath);
+            if (!LibraryCoordinator.TryDelete(tile.FilePath, out var error)) throw new IOException(error);
         }
         catch (Exception ex)
         {

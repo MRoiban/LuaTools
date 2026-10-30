@@ -21,10 +21,15 @@ public sealed partial class AgentCommandService
             {
                 if (version != Version() || context != PlanContext) throw new MutationRejectedException("PLAN_STALE", 6);
                 if (pending) { if (libraryCache is null) throw new MutationRejectedException("ACTION_UNAVAILABLE", 6); libraryCache.ClearLoadedAppIds(); }
-                else foreach (string id in ids)
+                else
                 {
-                    var entry = queue.History.FirstOrDefault(e => e.Id == id) ?? throw new MutationRejectedException("NOT_FOUND", 3);
-                    DownloadHistoryCoordinator.Remove(queue, entry);
+                    var results = ids.Select(id =>
+                    {
+                        var entry = queue.History.FirstOrDefault(e => e.Id == id);
+                        if (entry is not null) DownloadHistoryCoordinator.Remove(queue, entry);
+                        return new { id, ok = entry is not null };
+                    }).ToArray();
+                    if (results.Any(i => !i.ok)) return Envelope.Fail("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Library_Unavailable) with { Error = new("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Library_Unavailable, Details: Protocol.Node(new { results })) };
                 }
                 return Envelope.Success(new { deleted = ids });
             }, commit));
