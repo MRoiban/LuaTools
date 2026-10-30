@@ -131,6 +131,7 @@ public class DownloadQueue : IHostedService
 
             var item = new DownloadItem(job);
             Items.Add(item);
+            _log.LogInformation("Download queued: {Key} ({Title}) from {Source}", job.DedupeKey, job.Title, job.SubTitle);
             item.PropertyChanged += OnItemPropertyChanged;
             StateChanged?.Invoke();
             Kick();
@@ -378,7 +379,7 @@ public class DownloadQueue : IHostedService
         catch (Exception ex)
         {
             if (file is not null) DeleteStaged(file.FilePath);
-            _log.LogDebug(ex, "Download job failed: {Key}", item.Job.DedupeKey);
+            _log.LogWarning(ex, "Download job failed: {Key}", item.Job.DedupeKey);
             // Both of these carry a message meant for the user; anything else is unexpected, so it gets
             // the generic text and the detail goes to the log above.
             string message = ex is ApiException or DownloadAbortedException
@@ -406,6 +407,8 @@ public class DownloadQueue : IHostedService
 
         item.Message = message;
         item.Status = status;
+        _log.Log(status == DownloadStatus.Failed ? LogLevel.Warning : LogLevel.Information,
+            "Download {Status}: {Key}: {Message}", status, item.Job.DedupeKey, message);
 
         // Before the history row is built: From() copies the reveal path off the item, and settling the
         // result (which carries it) happens further down.

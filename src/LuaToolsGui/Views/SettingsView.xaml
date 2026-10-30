@@ -689,6 +689,33 @@
                             TextWrapping="Wrap"
                             Visibility="{Binding UpdateStatus, Converter={StaticResource NullToCollapsed}}" />
                     </StackPanel>
+                    <Border Style="{StaticResource RowDivider}" />
+                    <!-- Local event history -->
+                    <Grid Margin="14,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock
+                                FontSize="13"
+                                FontWeight="Medium"
+                                Text="{x:Static res:Strings.Settings_Logs}" />
+                            <TextBlock
+                                Margin="0,4,0,0"
+                                FontSize="12"
+                                Foreground="#6b7280"
+                                Text="{x:Static res:Strings.Settings_Logs_Hint}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                        <ui:Button
+                            Grid.Column="1"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            Command="{Binding OpenLogsFolderCommand}"
+                            Content="{x:Static res:Strings.Settings_Open}"
+                            Icon="{ui:SymbolIcon FolderOpen24}" />
+                    </Grid>
                 </StackPanel>
             </Border>
 

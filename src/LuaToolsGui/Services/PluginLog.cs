@@ -1,27 +1,13 @@
-using System.IO;
+using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui.Services;
 
-/// <summary>Tiny thread-safe file logger for the Steam-plugin HTTP backend, so we can diagnose the
-/// add flow without a console. Writes to %AppData%\LuaToolsGui\plugin-backend.log.</summary>
+/// <summary>Steam-plugin backend events, for services without an injected logger.</summary>
 public static class PluginLog
 {
-    private static readonly object _lock = new();
+    private const string Category = "Plugin";
 
-    public static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        AppConfig.DataDirectoryName, "plugin-backend.log");
+    public static void Log(string msg) => AppEventLog.Shared.Write(LogLevel.Information, Category, msg);
 
-    public static void Log(string msg)
-    {
-        try
-        {
-            lock (_lock)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-                File.AppendAllText(FilePath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}{Environment.NewLine}");
-            }
-        }
-        catch { /* logging must never throw */ }
-    }
+    public static void Error(string msg, Exception ex) => AppEventLog.Shared.Write(LogLevel.Error, Category, msg, ex);
 }

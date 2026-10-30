@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Extensions.Logging;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 
@@ -24,6 +25,7 @@ public class ToastService
     /// <summary>Show a transient toast (auto-dismiss). Marshals to the UI thread; no-ops if unattached.</summary>
     public void Show(string title, string message, bool error = false)
     {
+        if (error) AppEventLog.Shared.Write(LogLevel.Warning, "Toast", $"{title}: {message}");
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
 
@@ -43,6 +45,7 @@ public class ToastService
     /// </summary>
     public void ShowAction(string title, string message, string actionLabel, Action onAction, bool error = false)
     {
+        if (error) AppEventLog.Shared.Write(LogLevel.Warning, "Toast", $"{title}: {message}");
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null) return;
 

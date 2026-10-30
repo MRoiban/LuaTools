@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Windows;
 using System.Windows.Markup;
+using LuaToolsGui.Services;
+using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui;
 
@@ -47,12 +49,27 @@ public static class Program
         }
 
         ShowWindowSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowWindowEventName);
+        StartEventLog();
 
         var app = new App();
+        app.DispatcherUnhandledException += (_, e) =>
+            AppEventLog.Shared.Write(LogLevel.Error, "App", "Unhandled UI exception", e.Exception);
         app.InitializeComponent();
         app.Run();
 
+        AppEventLog.Shared.Write(LogLevel.Information, "App", "Stopped");
         ShowWindowSignal.Dispose();
+    }
+
+    /// <summary>Record the session and every exception that would otherwise vanish with the process.</summary>
+    private static void StartEventLog()
+    {
+        var log = AppEventLog.Shared;
+        log.Start($"Started {Services.UpdateService.CurrentVersion} on {Environment.OSVersion.VersionString}, UI {CultureInfo.CurrentUICulture.Name}");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            log.Write(LogLevel.Critical, "App", "Unhandled exception", e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+            log.Write(LogLevel.Error, "App", "Unobserved task exception", e.Exception);
     }
 
     private static bool TryRunCabinetHelper(string[] args) => CabinetEngine.HelperEntry.Handle(args);

@@ -66,6 +66,11 @@ approvals. HTTPS destination/redirect/credential controls, response limits and f
 path checks still apply after opt-in. ZIP declared-size and CRC checks establish format
 integrity only, not trust in downloaded code. Other remote plaintext requests remain blocked.
 
+Activity history stays on the PC, in `%AppData%\LuaToolsGui-SecurityHardened\logs`, and nothing
+uploads it: all events for 24 hours, warnings and errors for 7 days, bounded at about 33 MiB. Text is
+redacted when written (URL queries, credentials, Hubcap and Cabinet tokens, depot keys, the Windows
+profile name and Steam account IDs). Game IDs and titles remain, so review a log before sharing it.
+
 The Steam plugin runtime requires a successful explicit installation receipt,
 resumes at startup/re-enable, and stops when its switch is turned off.
 Plugin requests stay inside the LuaTools process attached to the selected Steam installation

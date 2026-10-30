@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Net.Http;
+using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui.Services;
 
@@ -115,6 +117,32 @@ internal sealed class OutboundPolicyHandler(OutboundNetworkPolicy policy, HttpMe
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        try { return await SendThroughPolicyAsync(request, ct); }
+        catch (Exception ex) when (!IsLocal(request))
+        {
+            // Includes policy refusals: a rejected redirect is otherwise only a generic download error.
+            AppEventLog.Shared.Write(ex is OperationCanceledException ? LogLevel.Debug : LogLevel.Warning, "Http",
+                $"{request.Method} {Describe(request.RequestUri)} failed: {ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
+    }
+
+    private static bool IsLocal(HttpRequestMessage request) => request.RequestUri is { IsAbsoluteUri: true, IsLoopback: true };
+
+    /// <summary>Host and path only: queries can carry credentials and signatures.</summary>
+    private static string Describe(Uri? uri) =>
+        uri is { IsAbsoluteUri: true } ? uri.IdnHost + uri.AbsolutePath : "(invalid destination)";
+
+    private static void LogResponse(HttpRequestMessage request, HttpResponseMessage response, HttpResponseBudget budget, long started)
+    {
+        int status = (int)response.StatusCode;
+        if (IsLocal(request) || (status < 400 && budget == HttpResponseBudget.Image)) return; // covers would drown the stream
+        AppEventLog.Shared.Write(status >= 500 ? LogLevel.Warning : LogLevel.Debug, "Http",
+            $"{request.Method} {Describe(request.RequestUri)} -> {status} in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:0}ms");
+    }
+
+    private async Task<HttpResponseMessage> SendThroughPolicyAsync(HttpRequestMessage request, CancellationToken ct)
+    {
         policy.Validate(request.RequestUri);
         if (request.Headers.Host is not null)
             throw new HttpRequestException("Overriding the destination Host header is prohibited.");
@@ -146,7 +174,9 @@ internal sealed class OutboundPolicyHandler(OutboundNetworkPolicy policy, HttpMe
                         ? explicitPurpose : defaultCredentialPurpose;
                     HttpCredentialPurposeExtensions.Validate(current, purpose);
                 }
+                long started = Stopwatch.GetTimestamp();
                 var response = await base.SendAsync(current, ct);
+                LogResponse(current, response, budget, started);
                 int status = (int)response.StatusCode;
                 if (status is not (301 or 302 or 303 or 307 or 308))
                 {

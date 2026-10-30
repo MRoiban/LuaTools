@@ -128,6 +128,8 @@
   <data name="Settings_SteamLocation" xml:space="preserve"><value>Steam location</value></data>
   <data name="Settings_Change" xml:space="preserve"><value>Change…</value></data>
   <data name="Settings_Open" xml:space="preserve"><value>Open</value></data>
+  <data name="Settings_Logs" xml:space="preserve"><value>Activity logs</value></data>
+  <data name="Settings_Logs_Hint" xml:space="preserve"><value>A history of the last 24 hours, plus 7 days of errors, stored only on this PC. It shows which games you add, so check it before sharing.</value></data>
   <data name="Settings_ResetToAuto" xml:space="preserve"><value>Reset to auto</value></data>
   <data name="Settings_AutoUpdateApps" xml:space="preserve"><value>Auto Update Apps (Don't Lock Manifests)</value></data>
   <data name="Settings_AutoUpdateApps_Hint" xml:space="preserve"><value>Installs without pinning a version, so Steam keeps games updated. Turn off to lock games to the downloaded version.</value></data>

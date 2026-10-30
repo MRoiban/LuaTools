@@ -245,7 +245,7 @@ public class PluginAddService(
                 state.Error = ex.Message;
                 state.Checking = false;
             }
-            PluginLog.Log($"PluginAdd.Check appid={appId} EXCEPTION: {ex}");
+            PluginLog.Error($"PluginAdd.Check appid={appId} failed", ex);
         }
     }
 
@@ -470,7 +470,7 @@ public class PluginAddService(
                     state.InstallFailed = true;
                 }
             }
-            PluginLog.Log($"PluginAdd.Download appid={appId} source='{row.Name}' EXCEPTION: {ex}");
+            PluginLog.Error($"PluginAdd.Download appid={appId} source='{row.Name}' failed", ex);
         }
         finally
         {

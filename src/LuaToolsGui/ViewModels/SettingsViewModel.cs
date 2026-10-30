@@ -487,6 +487,13 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void OpenLogsFolder()
+    {
+        System.IO.Directory.CreateDirectory(AppEventLog.DefaultDirectory);
+        Process.Start(new ProcessStartInfo(AppEventLog.DefaultDirectory) { UseShellExecute = true });
+    }
+
+    [RelayCommand]
     private void OpenWebsite() =>
         Process.Start(new ProcessStartInfo(AppConfig.ApiBaseUrl) { UseShellExecute = true });
 

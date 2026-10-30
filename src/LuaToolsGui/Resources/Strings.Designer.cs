@@ -98,6 +98,8 @@ public static class Strings
     public static string Settings_SteamLocation => Get(nameof(Settings_SteamLocation));
     public static string Settings_Change => Get(nameof(Settings_Change));
     public static string Settings_Open => Get(nameof(Settings_Open));
+    public static string Settings_Logs => Get(nameof(Settings_Logs));
+    public static string Settings_Logs_Hint => Get(nameof(Settings_Logs_Hint));
     public static string Settings_ResetToAuto => Get(nameof(Settings_ResetToAuto));
     public static string Settings_AutoUpdateApps => Get(nameof(Settings_AutoUpdateApps));
     public static string Settings_AutoUpdateApps_Hint => Get(nameof(Settings_AutoUpdateApps_Hint));

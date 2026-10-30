@@ -7,6 +7,7 @@ using LuaToolsGui.ViewModels;
 using LuaToolsGui.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui;
 
@@ -41,6 +42,12 @@ public partial class App : Application
     public App()
     {
         _host = Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging =>
+            {
+                logging.AddProvider(new AppEventLogProvider(AppEventLog.Shared));
+                logging.AddFilter<AppEventLogProvider>(null, LogLevel.Warning);
+                logging.AddFilter<AppEventLogProvider>("LuaToolsGui", LogLevel.Debug);
+            })
             .ConfigureServices(services =>
             {
                 services.AddSingleton<SettingsService>();

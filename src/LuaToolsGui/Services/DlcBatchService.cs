@@ -158,7 +158,7 @@ public sealed class DlcBatchService
         catch (OperationCanceledException) { lock (_gate) batch.Phase = "cancelled"; }
         catch (Exception ex)
         {
-            PluginLog.Log($"DlcBatch.Check appid={batch.AppId} EXCEPTION: {ex.GetType().Name}");
+            PluginLog.Error($"DlcBatch.Check appid={batch.AppId} failed", ex);
             Fail(batch, ex is ApiException or AuthException ? ex.Message : Resources.Strings.Add_Err_Generic);
         }
     }
@@ -254,7 +254,7 @@ public sealed class DlcBatchService
         catch (OperationCanceledException) { lock (_gate) batch.Phase = "cancelled"; }
         catch (Exception ex)
         {
-            PluginLog.Log($"DlcBatch.Apply appid={batch.AppId} EXCEPTION: {ex.GetType().Name}");
+            PluginLog.Error($"DlcBatch.Apply appid={batch.AppId} failed", ex);
             Fail(batch, Resources.Strings.Add_Err_Generic);
         }
         PluginLog.Log($"DlcBatch.Apply appid={batch.AppId} {Summary(batch)}");

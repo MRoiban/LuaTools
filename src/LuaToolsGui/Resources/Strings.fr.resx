@@ -126,6 +126,8 @@
   <data name="Settings_SteamLocation" xml:space="preserve"><value>Emplacement de Steam</value></data>
   <data name="Settings_Change" xml:space="preserve"><value>Modifier…</value></data>
   <data name="Settings_Open" xml:space="preserve"><value>Ouvrir</value></data>
+  <data name="Settings_Logs" xml:space="preserve"><value>Journaux d'activité</value></data>
+  <data name="Settings_Logs_Hint" xml:space="preserve"><value>Un historique des dernières 24 heures et 7 jours d'erreurs, conservé uniquement sur ce PC. Il indique les jeux que vous ajoutez : vérifiez-le avant de le partager.</value></data>
   <data name="Settings_ResetToAuto" xml:space="preserve"><value>Réinitialiser en auto</value></data>
   <data name="Settings_AutoUpdateApps" xml:space="preserve"><value>Mettre à jour les apps automatiquement (ne pas verrouiller les manifests)</value></data>
   <data name="Settings_AutoUpdateApps_Hint" xml:space="preserve"><value>Installe sans figer une version, afin que Steam garde les jeux à jour. Désactivez pour verrouiller les jeux sur la version téléchargée.</value></data>
