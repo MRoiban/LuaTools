@@ -346,3 +346,7 @@ The bounded event hub retains 1000 events and supports 16 independent readers (1
 per reader, explicit reset on overflow). Download progress is coalesced at 100ms; state changes
 are never coalesced. Activity publication happens only after redaction and disk append. Future
 watch handlers can reuse this adapter; watch/session wire commands remain disabled.
+
+Unsupported planning fails with DRY_RUN_UNSUPPORTED before any owner auto-start; application start
+has this explicit limitation. When already connected, explicit start uses normal mutation admission
+and actor logging as an already-running receipt. Other disabled commands never execute on dry-run.

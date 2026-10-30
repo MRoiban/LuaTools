@@ -21,7 +21,7 @@ public sealed class AgentClient
                 await Task.Delay(100, ct).ConfigureAwait(false);
             }
         }
-        bool started = false;
+        bool started = false, inspectedOwner = false;
         string? expectedSteam = parsed.Value("expect-steam"), expectedInstance = null;
         var watch = Stopwatch.StartNew();
         while (true)
@@ -70,6 +70,20 @@ public sealed class AgentClient
             {
                 if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
                 if (connected) return Envelope.Fail("TRANSPORT_FAILURE", 7, "Invalid or unavailable local pipe response.");
+                if (!inspectedOwner && LocalDiscovery.OwnerRunning())
+                {
+                    inspectedOwner = true;
+                    try
+                    {
+                        var owner = LocalDiscovery.FindOwner(LocalDiscovery.Read<LauncherRecord>(LocalDiscovery.Launcher));
+                        if (owner is { } peer && peer.Elevated != LocalDiscovery.IsElevated())
+                            return Envelope.Fail("ELEVATION_MISMATCH", 5, new ElevationMismatchException(LocalDiscovery.IsElevated(), peer.Elevated).Message);
+                        if (owner is { } session && session.Session != Process.GetCurrentProcess().SessionId)
+                            return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "LuaTools runs in another Windows session. Exit it there before using this session.");
+                    }
+                    catch (UnauthorizedAccessException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "The launcher record failed its ownership or access checks."); }
+                    catch (IOException) { }
+                }
                 if (parsed.Has("no-start")) return Unavailable();
                 if (!started && !LocalDiscovery.OwnerRunning())
                 {

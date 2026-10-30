@@ -79,6 +79,8 @@ public sealed class AgentCliTests : IDisposable
     {
         LocalDiscovery.SecureDirectory(_directory);
         LocalDiscovery.Verify(_directory, true);
+        var owner = LocalDiscovery.FindOwner(new LauncherRecord(Environment.ProcessPath!));
+        Assert.NotNull(owner); Assert.Equal(LocalDiscovery.IsElevated(), owner.Value.Elevated);
         byte[] capability = RandomNumberGenerator.GetBytes(32);
         byte[] wrapped = LocalDiscovery.Protect(capability);
         Assert.NotEqual(capability, wrapped); Assert.Equal(capability, LocalDiscovery.Protect(wrapped, true));

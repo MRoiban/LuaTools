@@ -48,7 +48,7 @@ foreach (var c in Catalogue.Commands)
     {
         Assert(c.Purpose.Trim().TrimEnd('.').ToLowerInvariant() != c.Key && c.Purpose.EndsWith('.') && c.Purpose.Split(' ').Length >= 4, "Placeholder purpose: " + c.Key);
         Assert(!c.SideEffects.Any(s => s.Contains("disabled in this slice", StringComparison.OrdinalIgnoreCase) || s.Contains("See capability-map", StringComparison.OrdinalIgnoreCase)), "Placeholder effects " + c.Key);
-        Assert(c.Flags.Length > 0 && c.Examples.Distinct().Count() >= 2 && c.SeeAlso.Length > 0 && c.SideEffects.Length > 0 && c.Preconditions.Length > 0, "Missing guide part: " + c.Key);
+        Assert(c.Flags.Length > 0 && c.Examples.Distinct().Count() >= 2 && c.SeeAlso.Length > 0 && c.SideEffects.Length > 0 && c.Preconditions.Length > 0 && (c.ReadOnly || c.Reversible is not null), "Missing guide part: " + c.Key);
         foreach (var flag in c.Flags) Assert(flag.Name.Length > 0 && flag.Type.Length > 0 && flag.Default.ValueKind != JsonValueKind.Undefined && flag.AllowedValues is not null, "Incomplete flag " + c.Key);
         Assert(c.Status is "enabled" or "disabled", c.Key);
         foreach (string example in c.Examples) Assert(CommandParser.Parse(example.Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Example invalid: " + example);
@@ -125,7 +125,7 @@ await AsyncTest("fresh-process fake-host ping", async () =>
 });
 foreach (var (arguments, expected) in new (string[], int)[]
 {
-    (["version", "--json"], 0), (["help", "setting", "--json"], 0), (["commands", "--json"], 0),
+    (["application", "start", "--dry-run", "--json"], 5), (["version", "--json"], 0), (["help", "setting", "--json"], 0), (["commands", "--json"], 0),
     (["completion", "bash", "--json"], 0), (["setting", "update", "Language", "--value", "fr", "--no-start", "--json"], 9),
     (["statuz", "--json"], 2), (["activity-log", "list", "--severity", "bad", "--limit", "0", "--json"], 2),
     (["ping", "--no-start", "--json"], 9),

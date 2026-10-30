@@ -143,6 +143,34 @@ public static class LocalDiscovery
     }
     public static string OwnerMutexName => @"Global\LuaToolsGui.SecurityHardened." + WindowsIdentity.GetCurrent().User!.Value
         + (DataPaths.OwnerSuffix.Length == 0 ? "" : "." + DataPaths.OwnerSuffix);
+    public static (bool Elevated, int Session)? FindOwner(LauncherRecord launcher)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        using var current = WindowsIdentity.GetCurrent();
+        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(launcher.Executable)))
+        using (process)
+        {
+            try
+            {
+                using var handle = OpenProcess(0x1000, false, process.Id); // PROCESS_QUERY_LIMITED_INFORMATION, including higher-integrity peers
+                if (handle.IsInvalid) continue;
+                var path = new StringBuilder(32768); int length = path.Capacity;
+                if (!QueryFullProcessImageName(handle, 0, path, ref length) || !string.Equals(path.ToString(), launcher.Executable, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!OpenProcessToken(handle, 8, out var token)) continue;
+                using (token)
+                {
+                    using var identity = new WindowsIdentity(token.DangerousGetHandle());
+                    if (Equals(identity.User, current.User) && GetTokenInformation(token, 20, out int elevated, 4, out _)) return (elevated != 0, process.SessionId);
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+        }
+        return null;
+    }
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, int pid);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool QueryFullProcessImageName(SafeProcessHandle process, uint flags, StringBuilder path, ref int length);
     public static bool OwnerRunning()
     {
         if (!OperatingSystem.IsWindows()) return false;

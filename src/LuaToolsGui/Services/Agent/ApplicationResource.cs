@@ -21,6 +21,8 @@ public sealed partial class AgentCommandService
                         return Envelope.Success(new { state = "exiting", instance_id = InstanceId, request_id = r.RequestId });
                     }, commitToken));
             }, ct);
-        return Ping();
+        return await _mutations.ExecuteAsync(r, token => Snapshot(() => new PreparedMutation(
+            new(Guid.NewGuid().ToString("N"), PlanContext, InstanceId, [InstanceId], [], false),
+            _ => Task.FromResult(Ping())), token), ct);
     }
 }

@@ -53,6 +53,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (request.Flags.ContainsKey("read-only") && !parsed.Command.ReadOnly) return Envelope.Fail("READ_ONLY", 5, Resources.Strings.Agent_ReadOnly);
         if (!parsed.Command.ReadOnly && request.ExpectedSteam is null) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         if (parsed.Command.Status != "enabled" || request.Flags.ContainsKey("fix")) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
+        if (request.Flags.ContainsKey("dry-run") && !parsed.Command.DryRun) return Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, Resources.Strings.Agent_MutationRejected);
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);
         Envelope result = handler is null ? Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented)
             : await handler(request, ct);

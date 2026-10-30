@@ -45,6 +45,7 @@ public static class Program
             }
             else if (parsed.Has("read-only") && !parsed.Command.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
             else if (parsed.Command.Status != "enabled" || parsed.Has("fix")) result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This action is not implemented in this release.");
+            else if (parsed.Has("dry-run") && !parsed.Command.DryRun) result = Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, "Planning is unavailable for this command; no operation was started.");
             else
             {
                 parsed = await CommandInput.LoadAsync(parsed, cancellation.Token);
