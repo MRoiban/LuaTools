@@ -1,5 +1,7 @@
 # Agent CLI design
 
+**Plug-and-play decisions at the end of this document override anything earlier that conflicts with them.**
+
 Exit codes, envelope, paging and flags follow the owner's Agent-First CLI guide. Code 9 and the omitted `--profile`/`APP_TOKEN` are the only deliberate departures, each justified below.
 
 Decision: ship a thin BCL-only `luatools` console client connected to an authenticated local named pipe hosted by the **single running GUI owner**. A typed `AgentCommandService` facade invokes the GUI's existing DI singletons and shared operation coordinators. The client parses commands, negotiates protocol/context, renders DTOs and manages deadlines. It never opens settings, cache, auth, vault, Cabinet, receipt, queue-history or event-log files, constructs a second service container, or implements acquisition/install/business rules. It may read owner discovery and explicitly supplied input files. There is no offline-state fallback.
@@ -17,6 +19,7 @@ The complete v1 target grammar is below. “Reserved” means discoverable but d
 ```text
 luatools ping
 luatools status
+luatools doctor [--fix]
 luatools whoami
 luatools commands --json
 luatools describe <resource>
@@ -31,15 +34,15 @@ luatools account login --code-stdin
 luatools account logout
 luatools activity-log list [--since <UTC>] [--severity <level>] [--category <name>]
 luatools activity-log watch [--cursor <opaque>]
-luatools application start                           # reserved D1
-luatools application restart                         # reserved D3
-luatools application exit                            # reserved D3
+luatools application start
+luatools application restart
+luatools application exit
 luatools cabinet get
 luatools cabinet sync
 luatools cabinet-cloud get
 luatools cabinet-cloud connect --secret-stdin [--server <HTTPS-origin>]
 luatools cabinet-cloud disconnect
-luatools cabinet-cloud update --friend-labels true    # reserved D4; false unsupported
+luatools cabinet-cloud update --friend-labels true
 luatools cloud-save update --enabled true
 luatools cloudredirect get [--refresh]
 luatools cloudredirect update [--enabled <bool>] [--refresh]
@@ -102,7 +105,6 @@ luatools manifest add <fixid> --appid <appid>
 luatools mode get [--refresh]
 luatools mode list
 luatools mode update <ost-or-bst-or-custom>
-luatools onboarding update --recommended <bool> --plugin <bool>  # reserved D5
 luatools plugin get [--refresh]
 luatools plugin update --install
 luatools plugin delete
@@ -123,7 +125,7 @@ luatools steam restart
 luatools tool launch steamautocrack
 luatools update get
 luatools update check
-luatools update apply                             # reserved D3
+luatools update apply
 ```
 
 Brackets and the `|` characters in this grammar express optional/exclusive arguments, not shell pipelines. Omitted identity placeholders in the ledger are illustrative: `game get` still requires an App ID or supported link. A depot update always carries its parent App ID. `preset` identity is content hash plus App ID, never mutable display name. A fix ID is provider-scoped; include `--provider` and `--appid`. DLC IDs and Steam App IDs are validated by existing contract/parser rules, with stricter positive bounds where that path already requires them. Never accept an arbitrary URL to a download or an arbitrary executable path.
@@ -146,6 +148,7 @@ All RPC commands accept these global flags. Discovery/help/version parse them co
 - `--dry-run`: validate/plan a mutation without acceptance, acquisition, quota use, writes, process action or publication; details below. Unsupported planning returns `DRY_RUN_UNSUPPORTED`, not a live call.
 - `--yes`: explicit consent to the submitted plan's enumerated overwrite/delete/quota/sharing/restart effects. It never disables gates or enables executable consent. Use `--plan-id` for previously reviewed plans; otherwise the host derives one bounded plan from explicit operands before committing.
 - `--no-input`: never read a prompt or start unsolicited browser/dialog interaction. Implicit when stdin or stdout is redirected or in session mode. With neither consent nor an explicit decision, return `CONSENT_REQUIRED` and a plan. An explicit `--secret-stdin` or `--code-stdin` is input data, not a prompt; it can be used under no-input, including from redirected stdin. Reject secret-stdin in a multiplexed stdio session; use its dedicated secret frame or a separate invocation.
+- `--no-start`: do not start LuaTools when it is not running. `--drain`: wait for active jobs before a lifecycle command.
 - `--read-only`: reject commands whose selected branch changes state or accepts work. Enforced in both parser and host/session, including aliases and batched requests; cannot be cleared inside a read-only session. Rebuildable metadata caching and observational DLC check handles are allowed; update check is denied because it stages/prunes packages; downloads, Steam stop/restart, job decisions, pause/cancel, reconcile and setting writes are denied. Existing GUI/background tasks continue independently; this flag is not a global freeze.
 - `--quiet`: suppress human progress/success chatter. Never suppress requested JSON, failures, warnings requiring action, job IDs or a consent plan.
 - `--verbose`: safe client transport timings and correlation diagnostics on stderr; never request payloads, auth headers, secret inputs or decrypted discovery. Conflicts with quiet.
@@ -158,7 +161,7 @@ Guide flags `--profile`, `--account`, `--workspace`, `--endpoint`, a remote `--h
 
 `commands --json` returns a versioned descriptor array: resource/verb, syntax, aliases, schema, required identities, read/mutation class, dry-run support, implementation status, job behavior, exit/error codes and capability-map IDs. It describes **all** target commands, explicitly disabled with `NOT_IMPLEMENTED`, `REFACTOR_REQUIRED` or `OWNER_DECISION` until ready. `describe <resource>` returns input/output schemas, field enums/defaults, actions, preconditions, secret-channel requirements and examples without secrets. Both can show compiled grammar when GUI is absent, with `runtime_available:false` warning; runtime availability must be queried from the host before execution. Help/version are always local; ping/status/whoami require authenticated host contact. `ping` tests protocol readiness. `status` includes GUI instance/protocol, selected Steam identity, queue/helper counts, capability readiness and server health. `whoami`/`account get` return guest/authenticated, safe display name, provider, expiry state and local owner/elevation/session match, never access/refresh tokens, email/avatar by default or a credential-file path.
 
-Settings describe lists effective types/defaults/allowed values, including nullable System language, DNS Auto/Always/Never, page sizes and immutable fork policy. Only GUI-owned allowlisted keys can change. `SelectedMode` uses mode update; `SteamPathOverride` uses steam update; `HubcapApiKey` uses secret provisioning; `DonateKeys` is always false and read-only. GUI paging preferences accept Manage/Fixes 12/24/48/0 and Depots 10/17/25/50/0; CLI page size is independent. Eight executable consent keys are readable and may be revoked with `setting update ... --value false`; true always fails `EXECUTABLE_CONSENT_REQUIRED` with the human GUI path. This is server enforced, including session/batch/file inputs.
+Settings describe lists effective types/defaults/allowed values, including nullable System language, DNS Auto/Always/Never, page sizes and immutable fork policy. Only GUI-owned allowlisted keys can change. `SelectedMode` uses mode update; `SteamPathOverride` uses steam update; `HubcapApiKey` uses secret provisioning; `DonateKeys` is always false and read-only. GUI paging preferences accept Manage/Fixes 12/24/48/0 and Depots 10/17/25/50/0; CLI page size is independent. Eight executable consent keys are readable and writable. Enabling one follows plug-and-play decision 7.
 
 Use stable IDs, booleans, integer byte counts and RFC3339 UTC timestamps; localized relative labels are presentation only. Non-ASCII names stay UTF-8. `page` is null for scalar results; list commands return `{limit,next_cursor,has_more,total}`. Default `--limit` is 50, maximum 200. `--cursor` resumes a list, `--all` fetches every page within response bounds, and `--count` returns only the total. Each list has a documented default sort and accepts `--sort`, so the same input gives the same order. Cursors expire after five minutes and reject changed snapshots rather than silently skipping items. `list` returns summary fields and clips long text with a marker; `get` returns full detail. GUI page-size settings stay GUI preferences and never affect CLI paging. Metadata, source and catalogue pages are bounded independently of provider responses.
 
@@ -298,11 +301,16 @@ Self-review checked inventory coverage, duplicate intent boundaries, destructive
 
 The throwaway checker `/data/playground/_cli-inv/check_cli_design.py` ran outside the repository and reported **DESIGN CHECK PASS**: **150 intents**, exactly **11 nonempty columns**, unique contiguous resource-grouped IDs, all **256 source rows**, **22 bridge routes**, and **311 verification records** linked to target grammar or an explicit pure-view exclusion. The latter includes 23 declaration/binding records mapped to the seven presentation exclusions; these are intentional, not missing commands. Classification totals: **No 66, Yes 55, Irreversible 29**. Status totals: **mapped 70, needs-refactor 67, not-applicable 7, owner-decision 6**. All nonexcluded command resource/verb pairs occur in the complete grammar above. No C#, build, CI, commit, push or application runtime was involved; Windows tests are future acceptance gates, not claimed passes. Existing `.gitignore` ignores `docs/`; both requested files are present at their requested paths without changing ignore rules or staging them.
 
-## Owner decisions with recommended defaults
+## Plug-and-play decisions
 
-1. **D1 — absent GUI and stable invocation:** require the GUI/tray owner already running; return GUI_NOT_RUNNING, keep application start disabled in v1, and provide explicit user-installed stable wrapper later. No invisible second host or implicit autostart. This matches measured ownership and avoids unexplained startup/background actions.
-2. **D2 — account/session/elevation boundary:** support one unelevated per-user owner across sessions; reject a second session owner before state initialization/mutation, and reject elevation mismatch without widening ACLs. Cross-session read/command forwarding can follow only after Windows identity validation. This closes the spike's existing shared-AppData session risk; if a safe cross-session owner lock cannot be shipped yet, CLI writes remain disabled.
-3. **D3 — GUI lifecycle/update authority:** reserve application restart/exit and update apply until a shared drain/reconnect path exists; then require explicit --yes, zero active/paused/confirmation jobs and no Cabinet helpers. Checks only stage. Never terminate work implicitly or force an update through active jobs. D3 governs all three reserved rows, not three separate decisions.
-4. **D4 — friends debug marker:** expose only explicit enable after connected-Cabinet gates and consent; reject false as unsupported until a separately reviewed service operation can safely remove an owned marker. Current false setter is no-op, so symmetric CLI toggling would mislead.
-5. **D5 — onboarding:** leave CLI onboarding update disabled; its GUI overlay is currently not opened on startup, and defaults trigger multiple background installs/restart. Agents use individual setting/mode/plugin commands after human executable opt-in. If enabled later, extract one shared orchestrator and keep choices/gates explicit.
-6. **D6 — agent mutation authority and presentation sign-off:** approve the proposed noninteractive policy: explicit per-plan --yes, separate --restart-steam, and prior human executable settings; no autonomous grants or secret export. Sign off the seven consolidated not-applicable view groups and read replacements for clipboard/URLs/paths. Recommended scope includes permitted data/account/Cabinet operations with full effect disclosure; denied scopes return stable available_actions reasons. No external-tool GUI automation or password handling is implied.
+The owner's requirement overrides every earlier "reserved" note in this document: the user installs and uses the app normally, and an agent can later arrive, check it, set it up and use it without the user touching anything. Nothing here requires a user decision or a setup step.
+
+1. **Zero install:** `luatools.exe` ships inside the app's published output and signed ZIP, with no workflow change: the GUI project publishes it through an MSBuild target. On every startup the GUI copies it to a stable per-user folder, `%LOCALAPPDATA%\LuaToolsGui-SecurityHardened\bin`, records the current GUI path there, and adds that folder to the user PATH if missing, broadcasting the environment change. This survives update run-directory changes and works on first launch.
+2. **App not running:** the CLI starts the recorded GUI itself with `--minimized`, through the normal single-owner startup, waits for authenticated readiness, then runs the command. `--no-start` opts out. Exit 9 means it could not be started; a host with no recorded GUI gets a hint with the expected install location. `application start` is enabled and explicit.
+3. **Sessions and elevation:** one unelevated per-user owner. A second session or an elevation mismatch fails with a clear error. Never widen pipe access.
+4. **App lifecycle:** `application exit`, `application restart` and `update apply` are enabled with `--yes`. They refuse with exit 6 while jobs are active unless `--drain` is passed, which waits for them to finish within `--timeout`. They reply before shutting down, and the CLI rediscovers the new owner.
+5. **Friend labels:** enable only. Disabling is reported as unsupported because the app has no working disable.
+6. **Onboarding:** there is no CLI onboarding step and no first-run requirement. Agents configure the app with the individual `setting`, `mode` and `plugin` commands. C-101 is not-applicable.
+7. **Agent authority:** an agent can do everything the GUI can, without a human present, including `setting update <executable-key> --value true --yes`. This reverses the earlier human-only rule. Because it lets an agent run downloaded executables, enabling one always requires `--yes`, writes a warning to the activity log naming the key and any `--actor-note`, and shows a toast. Disabling needs no confirmation. Existing quarantine, digest and path checks still apply. Everything else in the gate list above stays, except the statements that CLI commands can never enable a workflow.
+8. **Passwords:** agents never see one. Discord login stays a human browser step, and it is the only such step. Public sources work without it, and `doctor` reports what login would unlock. Hubcap and Cabinet secrets can be supplied by an agent through their stdin channels.
+9. **Checkups:** `luatools doctor` is one read-only health report: app and CLI versions, Steam location and process state, mode and add-on state, plugin, login and Hubcap state, disabled workflows, active and failed downloads, recent warnings and errors from the activity log, and available updates. Each finding has a severity, a code, a plain explanation and the exact command that would fix it where one exists. `luatools doctor --fix --dry-run` lists those commands; `--fix --yes` runs the safe ones.
