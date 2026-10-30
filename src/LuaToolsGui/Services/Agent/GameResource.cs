@@ -41,6 +41,12 @@ public sealed partial class AgentCommandService
             string q = r.Flags.GetValueOrDefault("query")?.Trim() ?? "";
             if (q.Length is 0 or > 100) return GamePage(r, []);
             await libraryHardware.EnsureFreshAsync();
+            long? selected = q.Length >= 5 && long.TryParse(q, out long numeric) && numeric > 0 && numeric < 2_000_000_000 ? numeric : SteamLinkParser.AppIdFrom(q);
+            if (selected is { } appid)
+            {
+                var details = await libraryApi.GetDetailsAsync(appid.ToString(), ct);
+                return GamePage(r, details is null || libraryHardware.IsBlacklisted(appid) ? [] : Protocol.Node(new[] { new { id = details.AppId, appid = details.AppId, name = details.Name, image = details.HeaderImage } })!.AsArray());
+            }
             var found = await libraryApi.SearchAsync(q, ct);
             return GamePage(r, Protocol.Node(found.Where(i => !libraryHardware.IsBlacklisted(i.AppId)).Select(i => new { id = i.AppId, appid = i.AppId, name = i.Name, image = i.Icon }))!.AsArray());
         }
@@ -65,8 +71,8 @@ public sealed partial class AgentCommandService
         catch (ArgumentException) { throw new MutationRejectedException("INVALID_SELECTION", 2); }
     }
     private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, installed = e.FilePath.Length > 0,
-        paths = new { lua = e.FilePath }, urls = new { store = $"steam://store/{e.AppId}", library = $"steam://nav/games/details/{e.AppId}", steamdb = $"https://steamdb.info/app/{e.AppId}/" },
-        details = libraryDetails!.GetFilterData(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.For("game", c => c.Verb == "remove-drm" && !settings.IsExecutableWorkflowEnabled("Steamless") ? "WORKFLOW_DISABLED" : null) };
+        paths = new { lua = e.FilePath, install = libraryInstalls?.GetInstallDir(e.AppId) }, urls = new { store = $"steam://store/{e.AppId}", library = $"steam://nav/games/details/{e.AppId}", steamdb = $"https://steamdb.info/app/{e.AppId}/" },
+        details = libraryDetails!.GetFilterData(e.AppId), overview = libraryDetails.GetOverview(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.For("game", c => c.Verb is "delete" or "remove-drm" && e.FilePath.Length == 0 ? "NOT_INSTALLED" : c.Verb == "remove-drm" && !settings.IsExecutableWorkflowEnabled("Steamless") ? "WORKFLOW_DISABLED" : null) };
     private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data) => _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
     private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
     {

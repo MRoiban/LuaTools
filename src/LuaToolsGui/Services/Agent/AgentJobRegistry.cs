@@ -76,6 +76,8 @@ public sealed class AgentJobRegistry
         id = item.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(item.Status.ToString()), kind = item.Job.Kind.ToString(),
         version = Version(item), bytes = item.BytesRead, total_bytes = item.TotalBytes, rate = item.BytesPerSecond,
         eta_seconds = item.Eta?.TotalSeconds, cancel_requested = item.Cts.IsCancellationRequested && !item.PauseRequested,
+        paths = new { output = item.RevealPath }, pending_decision = ConsentCoordinator.HasPending(item.Id),
+        result = item.Completion.IsCompletedSuccessfully && item.Completion.Result is { } result ? new { ok = result.Ok, message = LogRedactor.Redact(result.Message ?? "") } : null,
         enqueued_at = item.EnqueuedAt, available_actions = AvailableActions.For("job", c => c.Verb switch
         {
             "pause" when !item.CanPause => "PAUSE_UNSUPPORTED", "resume" when !item.CanResume || item.RunningAttempt is { IsCompleted: false } => "NOT_PAUSED",

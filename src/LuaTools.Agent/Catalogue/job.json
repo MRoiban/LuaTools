@@ -353,7 +353,13 @@
       "cancel_requested",
       "kind",
       "bytes",
-      "total_bytes"
+      "total_bytes",
+      "paths",
+      "paths.output",
+      "pending_decision",
+      "result",
+      "result.ok",
+      "result.message"
     ]
   },
   {
@@ -506,7 +512,13 @@
       "cancel_requested",
       "kind",
       "bytes",
-      "total_bytes"
+      "total_bytes",
+      "paths",
+      "paths.output",
+      "pending_decision",
+      "result",
+      "result.ok",
+      "result.message"
     ]
   },
   {

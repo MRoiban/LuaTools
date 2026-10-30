@@ -276,7 +276,8 @@
       "urls.steamdb",
       "details",
       "version",
-      "available_actions"
+      "available_actions",
+      "overview"
     ]
   },
   {
@@ -446,7 +447,9 @@
       "urls.steamdb",
       "details",
       "version",
-      "available_actions"
+      "available_actions",
+      "overview",
+      "paths.install"
     ]
   },
   {
@@ -1367,7 +1370,7 @@
       "C-063"
     ],
     "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "disabled_code": "CONTEXT_CHANGED",
     "aliases": [],
     "read_only": false,
     "dry_run": false,
@@ -1581,7 +1584,8 @@
     ],
     "preconditions": [
       "Valid pending-added App ID and selected Steam context; native Steam protocol handler; explicit confirmation.",
-      "Same-user GUI owner; exact selected Steam isolation must be verified before handoff; otherwise return CONTEXT_CHANGED."
+      "Same-user GUI owner; exact selected Steam isolation must be verified before handoff; otherwise return CONTEXT_CHANGED.",
+      "Disabled: the native Steam protocol handler cannot prove the selected Steam installation and isolation route."
     ],
     "output_fields": [
       "plan",

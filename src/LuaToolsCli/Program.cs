@@ -51,7 +51,8 @@ public static class Program
                 parsed = await CommandInput.LoadAsync(parsed, cancellation.Token);
                 if (parsed.Problems.Length == 0 && parsed.Command!.Key == "download watch")
                 {
-                    string format = parsed.Value("format") ?? "jsonl";
+                    if (!parsed.Has("format") && !parsed.Has("json")) parsed.Flags["format"] = "jsonl";
+                    string format = parsed.Value("format") ?? "json";
                     if (format is not ("json" or "jsonl")) result = Envelope.Fail("INVALID_USAGE", 2, "Watch requires jsonl or json format.");
                     else
                     {

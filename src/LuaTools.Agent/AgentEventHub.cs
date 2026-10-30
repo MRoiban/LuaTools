@@ -35,7 +35,7 @@ public sealed class AgentEventHub(string instanceId)
             else
             {
                 var retained = _recent.ToArray(); int index = cursor is null ? retained.Length - 1 : Array.FindIndex(retained, x => x.Cursor == cursor);
-                backlog = cursor is not null && index < 0 && cursor != instanceId + ":" + _sequence ? [Envelope.Fail("CURSOR_EXPIRED", 3, "Refresh the resource snapshot before resuming events.")]
+                backlog = cursor is not null && index < 0 && cursor != instanceId + ":" + _sequence && !(cursor == instanceId + ":0" && _sequence <= 1000) ? [Envelope.Fail("CURSOR_EXPIRED", 3, "Refresh the resource snapshot before resuming events.")]
                     : retained.Skip(index + 1).Select(x => x.Frame).ToArray();
                 if (backlog.Length == 0 || backlog.All(x => x.Ok)) _readers.Add(channel);
             }

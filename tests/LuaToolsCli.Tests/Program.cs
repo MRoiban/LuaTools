@@ -172,6 +172,14 @@ Test("bulk input and command deadlines", () =>
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["doctor"]))) == TimeSpan.FromSeconds(30), "doctor budget");
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["ping", "--timeout", "10ms"]))) == TimeSpan.FromMilliseconds(10), "requested budget");
 });
+await AsyncTest("event replay from empty initial cursor", async () =>
+{
+    var hub = new AgentEventHub("initial"); string cursor = hub.CurrentCursor;
+    hub.Publish("download", "queued", new { id = "one" });
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    await using var reader = hub.Watch(cursor, timeout.Token).GetAsyncEnumerator();
+    Assert(await reader.MoveNextAsync() && reader.Current.Ok && reader.Current.Data!["event"]!["kind"]!.ToString() == "queued", "initial replay");
+});
 await AsyncTest("event retention rejects expired cursor", async () =>
 {
     var hub = new AgentEventHub("test"); for (int i = 0; i < 1001; i++) hub.Publish("test", "state", new { value = i });
