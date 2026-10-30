@@ -837,4 +837,20 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_Finish_CloudImpact" xml:space="preserve"><value>Autoriser CloudRedirect avec un avertissement dans le journal et une notification. Acquérir et installer le module en quarantaine et configurer les identifiants Cabinet protégés. Les sauvegardes Steam Cloud seront envoyées au serveur Cabinet connecté. Redémarrer Steam ensuite.</value></data>
   <data name="Agent_Finish_InstallImpact" xml:space="preserve"><value>Transmettre steam://install à l’installation Steam sélectionnée et vérifiée. Cela demande son programme d’installation ; handed_off ne signifie pas que le téléchargement est terminé.</value></data>
   <data name="Agent_Finish_DecisionImpact" xml:space="preserve"><value>Remplacer écrase le Lua local sans sauvegarde garantie ; ignorer conserve les octets installés et poursuit le lot local.</value></data>
+  <data name="Agent_Doctor_Consent" xml:space="preserve"><value>Examinez doctor --fix --dry-run, puis ajoutez --yes pour autoriser les réparations sûres.</value></data>
+  <data name="Agent_Doctor_Unsafe" xml:space="preserve"><value>Une commande explicite, des identifiants ou une autorisation supplémentaire sont nécessaires ; réparation automatique ignorée.</value></data>
+  <data name="Agent_Doctor_Partial" xml:space="preserve"><value>Certaines réparations ont échoué ; examinez chaque résultat avant de réessayer.</value></data>
+  <data name="Agent_Doctor_Version" xml:space="preserve"><value>Comparez les versions de l’application et du client ; utilisez le client livré avec cette application en cas de différence.</value></data>
+  <data name="Agent_Doctor_Steam" xml:space="preserve"><value>Steam doit désigner une installation existante. La détection automatique efface le dossier personnalisé.</value></data>
+  <data name="Agent_Doctor_Mode" xml:space="preserve"><value>Le mode sélectionné doit être installé ; le mode Custom est géré séparément. L’état de CloudRedirect est indiqué séparément.</value></data>
+  <data name="Agent_Doctor_Plugin" xml:space="preserve"><value>Le plugin Steam nécessite son interface et le chargeur correspondant ; son installation peut nécessiter un redémarrage de Steam.</value></data>
+  <data name="Agent_Doctor_Login" xml:space="preserve"><value>La connexion Discord débloque les sources protégées et nécessite une intervention humaine dans le navigateur. Les sources publiques restent accessibles.</value></data>
+  <data name="Agent_Doctor_Hubcap" xml:space="preserve"><value>Les identifiants Hubcap et le quota quotidien ont été vérifiés sans téléchargement ni consommation de quota. Effacez une clé refusée avant de la remplacer.</value></data>
+  <data name="Agent_Doctor_Workflow" xml:space="preserve"><value>Ce flux exécutable est désactivé ; son activation nécessite une modification explicite avec --yes.</value></data>
+  <data name="Agent_Doctor_Downloads" xml:space="preserve"><value>File actuelle ; les tâches sont perdues à la fermeture de l’application.</value></data>
+  <data name="Agent_Doctor_Failed" xml:space="preserve"><value>Un téléchargement a échoué. Les détails contiennent la cause enregistrée et l’identifiant du jeu ; diagnostiquez le problème avant de réessayer.</value></data>
+  <data name="Agent_Doctor_Activity" xml:space="preserve"><value>Les avertissements et erreurs récents contiennent le texte expurgé des échecs pour le diagnostic.</value></data>
+  <data name="Agent_Doctor_Repeated" xml:space="preserve"><value>Cet avertissement ou cette erreur s’est répété au cours des dernières 24 heures.</value></data>
+  <data name="Agent_Doctor_Update" xml:space="preserve"><value>Indique une mise à jour déjà préparée. Utilisez update check pour rechercher et préparer ; doctor n’applique jamais de mise à jour.</value></data>
+  <data name="Agent_Doctor_Disk" xml:space="preserve"><value>Les téléchargements et la préparation nécessitent de l’espace disque. Sous 512 Mio, libérez de l’espace avant d’accepter une tâche.</value></data>
 </root>

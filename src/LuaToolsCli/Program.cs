@@ -30,6 +30,12 @@ public static class Program
                 if (!parsed.Has("json") && parsed.Value("format") is not ("json" or "jsonl")) { Console.WriteLine(help); return 0; }
                 result = Envelope.Success(new { help });
             }
+            else if (parsed.Command.Key == "guide")
+            {
+                string guide = AgentGuide.Text;
+                if (!parsed.Has("json") && parsed.Value("format") is not ("json" or "jsonl")) { Console.WriteLine(guide); return 0; }
+                result = Envelope.Success(new { guide });
+            }
             else if (parsed.Command.Key == "version") result = Envelope.Success(new { version = typeof(Program).Assembly.GetName().Version?.ToString(), protocol = Protocol.Version });
             else if (parsed.Command.Key == "commands") result = Envelope.Success(new { version = Protocol.Version, commands = Catalogue.Commands }, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled catalogue; query ping for authenticated runtime availability.", new { runtime_available = false }));
             else if (parsed.Command.Key == "describe")
@@ -45,7 +51,7 @@ public static class Program
             }
             else if (parsed.Command.Key == "session") return await StdioSession.RunAsync(parsed, Console.In, Console.Out, transport, cancellation.Token, streamingTransport);
             else if (parsed.Has("read-only") && !parsed.Command.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
-            else if (parsed.Command.Status != "enabled" || parsed.Has("fix")) result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This action is not implemented in this release.");
+            else if (parsed.Command.Status != "enabled") result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This action is not implemented in this release.");
             else if (parsed.Has("dry-run") && !parsed.Command.DryRun) result = Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, "Planning is unavailable for this command; no operation was started.");
             else
             {

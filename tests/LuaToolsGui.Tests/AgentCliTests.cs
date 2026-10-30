@@ -160,7 +160,7 @@ public sealed partial class AgentCliTests : IDisposable
         Assert.Equal(6, (await facade.ExecuteAsync(Request(facade, "ping") with { ExpectedSteam = "wrong" }, default)).Error!.ExitCode);
         Assert.Equal(5, (await facade.ExecuteAsync(Request(facade, "setting update", ["Language"], new() { ["value"] = "fr", ["read-only"] = null }), default)).Error!.ExitCode);
         Assert.Equal(2, (await facade.ExecuteAsync(Request(facade, "setting list", flags: new() { ["fields"] = "HubcapApiKey" }), default)).Error!.ExitCode);
-        Assert.Equal(5, (await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null }), default)).Error!.ExitCode);
+        Assert.Equal(8, (await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null }), default)).Error!.ExitCode);
     }
     [Fact]
     public async Task FacadePingWhoamiQueueDoctorUseRealServices()
@@ -173,7 +173,43 @@ public sealed partial class AgentCliTests : IDisposable
         var doctor = await facade.ExecuteAsync(Request(facade, "doctor"), default);
         Assert.True(doctor.Ok);
         var codes = doctor.Data!.AsArray().Select(n => n!["code"]!.GetValue<string>()).ToArray();
-        Assert.Contains("STEAM_LOCATION", codes); Assert.Contains("WORKFLOW_DISABLED", codes); Assert.Contains("UPDATE_STATE", codes);
+        Assert.Contains(codes, c => c is "STEAM_LOCATION" or "STEAM_NOT_FOUND" or "STEAM_PATH_INVALID"); Assert.Contains("WORKFLOW_DISABLED", codes); Assert.Contains("UPDATE_STATE", codes);
+    }
+    [Fact]
+    public async Task DoctorPlansThroughSteamMutationAndNeverEnablesWorkflowsOrLosesFailureCause()
+    {
+        var settings = new SettingsService(new AppSettings { SteamPathOverride = Path.Combine(_directory, "missing-steam") });
+        var cache = new CacheService(Path.Combine(_directory, "doctor-cache.json"));
+        var queue = new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance);
+        queue.History.Add(new DownloadHistoryEntry(new("failed-one", "manifest", 570, "Game", "", 0, "Failed", "HTTP 429: daily quota exhausted", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())));
+        var facade = Facade(settings, queue);
+        string? before = settings.SteamPathOverride;
+        var dry = await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null, ["dry-run"] = null }), default);
+        Assert.True(dry.Ok);
+        Assert.Equal(before, settings.SteamPathOverride);
+        string json = JsonSerializer.Serialize(dry, Protocol.Json);
+        Assert.Contains("HTTP 429: daily quota exhausted", json);
+        Assert.Contains("planned", json); Assert.Contains("skipped", json);
+        Assert.False(File.Exists(Path.Combine(_directory, "journal.json")));
+        Assert.Equal(8, (await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null }), default)).Error!.ExitCode);
+        Assert.Equal(5, (await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null, ["yes"] = null, ["read-only"] = null }), default)).Error!.ExitCode);
+        var repaired = await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null, ["yes"] = null }), default);
+        Assert.True(repaired.Ok);
+        Assert.Null(settings.SteamPathOverride);
+        Assert.True(File.Exists(Path.Combine(_directory, "journal.json")));
+        Assert.False(settings.IsExecutableWorkflowEnabled("LuaToolsPlugin"));
+    }
+    [Fact]
+    public async Task DoctorReturnsPerItemPartialFailureWhenRepairJournalCannotBeWritten()
+    {
+        var settings = new SettingsService(new AppSettings { SteamPathOverride = Path.Combine(_directory, "missing-steam") });
+        var facade = Facade(settings);
+        Directory.CreateDirectory(Path.Combine(_directory, "journal.json"));
+        var result = await facade.ExecuteAsync(Request(facade, "doctor", flags: new() { ["fix"] = null, ["yes"] = null }), default);
+        Assert.Equal("PARTIAL_FAILURE", result.Error!.Code);
+        Assert.Equal(1, result.Error.ExitCode);
+        Assert.Contains("JOURNAL_UNAVAILABLE", result.Error.Details!.ToJsonString());
+        Assert.NotNull(settings.SteamPathOverride);
     }
     [Theory]
     [InlineData(null, @"C:\bin", @"C:\bin")]

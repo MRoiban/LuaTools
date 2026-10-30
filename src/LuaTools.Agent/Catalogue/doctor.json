@@ -14,7 +14,7 @@
     "disabled_code": null,
     "aliases": [],
     "read_only": true,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": false,
     "reversible": null,
@@ -207,8 +207,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools doctor",
-      "luatools doctor --format text"
+      "luatools doctor --json",
+      "luatools doctor --fix --dry-run"
     ],
     "see_also": [
       "luatools describe doctor",
@@ -236,7 +236,9 @@
       "message",
       "fix_command",
       "details",
-      "available_actions"
+      "available_actions",
+      "findings",
+      "repairs"
     ]
   }
 ]

@@ -815,4 +815,20 @@ public static class Strings
     public static string Agent_Finish_InstallImpact => Get(nameof(Agent_Finish_InstallImpact));
     public static string Agent_Finish_DecisionImpact => Get(nameof(Agent_Finish_DecisionImpact));
 
+    public static string Agent_Doctor_Consent => Get(nameof(Agent_Doctor_Consent));
+    public static string Agent_Doctor_Unsafe => Get(nameof(Agent_Doctor_Unsafe));
+    public static string Agent_Doctor_Partial => Get(nameof(Agent_Doctor_Partial));
+    public static string Agent_Doctor_Version => Get(nameof(Agent_Doctor_Version));
+    public static string Agent_Doctor_Steam => Get(nameof(Agent_Doctor_Steam));
+    public static string Agent_Doctor_Mode => Get(nameof(Agent_Doctor_Mode));
+    public static string Agent_Doctor_Plugin => Get(nameof(Agent_Doctor_Plugin));
+    public static string Agent_Doctor_Login => Get(nameof(Agent_Doctor_Login));
+    public static string Agent_Doctor_Hubcap => Get(nameof(Agent_Doctor_Hubcap));
+    public static string Agent_Doctor_Workflow => Get(nameof(Agent_Doctor_Workflow));
+    public static string Agent_Doctor_Downloads => Get(nameof(Agent_Doctor_Downloads));
+    public static string Agent_Doctor_Failed => Get(nameof(Agent_Doctor_Failed));
+    public static string Agent_Doctor_Activity => Get(nameof(Agent_Doctor_Activity));
+    public static string Agent_Doctor_Repeated => Get(nameof(Agent_Doctor_Repeated));
+    public static string Agent_Doctor_Update => Get(nameof(Agent_Doctor_Update));
+    public static string Agent_Doctor_Disk => Get(nameof(Agent_Doctor_Disk));
 }
