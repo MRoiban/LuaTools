@@ -6,11 +6,22 @@ public sealed record LocalInstallOutcome(string Name, bool Ok, bool Skipped, boo
 /// <summary>Per-batch state and serialization shared by Home, Add and agent submissions.</summary>
 public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwriteCoordinator overwrites)
 {
+    public sealed class Batch
+    {
+        public string Id { get; } = Guid.NewGuid().ToString("N");
+        public string State { get; internal set; } = "running";
+        public IReadOnlyList<LocalInstallOutcome> Results { get; internal set; } = [];
+    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Batch> _operations = new();
+    public IReadOnlyList<Batch> Operations => _operations.Values.ToArray();
     private readonly SemaphoreSlim _batches = new(1);
     public async Task<IReadOnlyList<LocalInstallOutcome>> InstallAsync(IEnumerable<string> paths,
         Func<string, OverwriteDiff, CancellationToken, Task<bool>> decide, CancellationToken ct = default)
     {
         await _batches.WaitAsync(ct);
+        var operation = new Batch();
+        foreach (var old in _operations.Values.Where(b => b.State != "running").Take(Math.Max(0, _operations.Count - 999))) _operations.TryRemove(old.Id, out _);
+        _operations[operation.Id] = operation;
         try
         {
             var results = new List<LocalInstallOutcome>();
@@ -26,8 +37,14 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
                 {
                     var diff = await overwrites.InspectAsync(path, appId, ct: ct);
                     versions[appId] = diff.Version;
-                    if (diff.Overwrites && !await decide(path, diff, ct))
-                    { results.Add(new(name, true, true, false, 0)); continue; }
+                    if (diff.Overwrites)
+                    {
+                        using var decisionLifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        bool replace;
+                        try { replace = await Agent.ConsentCoordinator.WaitWithGuiAsync(operation.Id, decide(path, diff, decisionLifetime.Token), ct, diff); }
+                        finally { decisionLifetime.Cancel(); }
+                        if (!replace) { results.Add(new(name, true, true, false, 0)); continue; }
+                    }
                 }
                 InstallResult result;
                 lock (LuaInstaller.InstallGate)
@@ -39,8 +56,12 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
                 }
                 results.Add(new(name, !result.AnyFailed, false, result.LuaInstalled, result.ManifestCount, result.Failed.Count, result.Error));
             }
+            operation.Results = results.ToArray();
+            operation.State = results.Any(r => !r.Ok) ? "failed" : "completed";
             return results;
         }
+        catch (OperationCanceledException) { operation.State = "cancelled"; throw; }
+        catch { operation.State = "failed"; throw; }
         finally { _batches.Release(); }
     }
 }

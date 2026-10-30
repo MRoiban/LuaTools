@@ -43,7 +43,7 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
     public bool CloudUnlocked => unlocker.SelectedMode is UnlockerMode.Ost or UnlockerMode.Bst;
     public Task<CloudRedirectAddonState> ReadCloudAsync(bool refresh = false, CancellationToken ct = default) =>
         unlocker.GetCloudRedirectStateAsync(CloudUnlocked, refresh, ct);
-    public async Task<ModeInstallResult> UpdateCloudAsync(bool? enabled, bool refresh, IProgress<double?>? progress = null, CancellationToken ct = default, Action? revalidate = null)
+    public virtual async Task<ModeInstallResult> UpdateCloudAsync(bool? enabled, bool refresh, IProgress<double?>? progress = null, CancellationToken ct = default, Action? revalidate = null)
     {
         await _write.WaitAsync(ct);
         try
@@ -60,6 +60,17 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
         finally { _write.Release(); }
     }
     public Task<bool> ManageCloudAsync(IProgress<double?>? progress = null, CancellationToken ct = default) => cloud.LaunchAsync(progress, ct);
+    public virtual async Task<ModeInstallResult> EnrollCloudSavesAsync(CancellationToken ct = default, Action? revalidate = null)
+    {
+        revalidate?.Invoke();
+        var result = await UpdateCloudAsync(true, false, ct: ct, revalidate: revalidate);
+        if (!result.Success) return result;
+        revalidate?.Invoke();
+        if (cabinet is null) return ModeInstallResult.Fail(Resources.Strings.Agent_System_Failed);
+        // Enrollment must report credential configuration failures, unlike best-effort add-on enabling.
+        await cabinet.ConfigureCloudRedirectAsync();
+        return result;
+    }
     public async Task EnableCloudForCabinetAsync()
     {
         var state = await ReadCloudAsync();

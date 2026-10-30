@@ -35,6 +35,7 @@ public sealed partial class AgentCommandService
                     content = r.Flags.ContainsKey("content") ? string.Join('\n', contents?.Entries.Select(e => $"addappid({e.Id})") ?? []) : null,
                     available_actions = AvailableActions.For("lua") });
             }
+            if (r.Command == "lua update") return await UpdateLiveLua(r, ct);
             return await _mutations.ExecuteAsync(r, async token =>
             {
                 ValidateAddInputs(r);
@@ -74,4 +75,24 @@ public sealed partial class AgentCommandService
         }
         catch (MutationRejectedException ex) { return AddFailure(ex.Code, ex.ExitCode); }
     }
+    private Task<Envelope> UpdateLiveLua(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    {
+        if (vault is null) throw new MutationRejectedException("SERVICE_UNAVAILABLE", 7);
+        ValidateScalarInput(r);
+        ValidateAddInputs(r);
+        if (r.Files!.Length != 1) throw new MutationRejectedException("INVALID_USAGE", 2);
+        long id = AddAppId(r.Arguments[0]);
+        string text = await File.ReadAllTextAsync(r.InputPaths[0], token);
+        try { ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), id); }
+        catch { throw new MutationRejectedException("INVALID_LUA", 2); }
+        string version = VaultVersion(id), context = await Snapshot(() => PlanContext, token);
+        string origin = vault.GetEditBase(id) ?? vault.GetActiveVariant(id)?.Hash ?? "default";
+        return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, [id + ":live:origin:" + origin],
+            [Resources.Strings.Agent_Finish_LuaImpact], true), commit => Snapshot(() =>
+        {
+            if (PlanContext != context || VaultVersion(id) != version) throw new MutationRejectedException("PLAN_STALE", 6);
+            var saved = new DepotPresetCoordinator(vault).SaveEdit(id, text);
+            return saved is null ? AddFailure("SAVE_FAILED", 1) : Envelope.Success(new { appid = id, hash = saved.Hash, version = VaultVersion(id) });
+        }, commit));
+    }, ct);
 }

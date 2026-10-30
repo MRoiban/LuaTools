@@ -293,7 +293,7 @@ public partial class LaunchOptionsViewModel : ObservableObject
             return;
         }
 
-        _launch.Stage((int)AppId, _state.ChangeNumber, _state.Current, desired);
+        new LaunchEditCoordinator(_launch).Stage((int)AppId, desired);
         IsModded = true;
 
         if (Confirm(Resources.Strings.Launch_ApplyNow_Body, Resources.Strings.Launch_ApplyNow_Title))

@@ -35,6 +35,7 @@ public sealed partial class AgentCommandService
                     var found = rows.FirstOrDefault(v => v.Hash == r.Arguments[0]);
                     return found is null ? Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Depot_Unavailable) : Envelope.Success(PresetRow(id, found));
                 }, ct);
+            if (r.Command == "preset create" || r.Flags.ContainsKey("from-live")) return await SavePreset(r, id, ct);
             return await _mutations.ExecuteAsync(r, token => Snapshot(() => PreparePreset(r, id), token), ct);
         }
         catch (MutationRejectedException ex) { return Envelope.Fail(ex.Code, ex.ExitCode, Resources.Strings.Agent_Depot_Unavailable); }
@@ -44,7 +45,7 @@ public sealed partial class AgentCommandService
         JsonObject data;
         try { data = BulkSelection.Data(r, "id", "name"); }
         catch (JsonException) { throw new MutationRejectedException("INVALID_DATA", 2); }
-        if (r.Flags.ContainsKey("from-live") || r.Command == "preset create") throw new MutationRejectedException("REFACTOR_REQUIRED", 5);
+
         string? name = r.Flags.GetValueOrDefault("name") ?? data["name"]?.ToString();
         if (r.Command == "preset update" && name is null) throw new MutationRejectedException("INVALID_VALUE", 2);
         var rows = Protocol.Node(vault!.GetVariants(id).Select(v => PresetRow(id, v)))!.AsArray();
@@ -80,4 +81,29 @@ public sealed partial class AgentCommandService
                 : Envelope.Success(new { results, version = VaultVersion(id) });
         }, token));
     }
+    private Task<Envelope> SavePreset(AgentRequest r, long id, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    {
+        ValidateScalarInput(r, "name");
+        var data = BulkSelection.Data(r, "name");
+        bool create = r.Command == "preset create";
+        bool fromLive = r.Flags.ContainsKey("from-live");
+        if (create && fromLive == r.Flags.ContainsKey("file") || !create && (!fromLive || r.Flags.ContainsKey("name") || data.Count != 0)) throw new MutationRejectedException("INVALID_USAGE", 2);
+        string text;
+        if (fromLive) text = vault!.ReadLiveText(id);
+        else { ValidateAddInputs(r); if (r.Files!.Length != 1) throw new MutationRejectedException("INVALID_USAGE", 2); text = await System.IO.File.ReadAllTextAsync(r.InputPaths[0], token); }
+        try { ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), id); }
+        catch { throw new MutationRejectedException("INVALID_LUA", 2); }
+        string? origin = create ? null : r.Arguments[0];
+        if (!create && vault!.GetEditBase(id) != origin) throw new MutationRejectedException("EDIT_ORIGIN_CHANGED", 6);
+        string version = VaultVersion(id), context = await Snapshot(() => PlanContext, token);
+        string? name = r.Flags.GetValueOrDefault("name") ?? data["name"]?.GetValue<string>();
+        return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, [id + (create ? ":new-preset" : ":inactive-preset:" + origin) + (fromLive ? ":from-live" : ":from-file")],
+            [create ? Resources.Strings.Agent_Finish_PresetImpact : Resources.Strings.Agent_Finish_OriginImpact], !create), commit => Snapshot(() =>
+        {
+            if (PlanContext != context || VaultVersion(id) != version) throw new MutationRejectedException("PLAN_STALE", 6);
+            var coordinator = new DepotPresetCoordinator(vault!);
+            var saved = create ? coordinator.Create(id, text, name) : coordinator.SaveLive(id, origin);
+            return saved is null ? Envelope.Fail("SAVE_FAILED", 1, Resources.Strings.Agent_Depot_Unavailable) : Envelope.Success(new { appid = id, hash = saved.Hash, version = VaultVersion(id) });
+        }, commit));
+    }, ct);
 }

@@ -8,6 +8,7 @@ namespace LuaToolsGui.Services.Agent;
 public sealed class AgentJobRegistry
 {
     private readonly DownloadQueue _queue;
+    internal LocalInstallCoordinator? Local { get; set; }
     public AgentEventHub Events { get; internal set; } = new(Guid.NewGuid().ToString("N"));
     private readonly Dictionary<string, System.ComponentModel.PropertyChangedEventHandler> _observed = [];
     private readonly Dictionary<string, DateTimeOffset> _progressAt = [];
@@ -64,12 +65,16 @@ public sealed class AgentJobRegistry
     {
         Capture();
         return _items.Values.Where(x => !active || x.Item.IsActive).Select(x => Describe(x.Item))
+            .Concat((Local?.Operations ?? []).Where(b => !active || b.State == "running").Select(LocalRow))
             .Concat(_operations.Values.Where(x => !active || x.State == "running").Select(x => (object)new { id = x.Id, state = x.State, kind = x.Kind, version = x.State, available_actions = OperationActions() })).ToArray();
     }
     public object? Get(string id) => Find(id) is { } item ? Describe(item) : _queue.History.FirstOrDefault(x => x.Id == id) is { } history
         ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind.ToString(), version = "history", available_actions = OperationActions() }
+        : Local?.Operations.FirstOrDefault(b => b.Id == id) is { } batch ? LocalRow(batch)
         : _operations.TryGetValue(id, out var op)
         ? new { id = op.Id, state = op.State, kind = op.Kind, result = op.Result, version = op.State, available_actions = OperationActions() } : null;
+    private static object LocalRow(LocalInstallCoordinator.Batch batch) => new { id = batch.Id, state = batch.State, kind = "local-install", result = new { results = batch.Results }, pending_decision = ConsentCoordinator.Details(batch.Id), version = LocalVersion(batch), available_actions = AvailableActions.For("job", c => c.ReadOnly || c.Verb == "confirm" && ConsentCoordinator.HasPending(batch.Id) ? null : "ACTION_UNSUPPORTED") };
+    internal static string LocalVersion(LocalInstallCoordinator.Batch batch) => MutationCoordinator.Hash(batch.Id + batch.State + JsonSerializer.Serialize(ConsentCoordinator.Details(batch.Id), Protocol.Json));
     public static string Version(DownloadItem item) => MutationCoordinator.Hash(item.Id + ":" + item.Status);
     public static object Describe(DownloadItem item) => new
     {
@@ -98,7 +103,8 @@ public sealed class AgentJobRegistry
     {
         try { op.Result = await op.Run(op.Lifetime); op.State = op.Result.Ok ? "completed" : "failed"; }
         catch (OperationCanceledException) { op.State = "cancelled"; }
-        catch { op.State = "failed"; }
+        catch (MutationRejectedException ex) { op.Result = Envelope.Fail(ex.Code, ex.ExitCode, Resources.Strings.Agent_MutationRejected); op.State = "failed"; }
+        catch { op.Result = Envelope.Fail("OPERATION_FAILED", 1, Resources.Strings.Agent_MutationRejected); op.State = "failed"; }
         Events.Publish("job", "state", new { id = op.Id, state = op.State, kind = op.Kind }, op.Id);
     }
 }
@@ -117,8 +123,9 @@ public static class ConsentCoordinator
     }
     public static bool HasPending(string id) => Pending.ContainsKey(id);
     public static Task<bool> WaitAsync(string id, CancellationToken ct) => WaitWithGuiAsync(id, null, ct);
-    public static async Task<bool> WaitWithGuiAsync(string id, Task<bool>? guiDecision, CancellationToken ct)
+    public static async Task<bool> WaitWithGuiAsync(string id, Task<bool>? guiDecision, CancellationToken ct, object? details = null)
     {
+        if (details is not null) Descriptions[id] = details;
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!Pending.TryAdd(id, decision)) throw new InvalidOperationException();
         try
@@ -127,7 +134,7 @@ public static class ConsentCoordinator
             var winner = await Task.WhenAny(decision.Task, guiDecision).WaitAsync(ct);
             return await winner;
         }
-        finally { Pending.TryRemove(id, out _); }
+        finally { Pending.TryRemove(id, out _); Descriptions.TryRemove(id, out _); }
     }
     public static bool Decide(string id, bool replace) => Pending.TryGetValue(id, out var decision) && decision.TrySetResult(replace);
 }

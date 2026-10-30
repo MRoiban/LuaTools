@@ -23,6 +23,18 @@ public sealed partial class AgentCommandService
         }
         if (r.Command is "job get" or "job wait") return await Snapshot(() => Jobs.Get(r.Arguments[0]) is { } value
             ? Envelope.Success(value) : Envelope.Fail("JOB_EXPIRED", 3, Resources.Strings.Agent_JobMissing), ct);
+        if (r.Command == "job confirm" && acquisition?.Local.Operations.FirstOrDefault(b => b.Id == r.Arguments.FirstOrDefault()) is { } batch)
+            return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+            {
+                BulkSelection.Data(r);
+                string version = AgentJobRegistry.LocalVersion(batch), context = PlanContext;
+                if (!ConsentCoordinator.HasPending(batch.Id)) throw new MutationRejectedException("NO_PENDING_DECISION", 6);
+                return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, [batch.Id], [Resources.Strings.Agent_Finish_DecisionImpact], r.Flags.GetValueOrDefault("decision") == "replace"), commit => Snapshot(() =>
+                {
+                    if (context != PlanContext || version != AgentJobRegistry.LocalVersion(batch) || !ConsentCoordinator.Decide(batch.Id, r.Flags.GetValueOrDefault("decision") == "replace")) throw new MutationRejectedException("PLAN_STALE", 6);
+                    return Envelope.Success(new { id = batch.Id, decision = r.Flags.GetValueOrDefault("decision") });
+                }, commit));
+            }, token), ct);
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
             string[] targets;

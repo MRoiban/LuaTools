@@ -374,16 +374,17 @@
     "capability_ids": [
       "C-115"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Save editor buffer when editing, otherwise live bytes, as content-addressed preset; dedup identical bytes may return existing non-preset entry. Clear edit base; editor closes, selected saved row; no change to live bytes"
+      "Save editor buffer when editing, otherwise live bytes, as content-addressed preset; dedup identical bytes may return existing non-preset entry. Clear edit base; editor closes, selected saved row; no change to live bytes",
+      "Plans disclose affected live/stored target; explicit consent applies to overwrite, executable enablement and process restart."
     ],
     "flags": [
       {
@@ -580,6 +581,13 @@
         "default": false,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
       }
     ],
     "identities": [],
@@ -622,7 +630,7 @@
   {
     "resource": "preset",
     "verb": "update",
-    "syntax": "luatools preset update <hash> --appid <appid> --name <name>",
+    "syntax": "luatools preset update <hash> --appid <appid> [--name <name> | --from-live]",
     "variants": [
       "luatools preset update <hash> --appid <appid> --name <name>"
     ],
@@ -641,7 +649,8 @@
     "reversible": false,
     "side_effects": [
       "Save trims custom label, blank restores generated label; index changes only, build ID and Lua untouched. Cancel leaves label unchanged; selecting different preset closes rename",
-      "Overwrite stored origin with live bytes, preserve label/kind/build ID/source/captured time; delete old content-hash file and clear edit base. Dedup may retire origin into preexisting identical entry. Missing base falls back to Save as preset"
+      "Overwrite stored origin with live bytes, preserve label/kind/build ID/source/captured time; delete old content-hash file and clear edit base. Dedup may retire origin into preexisting identical entry. Missing base falls back to Save as preset",
+      "--from-live updates the pending edit origin; prior hash bytes can be permanently discarded. Missing origin falls back to a new preset. Live bytes remain unchanged."
     ],
     "flags": [
       {
@@ -827,6 +836,13 @@
       },
       {
         "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "from-live",
         "type": "bool",
         "default": false,
         "allowed_values": [],

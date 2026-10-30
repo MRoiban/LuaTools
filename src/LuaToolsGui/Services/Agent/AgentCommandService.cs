@@ -16,7 +16,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     ModeCoordinator? modes = null, FixCoordinator? fixes = null,
     PluginCoordinator? plugins = null, SteamCoordinator? processes = null, ApplicationCoordinator? lifecycle = null,
     SteamAutoCrackService? tool = null, ManifestJobFactory? factory = null,
-    LuaVault? vault = null, AppInfo.LaunchOptionsService? launch = null, SteamDepotInfo? depotInfo = null, SteamAppListCache? appList = null, SteamAppInfoCache? appInfo = null, HubcapService? hubcap = null)
+    LuaVault? vault = null, AppInfo.LaunchOptionsService? launch = null, SteamDepotInfo? depotInfo = null, SteamAppListCache? appList = null, SteamAppInfoCache? appInfo = null, HubcapService? hubcap = null, DepotDownloaderService? depotTool = null, PluginAddService? pluginAdd = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
@@ -26,7 +26,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     private readonly SnapshotPager _pager = new();
     private readonly MutationCoordinator _mutations = mutations ?? new();
     private readonly AgentJobRegistry _jobs = new(queue);
-    internal AgentJobRegistry Jobs => _jobs;
+    internal AgentJobRegistry Jobs { get { _jobs.Local = acquisition?.Local; return _jobs; } }
     internal void BindHost(CancellationToken lifetime) { _hostLifetime = lifetime; Jobs.Events = new AgentEventHub(InstanceId); }
     private string PlanContext => MutationCoordinator.Hash(InstanceId + SteamIdentity + auth.IsSignedIn + auth.Email + MutationCoordinator.Hash(settings.HubcapApiKey ?? "") + string.Join(':',
         Protocol.Node(ReadSettings(settings))!.AsArray().Select(n => n!["version"]!.ToString())));
@@ -68,7 +68,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     {
         bool reverse = request.Flags.GetValueOrDefault("sort") == "reverse";
         if (reverse) rows = new JsonArray(rows.Reverse().Select(x => x?.DeepClone()).ToArray());
-        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort" or "appid" or "section" or "query" or "drifted").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
+        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort" or "appid" or "section" or "query" or "drifted" or "games").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
         return _pager.List(key, rows, request.Flags);
     }    private bool? SelectedSteamRunning()
     {

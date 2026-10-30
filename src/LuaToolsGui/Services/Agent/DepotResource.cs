@@ -8,6 +8,8 @@ public sealed partial class AgentCommandService
     private async Task<Envelope> DepotAsync(AgentRequest r, CancellationToken ct)
     {
         if (vault is null) return Envelope.Fail("SERVICE_UNAVAILABLE", 7, Resources.Strings.Agent_Depot_Unavailable);
+        if (r.Command is "depot plan" or "depot download") return await PlanDepotDownload(r, ct);
+        if (r.Command == "depot list" && r.Flags.ContainsKey("games")) return await ReadDepotGames(r, ct);
         if (r.Command == "depot update")
         {
             long editApp;
@@ -17,17 +19,18 @@ public sealed partial class AgentCommandService
             return await _mutations.ExecuteAsync(r, token => Snapshot(() => PrepareDepotEdit(r, metadata), token), ct);
         }
         if (r.Command is "depot list" or "depot search" or "depot get") return await ReadDepots(r, ct);
-        if (r.Command != "depot reconcile" || r.Flags.ContainsKey("refresh")) return Envelope.Fail("REFACTOR_REQUIRED", 5, Resources.Strings.Agent_Depot_Unavailable);
+        if (r.Command != "depot reconcile") return Envelope.Fail("REFACTOR_REQUIRED", 5, Resources.Strings.Agent_Depot_Unavailable);
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
             long id = DepotAppId(r);
             try { BulkSelection.Data(r); } catch (System.Text.Json.JsonException) { throw new MutationRejectedException("INVALID_DATA", 2); }
             string version = ReconcileVersion(id), context = PlanContext;
-            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, [id.ToString()], [Resources.Strings.Agent_Depot_ReconcileImpact], true);
+            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, [id + ":live-and-stored-presets"], [Resources.Strings.Agent_Depot_ReconcileImpact], true);
             return new PreparedMutation(plan, commitToken => Snapshot(() =>
             {
                 if (PlanContext != context || ReconcileVersion(id) != version) throw new MutationRejectedException("PLAN_STALE", 6);
                 new DepotPresetCoordinator(vault).Reconcile(id);
+                if (r.Flags.ContainsKey("refresh")) depotInfo?.Invalidate(id);
                 return Envelope.Success(new { appid = id, version = ReconcileVersion(id), presets = vault.GetVariants(id).Select(v => PresetRow(id, v)) });
             }, commitToken));
         }, token), ct);
@@ -109,4 +112,63 @@ public sealed partial class AgentCommandService
         }, token));
     }
 
+    private async Task<Envelope> ReadDepotGames(AgentRequest r, CancellationToken ct)
+    {
+        if (r.Flags.ContainsKey("appid")) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
+        string? dir = await Snapshot(() => steam.StPlugInDir, ct);
+        var rows = await Task.Run(() =>
+        {
+            var installed = dir is null ? [] : LuaInstaller.EnumerateInstalled(dir).ToDictionary(f => f.AppId, f => f.Path);
+            var ids = installed.Keys.Concat(vault!.EnumerateLooseBuildLuas().Select(v => v.AppId)).Distinct();
+            string query = r.Flags.GetValueOrDefault("query") ?? "";
+            return ids.Select(id => new { id, appid = id, name = appList?.GetName(id) ?? appInfo?.GetCached(id)?.Name ?? string.Format(Resources.Strings.Common_AppFallback, id), installed = installed.ContainsKey(id), active_hash = vault.GetActiveHash(id), version = VaultVersion(id), available_actions = AvailableActions.For("depot") })
+                .Where(g => g.name.Contains(query, StringComparison.OrdinalIgnoreCase) || g.id.ToString().Contains(query)).OrderBy(g => g.name, StringComparer.OrdinalIgnoreCase).ToArray();
+        }, ct);
+        return List(r, Protocol.Node(rows)!.AsArray());
+    }
+    private async Task<Envelope> PlanDepotDownload(AgentRequest r, CancellationToken ct)
+    {
+        if (depotTool is null || depotInfo is null || factory is null) return Envelope.Fail("SERVICE_UNAVAILABLE", 7, Resources.Strings.Agent_Depot_Unavailable);
+        var planning = r.Command == "depot plan" ? r with { Flags = r.Flags.Where(f => f.Key != "read-only").ToDictionary(f => f.Key, f => f.Value) } : r;
+        if (r.Command == "depot plan") planning.Flags["dry-run"] = null;
+        return await _mutations.ExecuteAsync(planning, async token =>
+        {
+            ValidateScalarInput(r);
+            long id = DepotAppId(r);
+            if (r.Command == "depot download") RequireGate("DepotDownloaderMod");
+            var info = await depotInfo.GetAsync(id, token) ?? throw new MutationRejectedException("METADATA_UNAVAILABLE", 7);
+            var rows = DepotProjection.BuildRows(info, LuaFileParser.ParseText(vault!.ReadLiveText(id), id), appid => appList?.GetName(appid)).InLua;
+            var picks = await Task.Run(() => DepotDownloadPlanning.Build(rows, depotTool, id, SteamService.SteamLanguage), token);
+            var requested = (r.Flags.GetValueOrDefault("depot") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+            if (r.Flags.ContainsKey("all-depots") && requested.Length > 0) throw new MutationRejectedException("INVALID_SELECTION", 2);
+            if (requested.Any(key => !picks.Any(p => p.DepotId.ToString() == key))) throw new MutationRejectedException("NOT_FOUND", 3);
+            var selected = picks.Where(p => r.Flags.ContainsKey("all-depots") || requested.Length > 0 ? r.Flags.ContainsKey("all-depots") || requested.Contains(p.DepotId.ToString()) : p.IsSelected).ToArray();
+            if (selected.Length == 0 || selected.Any(p => !p.CanDownload)) throw new MutationRejectedException("DEPOT_UNAVAILABLE", 6);
+            string? output = r.Flags.GetValueOrDefault("output");
+            if (output is not null) output = DepotDownloadPlanning.ValidateOutput(output, steam.EffectivePath);
+            if (r.Command == "depot download" && output is null) throw new MutationRejectedException("OUTPUT_REQUIRED", 2);
+            var selections = selected.Select(p => new DepotSelection(p.DepotId, p.ManifestId, p.ManifestPath, p.Size) { FromAppId = p.FromAppId }).ToArray();
+            string version = MutationCoordinator.Hash(VaultVersion(id) + string.Join(',', depotTool.ResolveKeys(id).OrderBy(k => k.Key).Select(k => k.Key + ":" + MutationCoordinator.Hash(k.Value))));
+            string context = await Snapshot(() => PlanContext, token);
+            long size = selected.Sum(p => p.Size);
+            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, selected.Select(p => id + ":live:" + p.DepotId + ":" + p.ManifestId).ToArray(),
+                [Resources.Strings.Agent_Finish_DepotImpact, System.Text.Json.JsonSerializer.Serialize(new { output, estimated_bytes = size, depots = selected.Select(p => new { id = p.DepotId, manifest_id = p.ManifestId, size = p.Size, needs_fetch = p.NeedsFetch }) })], true);
+            return new PreparedMutation(plan, commit => Snapshot(() =>
+            {
+                if (r.Command == "depot plan") return Envelope.Success(new { plan });
+                if (PlanContext != context || MutationCoordinator.Hash(VaultVersion(id) + string.Join(',', depotTool.ResolveKeys(id).OrderBy(k => k.Key).Select(k => k.Key + ":" + MutationCoordinator.Hash(k.Value)))) != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                RequireGate("DepotDownloaderMod");
+                DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
+                if (size > 0 && DepotDownloaderService.FreeSpaceFor(output!) is { } free && free < size) throw new MutationRejectedException("NO_SPACE", 6);
+                string selectedSteam = SteamIdentity;
+                var item = queue.Enqueue(factory.CreateDepotJob(id, appList?.GetName(id) ?? id.ToString(), selections, output!, revalidate: () =>
+                {
+                    if (selectedSteam != SteamIdentity) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
+                    RequireGate("DepotDownloaderMod");
+                    DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
+                }));
+                return Envelope.Success(new { id = item.Id, job_id = item.Id, state = item.Status.ToString() });
+            }, commit));
+        }, ct);
+    }
 }

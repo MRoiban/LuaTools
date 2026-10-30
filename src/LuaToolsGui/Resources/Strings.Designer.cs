@@ -806,4 +806,13 @@ public static class Strings
     public static string Agent_Depot_LiveEditImpact => Get(nameof(Agent_Depot_LiveEditImpact));
     public static string Agent_Depot_StoredEditImpact => Get(nameof(Agent_Depot_StoredEditImpact));
     public static string Agent_Account_Unavailable => Get(nameof(Agent_Account_Unavailable));
+    public static string Agent_Finish_LuaImpact => Get(nameof(Agent_Finish_LuaImpact));
+        public static string Agent_Finish_PresetImpact => Get(nameof(Agent_Finish_PresetImpact));
+        public static string Agent_Finish_OriginImpact => Get(nameof(Agent_Finish_OriginImpact));
+        public static string Agent_Finish_LaunchImpact => Get(nameof(Agent_Finish_LaunchImpact));
+        public static string Agent_Finish_DepotImpact => Get(nameof(Agent_Finish_DepotImpact));
+        public static string Agent_Finish_CloudImpact => Get(nameof(Agent_Finish_CloudImpact));
+        public static string Agent_Finish_InstallImpact => Get(nameof(Agent_Finish_InstallImpact));
+        public static string Agent_Finish_DecisionImpact => Get(nameof(Agent_Finish_DecisionImpact));
+
 }

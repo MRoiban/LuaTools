@@ -6,6 +6,20 @@ public sealed partial class AgentCommandService
     [AgentResource("game")]
     private async Task<Envelope> GameAsync(AgentRequest r, CancellationToken ct)
     {
+        if (r.Command == "game install") return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        {
+            AddNoData(r); long id = AddAppId(r.Arguments[0]);
+            var handler = new SteamInstallHandoff(steam);
+            if (!handler.CanHandoff()) throw new MutationRejectedException("STEAM_PROTOCOL_ISOLATION_UNPROVEN", 5);
+            if (libraryCache is null || !libraryCache.GetLoadedAppIds().Contains(id)) throw new MutationRejectedException("NOT_PENDING_ADDED", 6);
+            string context = PlanContext;
+            return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, context, [id.ToString()], [Resources.Strings.Agent_Finish_InstallImpact], true), commit => Snapshot(() =>
+            {
+                if (PlanContext != context) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (!handler.Install(id)) throw new MutationRejectedException("STEAM_PROTOCOL_ISOLATION_UNPROVEN", 5);
+                return Envelope.Success(new { appid = id, state = "handed_off" });
+            }, commit));
+        }, token), ct);
         if (r.Command == "game add") return await AddRemoteAsync(r, false, ct);
         if (libraryNames is null || libraryDetails is null || libraryCache is null)
             return Envelope.Fail("ACTION_UNAVAILABLE", 6, Resources.Strings.Agent_Library_Unavailable);
@@ -16,13 +30,18 @@ public sealed partial class AgentCommandService
             long? id = long.TryParse(r.Arguments[0], out long number) && number > 0 && number < 2_000_000_000 ? number : SteamLinkParser.AppIdFrom(r.Arguments[0]);
             if (id is null) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
             var entry = entries.FirstOrDefault(e => e.AppId == id);
-            if (r.Flags.ContainsKey("installed") && entry is null) return Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Library_Unavailable);
-            bool identityOnly = r.Flags.GetValueOrDefault("fields") is { } fields && fields.Split(',').All(f => f is "id" or "appid" || f.StartsWith("paths") || f.StartsWith("urls"));
+            bool identityOnly = r.Flags.ContainsKey("installed") || r.Flags.GetValueOrDefault("fields") is { } fields && fields.Split(',').All(f => f is "id" or "appid" || f.StartsWith("paths") || f.StartsWith("urls"));
             var info = libraryDetails.GetCached(id.Value);
-            if (!identityOnly || entry is null) info ??= await libraryDetails.ResolveAsync(id.Value, ct);
+            if (!identityOnly) info ??= await libraryDetails.ResolveAsync(id.Value, ct);
             if (!identityOnly) await libraryDetails.EnsureFullDetailsAsync(id.Value, ct);
-            if (entry is null && info is null) return Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Library_Unavailable);
-            return Envelope.Success(GameData(entry ?? new(id.Value, "", default, info!.Name, false)));
+            if (entry is null && info is null && !r.Flags.ContainsKey("installed")) return Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Library_Unavailable);
+            var row = Protocol.Node(GameData(entry ?? new(id.Value, "", default, info?.Name ?? string.Format(Resources.Strings.Common_AppFallback, id), false)))!.AsObject();
+            var state = pluginAdd?.GetState(id.Value);
+            row["add_status"] = Protocol.Node(new { checking = state?.Checking ?? false, busy = state?.Busy ?? false, sources_loaded = state?.SourcesLoaded ?? false,
+                install_status = state?.InstallStatus is { } status ? LogRedactor.Redact(status) : null, install_failed = state?.InstallFailed ?? false,
+                error = state?.Error is { } error ? LogRedactor.Redact(error) : null, cancelled = state?.Cancelled ?? false,
+                sources = state?.Sources.Select(s => new { name = s.Name, status = s.Status, disabled_reasons = s.DisabledReasons }) });
+            return Envelope.Success(row);
         }
         if (r.Command is "game delete" or "game remove-drm")
             return await LibraryMutationAsync(r, entries, ct);

@@ -176,7 +176,7 @@ public class ManifestJobFactory(
     /// </remarks>
     public DownloadJob CreateDepotJob(
         long appId, string gameName, IReadOnlyList<DepotSelection> selections, string outDir,
-        Action<DownloadItem, JobResult?>? onFinished = null)
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? revalidate = null)
     {
         return new DownloadJob(
             DownloadKind.Depot,
@@ -185,7 +185,7 @@ public class ManifestJobFactory(
             gameName,
             Resources.Strings.Downloads_Kind_Depot,
             covers.GetLocalPath(appId),
-            (item, progress, ct) => RunDepotsAsync(item, appId, gameName, selections, outDir, progress, ct),
+            (item, progress, ct) => RunDepotsAsync(item, appId, gameName, selections, outDir, progress, ct, revalidate),
             // Nothing to install: the depots were written straight to outDir.
             (_, _, _) => Task.FromResult(new JobResult(true,
                 string.Format(Resources.Strings.Depot_Status_Done, selections.Count, outDir), outDir)),
@@ -273,8 +273,9 @@ public class ManifestJobFactory(
 
     private async Task<DownloadedFile> RunDepotsAsync(
         DownloadItem item, long appId, string gameName, IReadOnlyList<DepotSelection> selections,
-        string outDir, IProgress<DownloadProgress> progress, CancellationToken ct)
+        string outDir, IProgress<DownloadProgress> progress, CancellationToken ct, Action? revalidate = null)
     {
+        revalidate?.Invoke();
         var keys = depotTool.ResolveKeys(appId);
         if (keys.Count == 0) throw new DownloadAbortedException(Resources.Strings.Depot_Err_NoKeys);
 
@@ -305,6 +306,7 @@ public class ManifestJobFactory(
         for (int i = 0; i < selections.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
+            revalidate?.Invoke();
 
             // Formatted into a local BEFORE the closure: `i` is a for-loop variable, so it is shared
             // across iterations and would have moved on by the time the dispatcher ran the lambda.
@@ -370,6 +372,7 @@ public class ManifestJobFactory(
             for (int i = 0; i < resolved.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
+            revalidate?.Invoke();
                 var ready = resolved[i];
 
                 // Resume skips what's already finished rather than re-hashing tens of GB. Its size is the

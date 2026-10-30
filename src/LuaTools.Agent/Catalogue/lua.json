@@ -427,16 +427,16 @@
     "capability_ids": [
       "C-113"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Validate editor Lua, overwrite live file, stamp timestamps; store into origin build/preset preserving identity, or Default; update failure toast; may fall back to new preset if base vanished"
+      "Overwrite live Lua without backup and save to its origin or Default. UpdateVariant/SyncDefaultFromLive can permanently discard prior bytes; deduplication may retire the old origin. Missing origin falls back to a new preset."
     ],
     "flags": [
       {
@@ -649,8 +649,7 @@
     ],
     "preconditions": [
       "Active game; no dirty or empty check in VM (content policy may reject); no confirmation",
-      "Lua content/reparse checks; no Steam close/restart",
-      "Disabled: live-edit origin routing remains inside BuildsViewModel, outside this extraction; never replace with LuaInstaller."
+      "Lua content/reparse checks; no Steam close/restart"
     ],
     "output_fields": [
       "plan",

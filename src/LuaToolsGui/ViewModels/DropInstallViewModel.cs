@@ -100,7 +100,7 @@ public partial class DropInstallViewModel : ObservableObject
             ConfirmTitle = string.Format(Resources.Strings.Drop_Confirm_Replace, NameFor(diff.AppId));
             ConfirmNoChanges = !diff.Readable ? Resources.Strings.Agent_Add_UnreadableDiff : Added.Count + Removed.Count == 0 ? Resources.Strings.Drop_Confirm_NoChanges : null;
             IsConfirming = true;
-            try { return await Services.Agent.ConsentCoordinator.WaitWithGuiAsync(Guid.NewGuid().ToString("N"), tcs.Task, ct); }
+            try { return await tcs.Task.WaitAsync(ct); }
             finally { IsConfirming = false; _decision = null; }
         });
         ResultFailed = results.Any(r => !r.Ok);

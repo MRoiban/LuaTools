@@ -35,6 +35,7 @@ public sealed partial class AgentCommandService
                     var ids = r.Flags.ContainsKey("drifted") ? launch.FindDrifted() : launch.Store.All.Select(m => m.AppId).ToList();
                     return List(r, Protocol.Node(ids.Select(LaunchRow))!.AsArray());
                 }, ct);
+            if (r.Command is "launch-option create" or "launch-option update" or "launch-option delete") return await EditLaunch(r, ct);
             return await _mutations.ExecuteAsync(r, async token =>
             {
                 int[] ids = r.Command == "launch-option revert" ? [(int)DepotAppId(r)]
@@ -69,5 +70,89 @@ public sealed partial class AgentCommandService
             }, lifetime), _hostLifetime);
             return Envelope.Success(new { job_id = job, state = "accepted" });
         }, token));
+    }
+    private Task<Envelope> EditLaunch(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    {
+        ValidateScalarInput(r); // complex entry data travels only via the bounded file transport
+        int id = (int)DepotAppId(r);
+        var state = await Task.Run(() => launch!.Inspect(id), token) ?? throw new MutationRejectedException("NOT_FOUND", 3);
+        string version = LaunchVersion(), context = await Snapshot(() => PlanContext, token);
+        var desired = (launch!.Store.Get(id)?.Desired ?? state.Current).Select(o => o.Clone()).ToList();
+        int? at = r.Flags.GetValueOrDefault("entry") is { } entry && int.TryParse(entry, out int index) ? index : null;
+        if (r.Flags.ContainsKey("entry") && (at is null || at < 0 || at >= desired.Count)) throw new MutationRejectedException("INVALID_ENTRY", 2);
+        if (r.Command == "launch-option delete")
+        {
+            if (at is null) throw new MutationRejectedException("INVALID_ENTRY", 2);
+            desired.RemoveAt(at.Value);
+        }
+        else
+        {
+            ValidateAddInputs(r);
+            if (r.Files!.Length != 1 || r.Files[0].Length > 256 * 1024) throw new MutationRejectedException("INPUT_LIMIT", 2);
+            using var json = JsonDocument.Parse(await System.IO.File.ReadAllTextAsync(r.InputPaths[0], token));
+            var root = json.RootElement;
+            if (r.Command == "launch-option create")
+            {
+                if (at is not null) throw new MutationRejectedException("INVALID_ENTRY", 2);
+                desired.Add(ParseLaunchEntry(root, new LaunchOption { OsList = "windows" }));
+            }
+            else if (at is { } n) desired[n] = ParseLaunchEntry(root, desired[n]);
+            else
+            {
+                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() > 256) throw new MutationRejectedException("INVALID_DATA", 2);
+                var previous = desired; desired = [];
+                foreach (var row in root.EnumerateArray())
+                {
+                    // source_entry preserves unmodelled Steam fields across reordering.
+                    var source = row.TryGetProperty("source_entry", out var sourceIndex) ? previous.ElementAtOrDefault(sourceIndex.GetInt32()) ?? throw new MutationRejectedException("INVALID_ENTRY", 2) : new LaunchOption { OsList = "windows" };
+                    desired.Add(ParseLaunchEntry(row, source));
+                }
+            }
+        }
+        if (desired.Any(o => string.IsNullOrWhiteSpace(o.Executable))) throw new MutationRejectedException("EXECUTABLE_REQUIRED", 2);
+        bool apply = r.Flags.GetValueOrDefault("apply") == "true";
+        bool running = apply && LaunchRunning();
+        var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, [id + ":staged-launch-list"],
+            [apply ? Resources.Strings.Agent_Depot_LaunchImpact : Resources.Strings.Agent_Finish_LaunchImpact], apply, running);
+        return new PreparedMutation(plan, commit => Snapshot(() =>
+        {
+            if (PlanContext != context || LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
+            string job = Jobs.Register(r.Command, async lifetime => await Task.Run(() =>
+            {
+                if (PlanContext != context || LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (apply && LaunchRunning() && (!r.Flags.ContainsKey("restart-steam") || !r.Flags.ContainsKey("yes"))) throw new MutationRejectedException("STEAM_RUNNING", 6);
+                using var selected = steam.PinSelectedInstallation();
+                var coordinator = new LaunchEditCoordinator(launch!);
+                coordinator.Stage(id, desired);
+                if (apply && !coordinator.Reapply([id]).Ok) return Envelope.Fail("APPLY_FAILED", 1, Resources.Strings.Agent_Depot_Unavailable);
+                return Envelope.Success(new { appid = id, staged = true, applied = apply, version = LaunchVersion() });
+            }, lifetime), _hostLifetime);
+            return Envelope.Success(new { id = job, job_id = job, state = "accepted" });
+        }, commit));
+    }, ct);
+    private static LaunchOption ParseLaunchEntry(JsonElement row, LaunchOption source)
+    {
+        if (row.ValueKind != JsonValueKind.Object) throw new MutationRejectedException("INVALID_DATA", 2);
+        var option = source.Clone();
+        foreach (var field in row.EnumerateObject())
+        {
+            if (field.Name == "source_entry") { _ = field.Value.GetInt32(); continue; }
+            if (field.Value.ValueKind != JsonValueKind.String) throw new MutationRejectedException("INVALID_DATA", 2);
+            string value = field.Value.GetString()!;
+            if (value.Length > 8192 || value.Contains('\0')) throw new MutationRejectedException("INVALID_DATA", 2);
+            switch (field.Name)
+            {
+                case "executable": option.Executable = value; break;
+                case "arguments": option.Arguments = value; break;
+                case "working_dir": option.WorkingDir = value; break;
+                case "description": option.Description = value; break;
+                case "os_list": option.OsList = value; break;
+                case "type": option.Type = value; break;
+                case "beta_key": option.BetaKey = value; break;
+                case "owns_dlc": option.OwnsDlc = value; break;
+                default: throw new MutationRejectedException("INVALID_DATA", 2);
+            }
+        }
+        return LaunchEditCoordinator.Normalize(option);
     }
 }

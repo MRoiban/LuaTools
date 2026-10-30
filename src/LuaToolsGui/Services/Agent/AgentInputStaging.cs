@@ -15,7 +15,7 @@ internal sealed class AgentInputStaging : IDisposable
     {
         if (request.Files is not { Length: > 0 } files) return null;
         if (files.Length > FileSubmission.MaxFiles || files.Any(f => !FileSubmission.Valid(f)) || files.Sum(f => f.Length) > FileSubmission.MaxBytes
-            || request.Command is not ("lua add" or "lua get" or "lua update")) throw new InvalidDataException();
+            || request.Command is not ("lua add" or "lua get" or "lua update" or "launch-option create" or "launch-option update" or "preset create")) throw new InvalidDataException();
         if (!await Uploads.WaitAsync(0, ct)) throw new InvalidDataException();
         string root = Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName, "agent-input", Guid.NewGuid().ToString("N"));
         var staging = new AgentInputStaging(root, request);

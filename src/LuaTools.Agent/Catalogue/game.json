@@ -431,7 +431,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Authenticated same-user GUI owner",
+      "Add-flow status is observational: does not start a source check."
     ],
     "output_fields": [
       "id",
@@ -449,7 +450,8 @@
       "version",
       "available_actions",
       "overview",
-      "paths.install"
+      "paths.install",
+      "add_status"
     ]
   },
   {
@@ -1371,16 +1373,16 @@
     "capability_ids": [
       "C-063"
     ],
-    "status": "disabled",
-    "disabled_code": "CONTEXT_CHANGED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Ask selected Steam to show/start its native install workflow. Success is protocol handoff only; human completes native Steam prompts. Not a Lua install or account login."
+      "Hands steam://install/<appid> to the verified selected Steam protocol executable; returns handed_off. Native Steam controls installation."
     ],
     "flags": [
       {
@@ -1585,9 +1587,7 @@
       9
     ],
     "preconditions": [
-      "Valid pending-added App ID and selected Steam context; native Steam protocol handler; explicit confirmation.",
-      "Same-user GUI owner; exact selected Steam isolation must be verified before handoff; otherwise return CONTEXT_CHANGED.",
-      "Disabled: the native Steam protocol handler cannot prove the selected Steam installation and isolation route."
+      "Pending-added ID and selected valid Steam. Runtime disabled with STEAM_PROTOCOL_ISOLATION_UNPROVEN unless the effective, nondelegated Steam protocol handler exactly matches the selected ordinary installation. Portable/isolation routes fail closed."
     ],
     "output_fields": [
       "plan",
@@ -1595,7 +1595,8 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid"
     ]
   }
 ]

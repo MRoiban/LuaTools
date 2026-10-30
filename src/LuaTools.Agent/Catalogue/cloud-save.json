@@ -10,16 +10,16 @@
     "capability_ids": [
       "C-015"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "returns-job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Yes/No prompt; sets CloudRedirectEnabled consent; verified/quarantined DLL download and Steam-root install if needed; edits opensteamtool.toml and DPAPI CloudRedirect Cabinet config; future Steam Cloud saves sent to server. Restart Steam afterwards (manual)"
+      "Enable executable CloudRedirect consent, acquire/install verified quarantined add-on when needed, configure Cabinet credentials and future cloud-save sharing. Manual Steam restart required."
     ],
     "flags": [
       {
@@ -232,8 +232,7 @@
       9
     ],
     "preconditions": [
-      "Button shown only cloud-save state Off; card requires enabled and connected. Active reconfigures credentials; incompatible mode shows unavailable toast. Mode VM busy/unlocked guard",
-      "Already human-enabled CloudRedirect executable consent; OST/BST; Cabinet enabled and connected; valid writable Steam; explicit third-party-sharing consent. CLI never sets executable opt-in."
+      "Enable only. Cabinet enabled and connected, managed OST/BST mode and valid writable selected Steam. --yes explicitly enables CloudRedirect via ExecutableConsentCoordinator, warning log and toast; quarantine and live gates remain. Restart Steam manually afterwards."
     ],
     "output_fields": [
       "plan",

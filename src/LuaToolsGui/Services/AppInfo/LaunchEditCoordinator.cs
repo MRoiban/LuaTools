@@ -15,6 +15,15 @@ public sealed class LaunchEditCoordinator(LaunchOptionsService launch)
         if (result.Ok) launch.Store.Remove(appId);
         return result;
     });
+    public void Stage(int appId, IReadOnlyList<LaunchOption> desired) => launch.Serialized(() =>
+    {
+        var state = launch.Read(appId) ?? throw new InvalidOperationException("APP_NOT_FOUND");
+        var normalized = desired.Select(Normalize).ToList();
+        LaunchOption.Renumber(normalized);
+        if (normalized.Any(o => string.IsNullOrWhiteSpace(o.Executable))) throw new ArgumentException("EXECUTABLE_REQUIRED");
+        launch.Stage(appId, state.ChangeNumber, state.Current, normalized);
+        return true;
+    });
     public static LaunchOption Normalize(LaunchOption option)
     {
         var result = option.Clone();
