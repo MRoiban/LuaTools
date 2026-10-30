@@ -164,7 +164,12 @@ public sealed class AgentFinishTests
     {
         using var f = new Fixture();
         using var preparing = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
-        f.InspectPath = () => { preparing.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(10))); };
+        // Earlier version reads also resolve the path. Suspend only inside the inspection itself.
+        f.InspectPath = () =>
+        {
+            if (!Environment.StackTrace.Contains(nameof(LuaToolsGui.Services.AppInfo.LaunchOptionsService.Inspect))) return;
+            preparing.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+        };
         var run = f.Call("launch-option create", ["603750"], input: "{\"executable\":\"New.exe\"}");
         Assert.True(preparing.Wait(TimeSpan.FromSeconds(5))); f.SwitchSteam(); release.Set();
         var result = await run; Assert.False(result.Ok); Assert.True(f.Launch.Store.IsEmpty);

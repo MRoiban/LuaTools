@@ -193,6 +193,8 @@ public partial class ModeViewModel : ObservableObject
 
             var result = await _operations.UpdateCloudAsync(enabling, false, prog);
 
+            if (result.CabinetConfigFailed)
+                _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true);
             if (result.Success)
                 _toast.Show(CloudRedirectTitle, enabling
                     ? Resources.Strings.Mode_CloudRedirect_Toast_Enabled
@@ -215,7 +217,12 @@ public partial class ModeViewModel : ObservableObject
     /// downloads the verified dll) and point it at the connected Cabinet server.</summary>
     internal async Task EnableCloudRedirectForCabinetAsync()
     {
-        try { await _operations.EnableCloudForCabinetAsync(); }
+        try
+        {
+            var result = await _operations.EnableCloudForCabinetAsync();
+            if (!result.Success) _toast.Show(CloudRedirectTitle, result.Error ?? "", error: true);
+            else if (result.CabinetConfigFailed) _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true);
+        }
         catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
         await LoadAsync();
     }

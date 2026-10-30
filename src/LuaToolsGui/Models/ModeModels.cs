@@ -102,6 +102,8 @@ public sealed record CloudRedirectAddonState(
 /// <summary>Outcome of installing/switching to a mode. Mirrors LuaInstaller.InstallResult.</summary>
 public sealed record ModeInstallResult(bool Success, string? Error, IReadOnlyList<string> Failed)
 {
+    /// <summary>The add-on change succeeded, but pointing it at the Cabinet server did not.</summary>
+    public bool CabinetConfigFailed { get; init; }
     public static ModeInstallResult Ok() => new(true, null, []);
     public static ModeInstallResult Fail(string error) => new(false, error, []);
 }

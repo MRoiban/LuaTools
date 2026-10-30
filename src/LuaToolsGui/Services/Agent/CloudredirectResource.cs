@@ -39,7 +39,8 @@ public sealed partial class AgentCommandService
                     {
                         RequireSystemContext(r, version, "cloudredirect"); Gate();
                         if (manage) return SystemResult(await modes.ManageCloudAsync(ct: lifetime));
-                        return SystemResult((await modes.UpdateCloudAsync(enabled, refresh, ct: lifetime, revalidate: () => { RequireSystemContext(r, version, "cloudredirect"); Gate(); })).Success);
+                        var result = await modes.UpdateCloudAsync(enabled, refresh, ct: lifetime, revalidate: () => { RequireSystemContext(r, version, "cloudredirect"); Gate(); });
+                        return result.CabinetConfigFailed ? Envelope.Success(new { state = "completed" }, null, new Warning("CABINET_CONFIG_FAILED", Resources.Strings.CabinetCloud_ConfigError)) : SystemResult(result.Success);
                     });
                 }, commit));
         }, token), ct);

@@ -74,6 +74,30 @@ public sealed class AgentSystemTests : IDisposable
     }
     private AgentRequest Request(string command, string[]? args = null, Dictionary<string, string?>? flags = null) => new(1, "", _facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], _facade.SteamIdentity);
     private Task<Envelope> Run(string command, string[]? args = null, Dictionary<string, string?>? flags = null) => _facade.ExecuteAsync(Request(command, args, flags), default);
+    private sealed class FailingCabinetConfig(UnlockerService unlocker, SteamService steam, CloudRedirectService cloud) : ModeCoordinator(unlocker, steam, cloud)
+    {
+        protected override Task ConfigureCabinetCoreAsync() => throw new IOException("config.json is locked");
+    }
+
+    [Fact]
+    public async Task CabinetConfigurationFailureIsReportedNotSwallowed()
+    {
+        var gh = new GithubProxy(_http);
+        var modes = new FailingCabinetConfig(new UnlockerService(_steam, _settings, new CacheService(Path.Combine(_root, "cache2.json")), gh), _steam, new CloudRedirectService(gh, _settings));
+        var result = await modes.ConfigureCabinetAsync(LuaToolsGui.Models.ModeInstallResult.Ok());
+        Assert.True(result.Success);
+        Assert.True(result.CabinetConfigFailed);
+    }
+
+    [Fact]
+    public async Task CabinetOfferReturnsAFailedEnableInsteadOfDroppingIt()
+    {
+        // Custom mode leaves the add-on locked, the same ordinary failure shape as an offline first enable.
+        var result = await _modes.EnableCloudForCabinetAsync();
+        Assert.False(result.Success);
+        Assert.False(string.IsNullOrEmpty(result.Error));
+    }
+
     [Fact]
     public async Task DisabledGatesPrecedeStopDiscoveryAndAcquisition()
     {

@@ -58,9 +58,7 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
             if (!CloudUnlocked) return ModeInstallResult.Fail(Resources.Strings.Mode_CloudRedirect_Locked);
             var result = refresh ? await unlocker.UpdateCloudRedirectAsync(progress, ct)
                 : enabled == true ? await unlocker.EnableCloudRedirectAsync(progress, ct) : unlocker.DisableCloudRedirect();
-            if (result.Success && enabled == true && cabinet is not null)
-                try { await cabinet.ConfigureCloudRedirectAsync(); } catch { /* Existing best-effort Cabinet configuration. */ }
-            return result;
+            return result.Success && enabled == true && cabinet is not null ? await ConfigureCabinetAsync(result) : result;
         }
         finally { _write.Release(); }
     }
@@ -76,10 +74,21 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
         await cabinet.ConfigureCloudRedirectAsync();
         return result;
     }
-    public async Task EnableCloudForCabinetAsync()
+    public async Task<ModeInstallResult> EnableCloudForCabinetAsync()
     {
         var state = await ReadCloudAsync();
-        if (!state.Enabled) await UpdateCloudAsync(true, false);
-        else if (cabinet is not null) await cabinet.ConfigureCloudRedirectAsync();
+        if (!state.Enabled) return await UpdateCloudAsync(true, false);
+        return cabinet is null ? ModeInstallResult.Ok() : await ConfigureCabinetAsync(ModeInstallResult.Ok());
     }
+    /// <summary>A failed configuration does not undo the add-on change, but the caller must report it.</summary>
+    internal async Task<ModeInstallResult> ConfigureCabinetAsync(ModeInstallResult result)
+    {
+        try { await ConfigureCabinetCoreAsync(); return result; }
+        catch (Exception ex)
+        {
+            AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Mode", "Cabinet configuration for CloudRedirect failed", ex);
+            return result with { CabinetConfigFailed = true };
+        }
+    }
+    protected virtual Task ConfigureCabinetCoreAsync() => cabinet!.ConfigureCloudRedirectAsync();
 }
