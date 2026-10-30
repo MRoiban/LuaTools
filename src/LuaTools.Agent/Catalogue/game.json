@@ -878,7 +878,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
+      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
     ],
     "output_fields": [
       "plan",
@@ -1114,7 +1114,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
+      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
     ],
     "output_fields": [
       "plan",
@@ -1350,7 +1350,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes.",
+      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes.",
       "Steamless executable workflow must be enabled; select exactly one installed game."
     ],
     "output_fields": [
@@ -1587,7 +1587,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Review the dry-run and available_actions; --yes confirms effects. Live workflow gates, overwrite decisions, versions and selected Steam are rechecked before writes."
+      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
     ],
     "output_fields": [
       "plan",

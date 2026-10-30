@@ -339,7 +339,9 @@
       "selected",
       "status",
       "latest_version",
-      "available_actions"
+      "available_actions",
+      "detected_mode",
+      "version"
     ]
   },
   {

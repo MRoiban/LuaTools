@@ -9,13 +9,14 @@ public static class CatalogueDocument
     {
         var commands = source.ToArray();
         if (brief) return new { commands = commands.Select(c => new { command = c.Key, purpose = c.Purpose, syntax = c.Syntax }) };
+        if (commands.Length == 0) return new { commands = Array.Empty<object>() };
         var globals = commands.SelectMany(c => c.Flags).Where(f => Rendering.GlobalFlags.Contains(f.Name))
             .GroupBy(f => f.Name).ToDictionary(g => g.Key, g => g.First());
         var entries = commands.Select(c =>
         {
             var node = Protocol.Node(c)!.AsObject();
             node["variants"] = Protocol.Node(c.Variants.Where(v => v != c.Syntax).ToArray()); // do not repeat syntax
-            node.Remove("see_also"); // discovery links are supplied once in the document
+            node["see_also"] = Protocol.Node(c.SeeAlso.Where(link => link != "luatools describe " + c.Resource && link != "luatools commands --json").ToArray()); // shared discovery links are defined by the document
             node.Remove("input_schema"); // identities and flags already supply the complete input schema
             node.Remove("output_schema"); // output_fields plus the document's envelope/paging definition
             node.Remove("secret_channels"); // derived from secret-stdin/code-stdin flags
@@ -33,7 +34,7 @@ public static class CatalogueDocument
             defaults[key] = groups[0].First()[key]?.DeepClone();
             foreach (var entry in groups[0]) entry.Remove(key);
         }
-        string[] contractColumns = ["capability_ids", "status", "disabled_code", "aliases", "read_only", "dry_run", "job_behavior", "destructive", "reversible", "side_effects", "identities", "identity_values", "exit_codes", "preconditions", "default_sort", "variants", "global_flags", "examples", "resource", "verb", "flags"];
+        string[] contractColumns = ["capability_ids", "status", "disabled_code", "aliases", "read_only", "dry_run", "job_behavior", "destructive", "reversible", "side_effects", "identities", "identity_values", "exit_codes", "preconditions", "default_sort", "variants", "global_flags", "examples", "resource", "verb", "flags", "see_also"];
         var propertyNames = contractColumns.Select((name, index) => (name, shortName: index.ToString())).ToDictionary(p => p.shortName, p => p.name);
         void Shorten(JsonObject obj)
         {
@@ -65,6 +66,6 @@ public static class CatalogueDocument
             return value.DeepClone();
         }
         foreach (var pair in refs) definitions[pair.Value] = Pack(JsonNode.Parse(pair.Key), true);
-        return new { version = Protocol.Version, definitions, property_names = propertyNames, schema = "Expand numeric keys using property_names; resolve $ref via definitions; merge command_defaults, overridden by each command. Global flags reference global_flag_definitions. flags use flag_columns. Input: identities/identity_values/flags. Output: output_fields, v1 envelope; lists: snapshot 5m, default 50/max 200. Full examples and related commands: luatools <key> --help.", flag_columns = new[] { "name", "type", "default", "allowed_values", "required" }, global_flag_columns = new[] { "type", "default", "allowed_values", "required" }, global_flag_definitions = globals.ToDictionary(p => p.Key, p => new object?[] { p.Value.Type, p.Value.Default, p.Value.AllowedValues, p.Value.Required }), command_defaults = defaults, commands = entries.Select(e => Pack(e)) };
+        return new { version = Protocol.Version, definitions, property_names = propertyNames, schema = "Expand keys via property_names and $ref via definitions. Merge command_defaults, then each command. Global flags reference global_flag_definitions; flags use flag_columns. Input: identities/identity_values/flags. Output: v1 envelope; lists: 5m snapshots, 50/max 200. See also: luatools describe <resource>, luatools commands --json, plus see_also.", flag_columns = new[] { "name", "type", "default", "allowed_values", "required" }, global_flag_columns = new[] { "type", "default", "allowed_values", "required" }, global_flag_definitions = globals.ToDictionary(p => p.Key, p => new object?[] { p.Value.Type, p.Value.Default, p.Value.AllowedValues, p.Value.Required }), command_defaults = defaults, commands = entries.Select(e => Pack(e)) };
     }
 }
