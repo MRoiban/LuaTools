@@ -34,7 +34,10 @@ public sealed partial class AgentCliTests
         await home.RefreshLibraryAsync(); Assert.Equal(2, home.GameCount); Assert.Equal(entries.Select(e => e.AppId), home.Recent.Select(e => e.AppId));
         var facade = Facade(settings);
         foreach (var flags in new Dictionary<string, string?>[] { new(), new() { ["refresh"] = null }, new() { ["pending-added"] = null }, new() { ["type"] = "game" }, new() { ["genre"] = "Action" }, new() { ["year"] = "2020" }, new() { ["price"] = "free" }, new() { ["content"] = "hide-adult" }, new() { ["sort"] = "name" }, new() { ["count"] = null }, new() { ["limit"] = "1" } })
-            Assert.True((await facade.ExecuteAsync(Request(facade, "game list", flags: flags), default)).Ok);
+        {
+            var reply = await facade.ExecuteAsync(Request(facade, "game list", flags: flags), default);
+            Assert.True(reply.Ok, string.Join(',', flags.Keys) + ": " + System.Text.Json.JsonSerializer.Serialize(reply, Protocol.Json));
+        }
         Assert.Single((await facade.ExecuteAsync(Request(facade, "game search", flags: new() { ["installed"] = null, ["query"] = "Alpha" }), default)).Data!.AsArray());
         Assert.Equal("570", (await facade.ExecuteAsync(Request(facade, "game get", ["570"], new() { ["fields"] = "id" }), default)).Data!["id"]!.ToString());
         Assert.Equal("WORKFLOW_DISABLED", (await facade.ExecuteAsync(Request(facade, "game remove-drm", ["570"], new() { ["yes"] = null }), default)).Error!.Code);
@@ -50,6 +53,29 @@ public sealed partial class AgentCliTests
         Assert.True((await facade.ExecuteAsync(Request(facade, "game delete", ["570"], flagsDelete), default)).Ok);
         Assert.False(File.Exists(Path.Combine(dir, "570.lua")));
         Assert.Equal("PARTIAL_FAILURE", (await facade.ExecuteAsync(Request(facade, "game delete", flags: new() { ["ids"] = "571,999", ["yes"] = null }), default)).Error!.Code);
+    }
+    private sealed class LibraryStore : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent(request.RequestUri!.AbsolutePath.Contains("featuredcategories")
+                ? "{\"top_sellers\":{\"items\":[{\"id\":570,\"name\":\"Alpha\",\"type\":0,\"large_capsule_image\":\"https://example.com/cover.jpg\"},{\"id\":570,\"name\":\"Alpha\",\"type\":0,\"large_capsule_image\":\"https://example.com/cover.jpg\"}]}}"
+                : "{\"items\":[{\"id\":570,\"name\":\"Alpha\"},{\"id\":571,\"name\":\"Hardware\"}]}") });
+    }
+    [Fact]
+    public async Task PublicSearchAndFeaturedUseExistingCatalogueAndHardwareRules()
+    {
+        Directory.CreateDirectory(_directory);
+        var cache = new CacheService(Path.Combine(_directory, "public.json"));
+        cache.SaveHardwareAppIds([571], DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        var info = new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), Path.Combine(_directory, "public-details"));
+        var auth = new AuthService(_http, Path.Combine(_directory, "public-auth"));
+        using var http = new System.Net.Http.HttpClient(new LibraryStore());
+        var api = new LuaToolsApiClient(auth, info, new CoverCache(), http);
+        var facade = Facade(new SettingsService(new AppSettings { SteamPathOverride = Path.Combine(_directory, "absent-steam") }), api: api, hardware: new HardwareAppIdService(new GithubProxy(), cache));
+        var search = await facade.ExecuteAsync(Request(facade, "game search", flags: new() { ["query"] = "Alpha" }), default);
+        Assert.Equal("570", Assert.Single(search.Data!.AsArray())!["id"]!.ToString());
+        var featured = await facade.ExecuteAsync(Request(facade, "game list", flags: new() { ["featured"] = null }), default);
+        Assert.Equal("top-sellers", Assert.Single(featured.Data!.AsArray())!["category"]!.ToString());
     }
     private sealed class LibraryPages : PagedListViewModel<int> { public void Set(IEnumerable<int> values, bool reset = true) => SetFiltered(values, reset); }
     [Fact]

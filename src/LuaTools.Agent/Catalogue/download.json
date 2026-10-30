@@ -678,8 +678,8 @@
     "capability_ids": [
       "C-157"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -687,7 +687,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
+      "Observes bounded queue events without changing jobs; short pipe observations resume with an opaque cursor."
     ],
     "flags": [
       {
@@ -791,8 +791,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools download watch",
-      "luatools download watch --format text"
+      "luatools download watch --format jsonl",
+      "luatools download watch --json --timeout 5m"
     ],
     "see_also": [
       "luatools describe download",
@@ -814,6 +814,13 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "event",
+      "event.id",
+      "event.kind",
+      "event.cursor",
+      "event.category",
+      "event.payload"
+    ]
   }
 ]

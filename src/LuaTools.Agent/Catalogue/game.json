@@ -224,6 +224,16 @@
           "most-reviewed"
         ],
         "required": false
+      },
+      {
+        "name": "content",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "hide-adult",
+          "adult-only"
+        ],
+        "required": false
       }
     ],
     "identities": [],

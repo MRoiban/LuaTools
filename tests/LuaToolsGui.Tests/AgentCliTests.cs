@@ -20,7 +20,7 @@ public sealed partial class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
-    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null)
+    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null, LuaToolsApiClient? api = null, HardwareAppIdService? hardware = null)
     {
         Directory.CreateDirectory(_directory);
         settings ??= new SettingsService(new AppSettings());
@@ -29,7 +29,7 @@ public sealed partial class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), libraryNames: Names(), libraryDetails: new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), Path.Combine(_directory, "details")), libraryCache: cache);
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), libraryNames: Names(), libraryDetails: new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), Path.Combine(_directory, "details")), libraryCache: cache, libraryApi: api, libraryHardware: hardware);
     }
     private SteamAppListCache Names()
     {
@@ -264,6 +264,10 @@ public sealed partial class AgentCliTests : IDisposable
                         Assert.True((await Call("history delete", ["all"], new() { ["yes"] = null })).Ok);
                         Assert.True((await Call("link get", flags: new() { ["kind"] = "steamdb", ["appid"] = "570" })).Ok);
                         Assert.True((await Call("game list")).Ok);
+                        string cursor = facade.Events.CurrentCursor;
+                        facade.Events.Publish("download", "test", new { id = decision.Id });
+                        Assert.Equal("test", (await Call("download watch", flags: new() { ["cursor"] = cursor })).Data!["event"]!["kind"]!.ToString());
+                        Assert.Equal("CURSOR_EXPIRED", (await Call("download watch", flags: new() { ["cursor"] = "expired" })).Error!.Code);
                         Assert.True((await Call("job get", [decision.Id])).Ok);
                         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         var holding = coordinator.ExecuteAsync(Request(facade, "setting update", ["FastFetch"], new() { ["value"] = "false", ["dry-run"] = null }), async ct =>
