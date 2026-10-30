@@ -167,10 +167,11 @@ public class SettingsService : Cabinet.ICabinetSettings
     }
 
     /// <summary>The user's Hubcap API key ("smm_…"), or null if not configured.</summary>
+    public string HubcapKeyRevision { get; private set; } = Guid.NewGuid().ToString("N");
     public string? HubcapApiKey
     {
         get => UnprotectApiKey(_settings.HubcapApiKey);
-        set { _settings.HubcapApiKey = ProtectApiKey(value); Save(); }
+        set { _settings.HubcapApiKey = ProtectApiKey(value); HubcapKeyRevision = Guid.NewGuid().ToString("N"); Save(); }
     }
 
     /// <summary>When true, the app is registered to launch on Windows sign-in (default OFF).</summary>

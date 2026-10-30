@@ -235,4 +235,14 @@ await AsyncTest("real pipe secret is absent from request and reply", async () =>
     Assert(result.Ok && !JsonSerializer.Serialize(result, Protocol.Json).Contains(secret), "receipt redacted");
 });
 
+await AsyncTest("session watch uses correlated streaming transport", async () =>
+{
+    using var input = new StringReader("{\"type\":\"command\",\"id\":\"watch-one\",\"args\":[\"activity-log\",\"watch\"]}\n");
+    using var output = new StringWriter();
+    await StdioSession.RunAsync(CommandParser.Parse(["session", "--stdio"]), input, output,
+        (p,c) => throw new Exception("watch must stream"), default,
+        (p,c,emit) => { emit(Envelope.Success(new { @event = new { kind = "heartbeat" } })); return Task.FromResult(Envelope.Success(new { @event = new { kind = "GAP" } })); });
+    var lines = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    Assert(lines.Length == 2 && lines.All(l => JsonNode.Parse(l)?["id"]?.ToString() == "watch-one"), "correlated events");
+});
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;

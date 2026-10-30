@@ -6,8 +6,8 @@ namespace LuaToolsCli;
 
 public static class Program
 {
-    public static Task<int> Main(string[] args) => RunAsync(args, (parsed, ct) => new AgentClient().InvokeAsync(parsed, ct, frame => Console.WriteLine(Rendering.Render(frame, "json"))));
-    public static async Task<int> RunAsync(string[] args, Func<Parsed, CancellationToken, Task<Envelope>> transport)
+    public static Task<int> Main(string[] args) => RunAsync(args, (parsed, ct) => new AgentClient().InvokeAsync(parsed, ct, frame => Console.WriteLine(Rendering.Render(frame, "json"))), (parsed, ct, emit) => new AgentClient().InvokeAsync(parsed, ct, emit));
+    public static async Task<int> RunAsync(string[] args, Func<Parsed, CancellationToken, Task<Envelope>> transport, Func<Parsed, CancellationToken, Action<Envelope>, Task<Envelope>>? streamingTransport = null)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
         bool tty = !Console.IsOutputRedirected;
@@ -43,7 +43,7 @@ public static class Program
                 if (parsed.Format(tty) is "text" or "table") { Console.WriteLine(script); return 0; }
                 result = Envelope.Success(new { shell = parsed.Arguments[0], script });
             }
-            else if (parsed.Command.Key == "session") return await StdioSession.RunAsync(parsed, Console.In, Console.Out, transport, cancellation.Token);
+            else if (parsed.Command.Key == "session") return await StdioSession.RunAsync(parsed, Console.In, Console.Out, transport, cancellation.Token, streamingTransport);
             else if (parsed.Has("read-only") && !parsed.Command.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
             else if (parsed.Command.Status != "enabled" || parsed.Has("fix")) result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This action is not implemented in this release.");
             else if (parsed.Has("dry-run") && !parsed.Command.DryRun) result = Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, "Planning is unavailable for this command; no operation was started.");

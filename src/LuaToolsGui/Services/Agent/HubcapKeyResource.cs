@@ -18,13 +18,13 @@ public sealed partial class AgentCommandService
             bool delete = r.Command == "hubcap-key delete";
             if (!delete && !HubcapService.IsValidKeyFormat(r.Secret?.Trim())) throw new MutationRejectedException("INVALID_SECRET", 2);
             string context = PlanContext;
-            // Version is a presence marker, never a digest of saved credentials.
-            string version = settings.HubcapApiKey is null ? "unconfigured" : "configured";
-            if (!delete && version == "configured") throw new MutationRejectedException("CLEAR_KEY_FIRST", 6);
+            // Random revision changes on every GUI/CLI write; it is never derived from credentials.
+            string version = settings.HubcapKeyRevision;
+            if (!delete && settings.HubcapApiKey is not null) throw new MutationRejectedException("CLEAR_KEY_FIRST", 6);
             var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, ["hubcap-key"], [delete ? "Forget saved Hubcap key." : "Validate and save Hubcap key in owner-protected storage."], !delete);
             return new PreparedMutation(plan, commit => Snapshot(() =>
             {
-                if (context != PlanContext || version != (settings.HubcapApiKey is null ? "unconfigured" : "configured")) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (context != PlanContext || version != settings.HubcapKeyRevision) throw new MutationRejectedException("PLAN_STALE", 6);
                 if (delete) { settings.HubcapApiKey = null; _agentHubcapStats = null; return Envelope.Success(new { configured = false }); }
                 string id = Jobs.Register("hubcap-key update", async lifetime =>
                 {
@@ -32,7 +32,7 @@ public sealed partial class AgentCommandService
                     if (stats is null) return Envelope.Fail("VALIDATION_FAILED", 1, Resources.Strings.Agent_Account_Unavailable);
                     return await Snapshot(() =>
                     {
-                        if (settings.HubcapApiKey is not null) return Envelope.Fail("VERSION_CONFLICT", 6, Resources.Strings.Agent_Account_Unavailable);
+                        if (version != settings.HubcapKeyRevision) return Envelope.Fail("VERSION_CONFLICT", 6, Resources.Strings.Agent_Account_Unavailable);
                         settings.HubcapApiKey = r.Secret!.Trim(); _agentHubcapStats = stats;
                         return Envelope.Success(new { configured = true });
                     }, lifetime);

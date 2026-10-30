@@ -10,6 +10,7 @@ public sealed partial class AgentCommandService
         if (r.Command == "account get") return Snapshot(Whoami, ct);
         return _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
+            if (r.Flags.ContainsKey("code-stdin") && !AccountCabinetOperations.ValidCode(r.Secret ?? "")) throw new MutationRejectedException("INVALID_SECRET", 2);
             string context = PlanContext;
             bool signedIn = auth.IsSignedIn;
             bool login = r.Command == "account login";

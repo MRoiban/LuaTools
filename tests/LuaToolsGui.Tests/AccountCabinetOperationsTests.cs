@@ -22,6 +22,14 @@ public sealed class AccountCabinetOperationsTests
         public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
     [Fact]
+    public void ClearingHubcapFromGuiInvalidatesPendingAgentProvisioning()
+    {
+        var settings = new SettingsService(new AppSettings());
+        string before = settings.HubcapKeyRevision;
+        settings.HubcapApiKey = null;
+        Assert.NotEqual(before, settings.HubcapKeyRevision);
+    }
+    [Fact]
     public async Task SharedGuiSyncPreservesEngineGates()
     {
         var fake = new FakeCabinet();

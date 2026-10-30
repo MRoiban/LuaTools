@@ -32,6 +32,15 @@ public sealed partial class AgentCommandService
     {
         var cloud = cabinet as ICabinetCloud;
         if (r.Command == "cabinet-cloud connect" && string.IsNullOrWhiteSpace(r.Secret)) return Task.FromResult(Envelope.Fail("SECRET_REQUIRED", 2, Resources.Strings.Agent_Account_Unavailable));
+        if (r.Command == "cabinet-cloud connect")
+        {
+            try
+            {
+                if (CabinetConnectInput.Classify(r.Secret!) == CabinetConnectInputKind.Invalid) return Task.FromResult(Envelope.Fail("INVALID_SECRET", 2, Resources.Strings.Agent_Account_Unavailable));
+                CabinetConnectInput.NormalizeServer(r.Flags.GetValueOrDefault("server"));
+            }
+            catch (Exception ex) when (ex is FormatException or CabinetConnectException) { return Task.FromResult(Envelope.Fail("INVALID_SERVER", 2, Resources.Strings.Agent_Account_Unavailable)); }
+        }
         if (r.Command == "cabinet-cloud get") return Snapshot(() => cloud is null ? Envelope.Fail("SERVICE_UNAVAILABLE", 5, Resources.Strings.Agent_Account_Unavailable) : Envelope.Success(new
         {
             connected = cloud.Status.Connected, user_name = cloud.Status.UserName is { } name ? LogRedactor.Redact(name) : null,
@@ -41,7 +50,7 @@ public sealed partial class AgentCommandService
         if (r.Command == "cabinet-cloud update" && r.Flags.GetValueOrDefault("friend-labels") != "true")
             return Task.FromResult(Envelope.Fail("UNSUPPORTED", 5, Resources.Strings.Agent_Account_Unavailable));
         if (cloud is null || (!cloud.Status.Connected && r.Command != "cabinet-cloud connect")) return Task.FromResult(Envelope.Fail("NOT_CONNECTED", 5, Resources.Strings.Agent_Account_Unavailable));
-        return CabinetMutationAsync(r, () => [r.Command == "cabinet-cloud disconnect" ? "Remove local Cabinet and CloudRedirect credentials; no remote revocation." : "Enable Steam friend labels marker; restart Steam manually."],
+        return CabinetMutationAsync(r, () => [r.Command == "cabinet-cloud connect" ? "Pair this device and persist protected Cabinet credentials; enable ongoing presence and progress sharing. Cloud saves remain unchanged." : r.Command == "cabinet-cloud disconnect" ? "Remove local Cabinet and CloudRedirect credentials; no remote revocation." : "Enable Steam friend labels marker; restart Steam manually."],
             () => { if (r.Command == "cabinet-cloud connect") return AccountCabinetOperations.ConnectAsync(cabinet!, cloud, r.Secret ?? throw new InvalidOperationException(), r.Flags.GetValueOrDefault("server"), _hostLifetime); if (r.Command == "cabinet-cloud disconnect") return cloud.DisconnectAsync(_hostLifetime); cloud.FriendLabels = true; return Task.CompletedTask; }, ct);
     }
 }

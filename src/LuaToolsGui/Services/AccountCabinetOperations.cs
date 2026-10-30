@@ -5,10 +5,11 @@ namespace LuaToolsGui.Services;
 /// <summary>Shared GUI/agent operations. Presentation and cloud-save offers belong to GUI adapters.</summary>
 public static class AccountCabinetOperations
 {
+    public static bool ValidCode(string code) => code.Trim().Length == 6 && code.Trim().All(char.IsAsciiLetterOrDigit);
     public static Task RedeemCodeAsync(AuthService auth, string code, CancellationToken ct = default)
     {
         code = code.Trim().ToUpperInvariant();
-        if (code.Length != 6 || code.Any(c => !char.IsAsciiLetterOrDigit(c)))
+        if (!ValidCode(code))
             throw new ArgumentException(Resources.Strings.Settings_BotCode_Invalid);
         return auth.SignInWithCodeAsync(code, ct);
     }
@@ -20,7 +21,7 @@ public static class AccountCabinetOperations
     }
     public static Task ConnectAsync(ICabinetService cabinet, ICabinetCloud cloud, string input, string? server, CancellationToken ct = default)
     {
-        RequireCabinet(cabinet);
+        // GUI admission uses the setting; engine ownership is enforced by the cloud service.
         return cloud.ConnectAsync(input.Trim(), server, ct);
     }
     public static void RequireCabinet(ICabinetService cabinet)

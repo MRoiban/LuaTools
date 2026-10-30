@@ -8,7 +8,8 @@ public static class StdioSession
 {
     public sealed record Frame(string Type, string Id, string[]? Args = null, string? Value = null);
     public static async Task<int> RunAsync(Parsed session, TextReader input, TextWriter output,
-        Func<Parsed, CancellationToken, Task<Envelope>> transport, CancellationToken ct)
+        Func<Parsed, CancellationToken, Task<Envelope>> transport, CancellationToken ct,
+        Func<Parsed, CancellationToken, Action<Envelope>, Task<Envelope>>? streamingTransport = null)
     {
         string? secret = null, secretId = null;
         while (await ReadLineAsync(input, ct) is { } line)
@@ -47,7 +48,7 @@ public static class StdioSession
                 parsed = parsed with { Flags = flags, Secret = supplied };
                 if (parsed.Problems.Length != 0) result = Envelope.Fail("INVALID_USAGE", 2, "Invalid command arguments.", problems: parsed.Problems);
                 else if (parsed.Has("read-only") && !parsed.Command!.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
-                else if (parsed.Command!.Status != "enabled" || parsed.Command.Key == "session" || parsed.Command.Verb == "watch") result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This command is unavailable in a sequential session.");
+                else if (parsed.Command!.Status != "enabled" || parsed.Command.Key == "session") result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This command is unavailable in a sequential session.");
                 else if (parsed.Has("dry-run") && !parsed.Command.DryRun) result = Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, "Planning is unavailable.");
                 else if (parsed.Command.Key == "commands") result = Envelope.Success(new { version = Protocol.Version, commands = Catalogue.Commands });
                 else if (parsed.Command.Key == "describe") result = Envelope.Success(new { commands = Catalogue.Commands.Where(c => c.Resource == parsed.Arguments[0]).ToArray() });
@@ -56,7 +57,12 @@ public static class StdioSession
                 else
                 {
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct); deadline.CancelAfter(parsed.Timeout);
-                    try { result = await transport(parsed, deadline.Token); }
+                    try
+                    {
+                        result = parsed.Command.Verb == "watch" && streamingTransport is not null
+                            ? await streamingTransport(parsed, deadline.Token, value => output.WriteLine(JsonSerializer.Serialize(new { id = frame.Id, result = value }, Protocol.Json)))
+                            : await transport(parsed, deadline.Token);
+                    }
                     catch (OperationCanceledException) when (!ct.IsCancellationRequested) { result = Envelope.Fail("TIMEOUT", 7, "Call deadline exceeded."); }
                 }
                 result = Results.Project(result, parsed.Value("fields"));

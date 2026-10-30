@@ -145,7 +145,7 @@
     ],
     "preconditions": [
       "Authenticated same-user GUI owner",
-      "Sequential bounded JSONL frames: {type:command,id,args}; dedicated {type:secret,id,value} immediately before its command. Watch and recursive sessions unsupported. Session read-only is immutable."
+      "Sequential bounded JSONL frames: {type:command,id,args}; dedicated {type:secret,id,value} immediately before its command. Watches stream correlated envelopes until completion; recursive sessions unsupported. Session read-only is immutable."
     ],
     "output_fields": []
   }
