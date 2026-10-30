@@ -49,11 +49,7 @@ public sealed class AgentClient
                         if (expectedSteam is null) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The owner did not advertise mutation context.");
                         continue;
                     }
-                    var requestFlags = parsed.Flags;
-                    if (parsed.Command.Key == "job wait" && parsed.Value("fields") is { } projection)
-                    {
-                        requestFlags = new(parsed.Flags) { ["fields"] = string.Join(',', projection.Split(',').Append("state").Distinct()) };
-                    }
+                    var requestFlags = RequestFlags(parsed);
                     var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, requestFlags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown", parsed.Files) { Secret = parsed.Secret };
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
                     if (request.Secret is { } secret) await Protocol.WriteAsync(pipe, new SecretFrame(secret), 8192, ct).ConfigureAwait(false);
@@ -125,6 +121,11 @@ public sealed class AgentClient
             }
         }
     }
+    public static Dictionary<string, string?> RequestFlags(Parsed parsed) =>
+        parsed.Command?.Key == "job wait" && parsed.Value("fields") is { } projection
+            ? new(parsed.Flags) { ["fields"] = string.Join(',', projection.Split(',').Append("state").Distinct()) }
+            : parsed.Flags;
+
     // Preserve per-operation results/diffs when observation stops on a failed job or decision.
     public static Envelope? WaitOutcome(Envelope reply)
     {

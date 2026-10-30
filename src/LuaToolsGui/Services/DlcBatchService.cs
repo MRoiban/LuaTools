@@ -38,7 +38,8 @@ public sealed class DlcBatchService
         Func<string, string, CancellationToken, Task<DownloadedFile>> Generate,
         Func<string, long, InstallResult> Install,
         Func<long, CancellationToken, Task<DexLuaDlcSnapshot>>? DexLua = null,
-        Func<string, long, string, InstallResult>? InstallWithSource = null, Func<long, string>? Version = null);
+        Func<string, long, string, InstallResult>? InstallWithSource = null, Func<long, string>? Version = null,
+        Func<string?>? Installation = null, Func<string, IDisposable>? PinInstallation = null);
 
     public sealed class Item
     {

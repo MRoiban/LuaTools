@@ -16,6 +16,7 @@ using Xunit;
 
 namespace LuaToolsGui.Tests;
 
+[Collection("Agent dispatcher regression")]
 public sealed class AgentAcquisitionTests
 {
     private sealed class Stub(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
@@ -173,12 +174,11 @@ public sealed class AgentAcquisitionTests
             for (int i = 0; i < 100 && !vm.IsConfirmingOverwrite; i++) await Task.Delay(10);
             Assert.True(vm.IsConfirmingOverwrite); cancel.Cancel();
             try { await confirm.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
-            await dispatcher.InvokeAsync(() => Assert.False(vm.IsConfirmingOverwrite));
+            bool stuck = await dispatcher.InvokeAsync(() => vm.IsConfirmingOverwrite);
             Assert.False(ConsentCoordinator.HasPending("cancel-ui"));
-            Assert.False(notificationTimedOut, "InstallGate/dispatcher deadlock reproduced (bounded notification timed out)");
-            Assert.False(blocked, "Builds synchronously waits for dispatcher");
+            Assert.True(!notificationTimedOut && !blocked && !stuck, $"local install deadlock={notificationTimedOut}; Builds blocking={blocked}; cancelled overlay stuck={stuck}");
         }
-        finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Send); thread.Join(TimeSpan.FromSeconds(5)); }
+        finally { await dispatcher.InvokeAsync(() => System.Windows.Application.Current.Shutdown()); Assert.True(thread.Join(TimeSpan.FromSeconds(5))); }
     }
 
     [Theory]
@@ -206,7 +206,6 @@ public sealed class AgentAcquisitionTests
     {
         using var f = new Fixture();
         // Admit directly through the factory, the shared GUI and agent manifest path.
-        var field = typeof(AgentCommandService).GetField("acquisition", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         // Use the fixture's factory so the regression also covers GUI factory callers.
         var factory = f.Factory;
         var job = factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture");
@@ -409,3 +408,6 @@ public sealed class AgentAcquisitionTests
     }
 
 }
+
+[CollectionDefinition("Agent dispatcher regression", DisableParallelization = true)]
+public sealed class AgentDispatcherRegressionCollection { }
