@@ -134,6 +134,10 @@ public sealed partial class AgentCliTests : IDisposable
         {
             var method = typeof(AgentCliInstallation).GetMethod("RegisterPath", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
             Assert.NotNull(method);
+            method!.Invoke(null, [parent, @"C:\LuaTools"]);
+            Assert.Equal(@"C:\LuaTools", parent.GetValue("Path"));
+            Assert.Equal(Microsoft.Win32.RegistryValueKind.ExpandString, parent.GetValueKind("Path"));
+            parent.DeleteValue("Path");
             foreach (var kind in new[] { Microsoft.Win32.RegistryValueKind.MultiString, Microsoft.Win32.RegistryValueKind.DWord, Microsoft.Win32.RegistryValueKind.Binary })
             {
                 object value = kind == Microsoft.Win32.RegistryValueKind.MultiString ? new[] { "keep", "all" } : kind == Microsoft.Win32.RegistryValueKind.DWord ? 42 : new byte[] { 1, 2 };

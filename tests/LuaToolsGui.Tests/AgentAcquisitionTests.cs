@@ -178,7 +178,15 @@ public sealed class AgentAcquisitionTests
             Assert.False(ConsentCoordinator.HasPending("cancel-ui"));
             Assert.True(!notificationTimedOut && !blocked && !stuck, $"local install deadlock={notificationTimedOut}; Builds blocking={blocked}; cancelled overlay stuck={stuck}");
         }
-        finally { await dispatcher.InvokeAsync(() => System.Windows.Application.Current.Shutdown()); Assert.True(thread.Join(TimeSpan.FromSeconds(5))); }
+        finally
+        {
+            await dispatcher.InvokeAsync(() =>
+            {
+                System.Windows.Application.Current.Shutdown();
+                dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Send);
+            }).Task.ConfigureAwait(false);
+            Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "dispatcher thread did not stop");
+        }
     }
 
     [Theory]
@@ -199,6 +207,19 @@ public sealed class AgentAcquisitionTests
         Assert.Null(f.Installer.ReadInstalledLua(730)); Assert.Equal(0, f.Spent);
         var second = f.Sources.Enqueue(730, "fixture", row, dlc ? "700" : null);
         Assert.NotEqual(first.Id, second.Id); Assert.NotEqual(first.Job.DedupeKey, second.Job.DedupeKey);
+    }
+
+    [Fact]
+    public async Task DepotFactoryAlsoRejectsChangedSteamBeforeReadingKeysOrAcquiringTools()
+    {
+        using var f = new Fixture();
+        var job = f.Factory.CreateDepotJob(730, "fixture", [], Path.Combine(f.Root, "output"));
+        var item = f.Queue.Enqueue(job);
+        string other = Path.Combine(f.Root, "other-steam"); Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture"); f.Settings.SteamPathOverride = other;
+        await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(item, new Progress<DownloadProgress>(), default));
+        Assert.False((await job.InstallAsync(new("unused", "unused"), item, default)).Ok);
+        Assert.Equal(0, f.Spent);
     }
 
     [Fact]

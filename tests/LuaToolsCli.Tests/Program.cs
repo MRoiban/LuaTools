@@ -206,6 +206,18 @@ await AsyncTest("event replay from empty initial cursor", async () =>
     await using var reader = hub.Watch(cursor, timeout.Token).GetAsyncEnumerator();
     Assert(await reader.MoveNextAsync() && reader.Current.Ok && reader.Current.Data!["event"]!["kind"]!.ToString() == "queued", "initial replay");
 });
+await AsyncTest("replay accepts the exact retained boundary and rejects its predecessor", async () =>
+{
+    var hub = new AgentEventHub("boundary");
+    for (int i = 0; i < 600; i++) hub.Publish("download", "state", i);
+    foreach (string cursor in new[] { "boundary:87", "boundary:88", "boundary:00088", "other:88", "boundary:601" })
+    {
+        await using var reader = hub.Watch(cursor, default).GetAsyncEnumerator();
+        Assert(await reader.MoveNextAsync(), "boundary replay");
+        bool valid = cursor is "boundary:88" or "boundary:00088";
+        Assert(valid ? reader.Current.Data?["event"]?["cursor"]?.ToString() == "boundary:89" : reader.Current.Error?.Code == "RESET_REQUIRED", "replay boundary: " + cursor);
+    }
+});
 await AsyncTest("event retention rejects expired cursor", async () =>
 {
     var hub = new AgentEventHub("test"); for (int i = 0; i < 1001; i++) hub.Publish("test", "state", new { value = i });
