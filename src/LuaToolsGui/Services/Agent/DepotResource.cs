@@ -124,6 +124,7 @@ public sealed partial class AgentCommandService
     private async Task<Envelope> ReadDepotGames(AgentRequest r, CancellationToken ct)
     {
         if (r.Flags.ContainsKey("appid")) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
+        if (appList is not null) await appList.EnsureLoadedAsync();
         string? dir = await Snapshot(() => steam.StPlugInDir, ct);
         var rows = await Task.Run(() =>
         {

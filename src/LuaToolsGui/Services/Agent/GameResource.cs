@@ -92,7 +92,19 @@ public sealed partial class AgentCommandService
     }
     private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, installed = e.FilePath.Length > 0,
         paths = new { lua = e.FilePath, install = libraryInstalls?.GetInstallDir(e.AppId) }, urls = new { store = $"steam://store/{e.AppId}", library = $"steam://nav/games/details/{e.AppId}", steamdb = $"https://steamdb.info/app/{e.AppId}/" },
-        details = libraryDetails!.GetFilterData(e.AppId), overview = libraryDetails.GetOverview(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.For("game", c => c.Verb is "delete" or "remove-drm" && e.FilePath.Length == 0 ? "NOT_INSTALLED" : c.Verb == "remove-drm" && !settings.IsExecutableWorkflowEnabled("Steamless") ? "WORKFLOW_DISABLED" : null) };
+        details = libraryDetails!.GetFilterData(e.AppId), overview = libraryDetails.GetOverview(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.ForReasons("game", c => GameReasons(c, e)) };
+    private string[] GameReasons(Command command, LibraryEntry entry)
+    {
+        var reasons = new List<string>();
+        if (command.Verb is "delete" or "remove-drm" && entry.FilePath.Length == 0) reasons.Add("NOT_INSTALLED");
+        if (command.Verb == "remove-drm" && !settings.IsExecutableWorkflowEnabled("Steamless")) reasons.Add("WORKFLOW_DISABLED");
+        if (command.Verb == "install")
+        {
+            if (!new SteamInstallHandoff(steam).CanHandoff()) reasons.Add("STEAM_PROTOCOL_ISOLATION_UNPROVEN");
+            if (libraryCache is null || !libraryCache.GetLoadedAppIds().Contains(entry.AppId)) reasons.Add("NOT_PENDING_ADDED");
+        }
+        return reasons.ToArray();
+    }
     private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data) => _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
     private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
     {

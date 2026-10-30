@@ -359,7 +359,15 @@
       "pending_decision",
       "result",
       "result.ok",
-      "result.message"
+      "result.message",
+      "message",
+      "pending_decision.app_id",
+      "pending_decision.added",
+      "pending_decision.removed",
+      "pending_decision.readable",
+      "pending_decision.overwrites",
+      "pending_decision.version",
+      "result.results"
     ]
   },
   {
@@ -518,7 +526,15 @@
       "pending_decision",
       "result",
       "result.ok",
-      "result.message"
+      "result.message",
+      "message",
+      "pending_decision.app_id",
+      "pending_decision.added",
+      "pending_decision.removed",
+      "pending_decision.readable",
+      "pending_decision.overwrites",
+      "pending_decision.version",
+      "result.results"
     ]
   },
   {

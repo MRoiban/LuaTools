@@ -363,7 +363,7 @@
     "variants": [
       "luatools launch-option create <appid> --file <path>"
     ],
-    "purpose": "Create a staged launch entry.",
+    "purpose": "Append and durably stage one launch entry from a bounded JSON object.",
     "capability_ids": [
       "C-084"
     ],

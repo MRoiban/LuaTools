@@ -10,6 +10,7 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
     {
         public string Id { get; } = Guid.NewGuid().ToString("N");
         public string State { get; internal set; } = "running";
+        public int DecisionVersion { get; internal set; }
         public IReadOnlyList<LocalInstallOutcome> Results { get; internal set; } = [];
     }
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Batch> _operations = new();
@@ -39,6 +40,7 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
                     versions[appId] = diff.Version;
                     if (diff.Overwrites)
                     {
+                        operation.DecisionVersion++;
                         using var decisionLifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
                         bool replace;
                         try { replace = await Agent.ConsentCoordinator.WaitWithGuiAsync(operation.Id, decide(path, diff, decisionLifetime.Token), ct, diff); }

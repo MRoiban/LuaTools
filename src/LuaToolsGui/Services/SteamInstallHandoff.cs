@@ -25,10 +25,20 @@ public sealed class SteamInstallHandoff(SteamService steam)
             using var protocol = Registry.ClassesRoot.OpenSubKey("steam");
             using var command = protocol?.OpenSubKey(@"shell\open\command");
             using var dde = protocol?.OpenSubKey(@"shell\open\ddeexec");
-            return protocol?.GetValue("URL Protocol") is string && Owns(exe, command?.GetValue(null) as string, isolated,
-                command?.GetValue("DelegateExecute") is not null || dde is not null);
+            if (!(protocol?.GetValue("URL Protocol") is string && Owns(exe, command?.GetValue(null) as string, isolated,
+                command?.GetValue("DelegateExecute") is not null || dde is not null))) return false;
+            using var current = Process.GetCurrentProcess();
+            return OwnsProcesses(exe, current.SessionId, Process.GetProcessesByName("steam").Select(p => (ISteamProcess)new SystemSteamProcess(p)));
+
         }
         catch { return false; }
+    }
+    internal static bool OwnsProcesses(string selected, int session, IEnumerable<ISteamProcess> candidates)
+    {
+        var processes = candidates.ToArray();
+        try { return processes.All(p => p.HasExited || p.SessionId != session || p.ExecutablePath is { } path && SteamProcessControl.SamePath(selected, path)); }
+        catch { return false; }
+        finally { foreach (var process in processes) process.Dispose(); }
     }
     public bool Install(long appId)
     {

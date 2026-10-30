@@ -413,7 +413,8 @@
       "diff",
       "entries",
       "content",
-      "available_actions"
+      "available_actions",
+      "hash"
     ]
   },
   {
@@ -657,7 +658,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "hash"
     ]
   }
 ]

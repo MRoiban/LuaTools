@@ -165,6 +165,12 @@ Test("per-command guide order", () =>
     string[] sections = ["Usage:", "Flags:", "Side effects:", "Reversibility:", "Preconditions:", "Examples:", "See also:"];
     Assert(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).SequenceEqual(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).OrderBy(i => i)) && sections.All(help.Contains), help);
 });
+Test("depot repeated selection is canonical and entry zero is valid", () =>
+{
+    var parsed = CommandParser.Parse(["depot", "plan", "570", "--depot", "571", "--depot", "572"]);
+    Assert(parsed.Problems.Length == 0 && parsed.Flags["depot"] == "571,572", "depot selection");
+    Assert(CommandParser.Parse(["launch-option", "delete", "570", "--entry", "0"]).Problems.Length == 0, "zero-based entry");
+});
 Test("bulk input and command deadlines", () =>
 {
     var p = CommandParser.Parse(["job", "cancel", "--ids", "one,two", "--dry-run"]); Assert(p.Problems.Length == 0, "bulk identity");

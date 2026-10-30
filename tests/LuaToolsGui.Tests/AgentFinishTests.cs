@@ -58,6 +58,7 @@ public sealed class AgentFinishTests
         internal readonly DownloadQueue Queue;
         internal readonly Network Net = new();
         internal readonly Modes Mode;
+        internal readonly DepotDownloaderService Tool;
         internal readonly Cabinet Cab = new();
         internal readonly BuildsViewModel Builds;
         internal int Stops;
@@ -90,7 +91,7 @@ public sealed class AgentFinishTests
             Queue = new(cache, NullLogger<DownloadQueue>.Instance);
             var api = new LuaToolsApiClient(auth, details, covers, _http);
             var hubcap = new HubcapService(_http);
-            var tool = new DepotDownloaderService(github, Steam, auth, cache, NullLogger<DepotDownloaderService>.Instance, Settings);
+            var tool = Tool = new DepotDownloaderService(github, Steam, auth, cache, NullLogger<DepotDownloaderService>.Instance, Settings);
             var factory = new ManifestJobFactory(api, hubcap, Settings, installer, new(Steam), covers, null!, tool, depots, null!, null!, null!);
             Builds = new(Steam, Vault, names, details, covers, depots, new ToastService(), Settings, tool, Queue, factory);
             string appinfo = Path.Combine(Root, "steam", "appcache", "appinfo.vdf");
@@ -196,6 +197,10 @@ public sealed class AgentFinishTests
         f.Settings.DepotDownloaderEnabled = true;
         var accepted = await f.Call("depot download", ["570"], flags); Assert.True(accepted.Ok, accepted.Error?.Code);
         Assert.Equal(Assert.Single(f.Queue.Items).Id, accepted.Data!["job_id"]!.ToString());
+        var queued = Assert.Single(f.Queue.Items); queued.Status = DownloadStatus.Downloading;
+        Assert.True((await f.Call("job pause", [queued.Id])).Ok); Assert.Equal(DownloadStatus.Paused, queued.Status);
+        Assert.True((await f.Call("job resume", [queued.Id])).Ok); Assert.True(queued.NeedsValidate); Assert.Equal(DownloadStatus.Queued, queued.Status);
+        Assert.True((await f.Call("job cancel", [queued.Id], new() { ["keep-files"] = null })).Ok); Assert.Equal(DownloadStatus.Cancelled, queued.Status);
         var reconcile = await f.Call("depot reconcile", ["572"], new() { ["refresh"] = null, ["yes"] = null }); Assert.True(reconcile.Ok); Assert.NotEmpty(f.Vault.GetVariants(572)); Assert.NotNull(f.Vault.GetActiveHash(572));
         Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput(f.Steam.EffectivePath!, f.Steam.EffectivePath));
         Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput("relative", f.Steam.EffectivePath));
@@ -259,6 +264,19 @@ public sealed class AgentFinishTests
     }
 
     [Fact]
+    public void SharedGuiDepotPickerKeepsPinnedSizeLanguageFallbackAndPlatformAndKeyGates()
+    {
+        using var f = new Fixture();
+        f.Live("addappid(570)\n" + string.Join("\n", new[] { 571,572,573 }.Select(id => $"addappid({id},0,\"{new string('a',64)}\")")));
+        DepotRow Row(long id, string? language, string? os = "windows") => new(id, "Fixture", "Fixture", false, false, "https://steamdb.info/depot/" + id, "111", null, "222") { Language = language, Os = os, Size = 100, LuaSize = 50, ToggleId = id };
+        var picks = DepotDownloadPlanning.Build([Row(571,"japanese"), Row(572,"german","linux"), Row(574,null)], f.Tool, 570, "french");
+        Assert.True(picks.Single(p => p.DepotId == 571).IsSelected); Assert.Equal(50, picks[0].Size); Assert.Equal("111", picks[0].ManifestId);
+        Assert.False(picks.Single(p => p.DepotId == 572).IsSelected); Assert.False(picks.Single(p => p.DepotId == 574).CanDownload);
+        picks = DepotDownloadPlanning.Build([Row(571,null),Row(573,"japanese")], f.Tool, 570,"french");
+        Assert.True(picks[0].IsSelected); Assert.False(picks[1].IsSelected);
+    }
+
+    [Fact]
     public async Task SharedGuiPresetSaveFallsBackWhenOriginVanishesAndDeduplicates()
     {
         using var f = new Fixture(); f.Live("addappid(570)\n");
@@ -286,6 +304,23 @@ public sealed class AgentFinishTests
         f.Settings.DepotDownloaderEnabled = false;
         var item = Assert.Single(f.Queue.Items);
         var revoked = await Assert.ThrowsAsync<MutationRejectedException>(() => item.Job.DownloadAsync(item, new Progress<DownloadProgress>(), default)); Assert.Equal("WORKFLOW_DISABLED", revoked.Code);
+    }
+
+    private sealed class ProcessIdentity(string? path, int session) : ISteamProcess
+    {
+        public bool HasExited => false;
+        public int SessionId => session;
+        public string? ExecutablePath => path;
+        public void KillTree() => throw new InvalidOperationException("No process controls in protocol tests");
+        public bool WaitForExit(int milliseconds) => false;
+        public void Dispose() { }
+    }
+    [Fact]
+    public void SteamProtocolNeverForwardsIntoAnUnrelatedOrAmbiguousLiveInstallation()
+    {
+        Assert.True(SteamInstallHandoff.OwnsProcesses(@"C:\selected\steam.exe",1,[new ProcessIdentity(@"C:\selected\steam.exe",1)]));
+        Assert.False(SteamInstallHandoff.OwnsProcesses(@"C:\selected\steam.exe",1,[new ProcessIdentity(@"C:\other\steam.exe",1)]));
+        Assert.False(SteamInstallHandoff.OwnsProcesses(@"C:\selected\steam.exe",1,[new ProcessIdentity(null,1)]));
     }
 
     [Theory]

@@ -69,12 +69,12 @@ public sealed class AgentJobRegistry
             .Concat(_operations.Values.Where(x => !active || x.State == "running").Select(x => (object)new { id = x.Id, state = x.State, kind = x.Kind, version = x.State, available_actions = OperationActions() })).ToArray();
     }
     public object? Get(string id) => Find(id) is { } item ? Describe(item) : _queue.History.FirstOrDefault(x => x.Id == id) is { } history
-        ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind.ToString(), version = "history", available_actions = OperationActions() }
+        ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind, message = LogRedactor.Redact(history.Record.Message ?? ""), paths = new { output = history.Record.RevealPath }, result = new { ok = history.Record.Status == "Completed", message = LogRedactor.Redact(history.Record.Message ?? "") }, version = "history", available_actions = OperationActions() }
         : Local?.Operations.FirstOrDefault(b => b.Id == id) is { } batch ? LocalRow(batch)
         : _operations.TryGetValue(id, out var op)
         ? new { id = op.Id, state = op.State, kind = op.Kind, result = op.Result, version = op.State, available_actions = OperationActions() } : null;
-    private static object LocalRow(LocalInstallCoordinator.Batch batch) => new { id = batch.Id, state = batch.State, kind = "local-install", result = new { results = batch.Results }, pending_decision = ConsentCoordinator.Details(batch.Id), version = LocalVersion(batch), available_actions = AvailableActions.For("job", c => c.ReadOnly || c.Verb == "confirm" && ConsentCoordinator.HasPending(batch.Id) ? null : "ACTION_UNSUPPORTED") };
-    internal static string LocalVersion(LocalInstallCoordinator.Batch batch) => MutationCoordinator.Hash(batch.Id + batch.State + JsonSerializer.Serialize(ConsentCoordinator.Details(batch.Id), Protocol.Json));
+    private static object LocalRow(LocalInstallCoordinator.Batch batch) => new { id = batch.Id, state = batch.State, kind = "local-install", result = new { results = batch.Results.Select(r => new { r.Name, r.Ok, r.Skipped, r.LuaInstalled, r.ManifestCount, r.FailedCount, code = r.Ok ? null : "INSTALL_FAILED", message = r.Ok ? null : Resources.Strings.Agent_Add_InstallFailed }) }, pending_decision = ConsentCoordinator.Details(batch.Id), version = LocalVersion(batch), available_actions = AvailableActions.For("job", c => c.ReadOnly || c.Verb == "confirm" && ConsentCoordinator.HasPending(batch.Id) ? null : "ACTION_UNSUPPORTED") };
+    internal static string LocalVersion(LocalInstallCoordinator.Batch batch) => MutationCoordinator.Hash(batch.Id + batch.State + batch.DecisionVersion + JsonSerializer.Serialize(ConsentCoordinator.Details(batch.Id), Protocol.Json));
     public static string Version(DownloadItem item) => MutationCoordinator.Hash(item.Id + ":" + item.Status);
     public static object Describe(DownloadItem item) => new
     {

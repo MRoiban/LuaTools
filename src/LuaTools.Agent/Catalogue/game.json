@@ -451,7 +451,16 @@
       "available_actions",
       "overview",
       "paths.install",
-      "add_status"
+      "add_status",
+      "add_status.generation",
+      "add_status.checking",
+      "add_status.busy",
+      "add_status.sources_loaded",
+      "add_status.install_status",
+      "add_status.install_failed",
+      "add_status.error",
+      "add_status.cancelled",
+      "add_status.sources"
     ]
   },
   {

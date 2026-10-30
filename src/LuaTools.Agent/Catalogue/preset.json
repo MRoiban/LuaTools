@@ -370,7 +370,7 @@
     "variants": [
       "luatools preset create --appid <appid> [--file <path> | --from-live]"
     ],
-    "purpose": "Save Lua as a new preset.",
+    "purpose": "Create a stored preset from a bounded Lua file or live Lua, preserving content deduplication.",
     "capability_ids": [
       "C-115"
     ],
@@ -624,7 +624,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "hash"
     ]
   },
   {
@@ -886,7 +888,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "hash"
     ]
   },
   {
@@ -1130,7 +1134,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "hash"
     ]
   },
   {
@@ -1374,7 +1380,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "hash"
     ]
   }
 ]

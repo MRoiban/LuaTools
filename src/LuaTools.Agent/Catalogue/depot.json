@@ -553,7 +553,9 @@
       "is_dlc",
       "is_shared",
       "has_key",
-      "available_actions"
+      "available_actions",
+      "id",
+      "version"
     ]
   },
   {
@@ -725,7 +727,9 @@
       "is_dlc",
       "is_shared",
       "has_key",
-      "available_actions"
+      "available_actions",
+      "id",
+      "version"
     ]
   },
   {
