@@ -134,12 +134,24 @@ public sealed class AgentAcquisitionTests
             // Force exactly: worker owns InstallGate, dispatcher starts loose-manifest drop,
             // worker publishes its vault notification and synchronously needs the dispatcher.
             using var held = new ManualResetEventSlim(); using var uiEntered = new ManualResetEventSlim();
+            using var uiReturned = new ManualResetEventSlim();
+            var builds = await dispatcher.InvokeAsync(() => new BuildsViewModel(f.Steam, f.Vault, f.AppList, f.AppInfo, new CoverCache(new Stub(_ => new(HttpStatusCode.NotFound)), Path.Combine(f.Root, "ui-covers")), f.Depots, new ToastService(), f.Settings, null!, f.Queue, f.Factory));
             bool notificationTimedOut = false;
-            f.Vault.VaultChanged += _ =>
+            Task notificationDeadline = Task.CompletedTask;
+            // Bound the actual production Builds subscriber's synchronous dispatch on the
+            // unfixed code. Aborting its pending operation breaks the deadlock for cleanup;
+            // a timeout still fails this test, rather than hanging the entire WPF suite.
+            System.Windows.Threading.DispatcherHookEventHandler hook = (_, e) =>
             {
-                try { dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Send, default, TimeSpan.FromSeconds(2)); }
-                catch (TimeoutException) { notificationTimedOut = true; }
+                if (!Monitor.IsEntered(LuaInstaller.InstallGate) || dispatcher.CheckAccess()) return;
+                notificationDeadline = Task.Run(async () =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                    if (e.Operation.Status != System.Windows.Threading.DispatcherOperationStatus.Pending) return;
+                    notificationTimedOut = true; e.Operation.Abort();
+                });
             };
+            dispatcher.Hooks.OperationPosted += hook;
             string lua = f.CreateFile("730.lua", "addappid(730)\n");
             string manifest = f.CreateFile("731_123.manifest", "fixture");
             var worker = Task.Run(() =>
@@ -147,18 +159,24 @@ public sealed class AgentAcquisitionTests
                 lock (LuaInstaller.InstallGate)
                 {
                     held.Set(); Assert.True(uiEntered.Wait(TimeSpan.FromSeconds(3)));
+                    Assert.True(SpinWait.SpinUntil(() => uiReturned.IsSet || (thread.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(3)));
                     return f.Installer.InstallLuaFile(lua, 730);
                 }
             });
             Assert.True(held.Wait(TimeSpan.FromSeconds(3)));
             Task? drop = null;
-            await dispatcher.InvokeAsync(() => { uiEntered.Set(); drop = f.Local.InstallAsync([manifest], (_, _, _) => Task.FromResult(true)); });
+            await dispatcher.InvokeAsync(() =>
+            {
+                uiEntered.Set();
+                drop = f.Local.InstallAsync([manifest], (_, _, _) => Task.FromResult(true));
+                uiReturned.Set();
+            }).Task.WaitAsync(TimeSpan.FromSeconds(6));
             await worker.WaitAsync(TimeSpan.FromSeconds(5)); await drop!.WaitAsync(TimeSpan.FromSeconds(5));
-
+            dispatcher.Hooks.OperationPosted -= hook;
+            await notificationDeadline;
 
             // The production Builds notification must itself post, even if another UI caller
             // happens to wait on a worker holding InstallGate.
-            var builds = await dispatcher.InvokeAsync(() => new BuildsViewModel(f.Steam, f.Vault, f.AppList, f.AppInfo, new CoverCache(new Stub(_ => new(HttpStatusCode.NotFound)), Path.Combine(f.Root, "ui-covers")), f.Depots, new ToastService(), f.Settings, null!, f.Queue, f.Factory));
             bool blocked = false;
             await dispatcher.InvokeAsync(() =>
             {

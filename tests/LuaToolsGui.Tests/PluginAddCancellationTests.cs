@@ -39,13 +39,17 @@ public class PluginAddCancellationTests
         internal Fixture()
         {
             http = new HttpClient(Transport);
-            var settings = new SettingsService(new AppSettings { FastFetch = true });
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "steam.exe"), "inert fixture");
+            var settings = new SettingsService(new AppSettings { FastFetch = true, SteamPathOverride = directory });
+            var steam = new SteamService(settings);
+            var installer = new LuaInstaller(steam, settings, new CacheService(Path.Combine(directory, "install-cache.json")), new LuaVault(() => steam.StPlugInDir, Path.Combine(directory, "vault")));
             settings.HubcapApiKey = "smm_" + new string('a', 96);
             var auth = new AuthService(http, Path.Combine(directory, "auth.dat"));
             var hubcap = new HubcapService(http);
             var covers = new CoverCache(Transport, Path.Combine(directory, "covers"));
             Queue = new DownloadQueue(new CacheService(Path.Combine(directory, "cache.json")), NullLogger<DownloadQueue>.Instance);
-            var jobs = new ManifestJobFactory(null!, hubcap, settings, null!, null!, covers, null!, null!, null!, null!, null!, null!);
+            var jobs = new ManifestJobFactory(null!, hubcap, settings, installer, null!, covers, null!, null!, null!, null!, null!, null!);
             Service = new PluginAddService(null!, hubcap, settings, auth, Queue, jobs);
         }
         public void Dispose()

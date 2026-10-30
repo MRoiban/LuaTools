@@ -179,7 +179,7 @@ public class ManifestJobFactory(
         long appId, string gameName, IReadOnlyList<DepotSelection> selections, string outDir,
         Action<DownloadItem, JobResult?>? onFinished = null, Action? revalidate = null)
     {
-        return new DownloadJob(
+        return installer.CaptureInstallation().Bind(new DownloadJob(
             DownloadKind.Depot,
             $"depot:{appId}",
             appId,
@@ -192,7 +192,7 @@ public class ManifestJobFactory(
                 string.Format(Resources.Strings.Depot_Status_Done, selections.Count, outDir), outDir)),
             ConfirmAsync: null,
             OnFinished: onFinished,
-            OutputPath: outDir);
+            OutputPath: outDir));
     }
 
     /// <summary>

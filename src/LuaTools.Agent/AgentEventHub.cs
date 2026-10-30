@@ -36,12 +36,12 @@ public sealed class AgentEventHub(string instanceId)
             {
                 var retained = _recent.ToArray();
                 long oldest = _sequence - retained.Length + 1;
+                long after = _sequence;
                 bool valid = cursor is null || cursor.StartsWith(instanceId + ":", StringComparison.Ordinal)
-                    && long.TryParse(cursor.AsSpan(instanceId.Length + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long after)
+                    && long.TryParse(cursor.AsSpan(instanceId.Length + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out after)
                     && after >= oldest - 1 && after <= _sequence;
-                int index = cursor is null ? retained.Length - 1 : Array.FindIndex(retained, x => x.Cursor == cursor);
                 backlog = !valid ? [Envelope.Fail("RESET_REQUIRED", 3, "Refresh the resource snapshot before resuming events.")]
-                    : retained.Skip(index + 1).Select(x => x.Frame).ToArray();
+                    : retained.Skip((int)(after - oldest + 1)).Select(x => x.Frame).ToArray();
                 if (backlog.Length == 0 || backlog.All(x => x.Ok)) _readers.Add(channel);
             }
         }

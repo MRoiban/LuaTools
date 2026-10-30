@@ -67,9 +67,17 @@ public class DexLuaDlcTests
         }
         public Task SignInAsync() => Auth.SignInWithCodeAsync("abc123");
         public PluginAddService Plugin() => new(Api, null!, new SettingsService(new AppSettings()), Auth, null!, null!);
-        public ManifestJobFactory Jobs() => new(Api, null!, new SettingsService(new AppSettings()), null!, null!,
-            new CoverCache(new Stub(_ => throw new Exception("Unexpected cover request")), Path.Combine(dir, "covers")),
-            null!, null!, null!, null!, null!, null!);
+        public ManifestJobFactory Jobs()
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "steam.exe"), "inert fixture");
+            var settings = new SettingsService(new AppSettings { SteamPathOverride = dir });
+            var steam = new SteamService(settings);
+            var installer = new LuaInstaller(steam, settings, new CacheService(Path.Combine(dir, "cache.json")), new LuaVault(() => steam.StPlugInDir, Path.Combine(dir, "vault")));
+            return new(Api, null!, settings, installer, null!,
+                new CoverCache(new Stub(_ => throw new Exception("Unexpected cover request")), Path.Combine(dir, "covers")),
+                null!, null!, null!, null!, null!, null!);
+        }
         public void Dispose()
         {
             standard.Dispose(); dexLua.Dispose();
