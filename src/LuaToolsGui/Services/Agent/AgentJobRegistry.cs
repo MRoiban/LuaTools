@@ -8,6 +8,9 @@ namespace LuaToolsGui.Services.Agent;
 public sealed class AgentJobRegistry
 {
     private readonly DownloadQueue _queue;
+    public AgentEventHub Events { get; internal set; } = new(Guid.NewGuid().ToString("N"));
+    private readonly Dictionary<string, System.ComponentModel.PropertyChangedEventHandler> _observed = [];
+    private readonly Dictionary<string, DateTimeOffset> _progressAt = [];
     private readonly Dictionary<string, (DateTimeOffset Seen, DownloadItem Item)> _items = [];
     private readonly Dictionary<string, Operation> _operations = [];
     private sealed class Operation(string id, string kind, Func<CancellationToken, Task<Envelope>> run, CancellationToken lifetime)
@@ -29,14 +32,32 @@ public sealed class AgentJobRegistry
     public int ActiveOperations => _operations.Values.Count(x => x.State == "running");
     private void Capture()
     {
-        foreach (var item in _queue.Items) _items[item.Id] = (DateTimeOffset.UtcNow, item);
-        foreach (string id in _items.Where(p => !p.Value.Item.IsActive && p.Value.Seen < DateTimeOffset.UtcNow.AddHours(-24)).Select(p => p.Key).ToArray()) _items.Remove(id);
+        foreach (var item in _queue.Items)
+        {
+            _items[item.Id] = (DateTimeOffset.UtcNow, item);
+            if (_observed.ContainsKey(item.Id)) continue;
+            Events.Publish("download", "queued", Describe(item), item.Id);
+            System.ComponentModel.PropertyChangedEventHandler observer = (_, change) =>
+            {
+                bool terminal = change.PropertyName == nameof(DownloadItem.Status);
+                if (!terminal && _progressAt.GetValueOrDefault(item.Id) > DateTimeOffset.UtcNow.AddMilliseconds(-100)) return;
+                _progressAt[item.Id] = DateTimeOffset.UtcNow;
+                Events.Publish("download", terminal ? "state" : "progress", Describe(item), item.Id);
+            };
+            item.PropertyChanged += observer; _observed[item.Id] = observer;
+        }
+        foreach (string id in _items.Where(p => !p.Value.Item.IsActive && p.Value.Seen < DateTimeOffset.UtcNow.AddHours(-24)).Select(p => p.Key).ToArray()) Forget(id);
         while (_items.Count > 1000)
         {
             var candidate = _items.Where(p => !p.Value.Item.IsActive).OrderBy(p => p.Value.Seen).FirstOrDefault();
             if (candidate.Key is null) break;
-            _items.Remove(candidate.Key);
+            Forget(candidate.Key);
         }
+    }
+    private void Forget(string id)
+    {
+        if (_items.Remove(id, out var retained) && _observed.Remove(id, out var observer)) retained.Item.PropertyChanged -= observer;
+        _progressAt.Remove(id);
     }
     public DownloadItem? Find(string id) { Capture(); return _items.GetValueOrDefault(id).Item; }
     public object[] List(bool active = false)
@@ -68,13 +89,15 @@ public sealed class AgentJobRegistry
         foreach (string id in _operations.Where(p => p.Value.State != "running" && p.Value.Created < DateTimeOffset.UtcNow.AddHours(-24)).Select(p => p.Key).ToArray()) _operations.Remove(id);
         if (_operations.Count >= 1000) throw new MutationRejectedException("BUSY", 7);
         var op = new Operation(Guid.NewGuid().ToString("N"), kind, run, hostLifetime); _operations.Add(op.Id, op);
+        Events.Publish("job", "running", new { id = op.Id, kind = op.Kind }, op.Id);
         _ = RunAsync(op); return op.Id;
     }
-    private static async Task RunAsync(Operation op)
+    private async Task RunAsync(Operation op)
     {
         try { op.Result = await op.Run(op.Lifetime); op.State = op.Result.Ok ? "completed" : "failed"; }
         catch (OperationCanceledException) { op.State = "cancelled"; }
         catch { op.State = "failed"; }
+        Events.Publish("job", "state", new { id = op.Id, state = op.State, kind = op.Kind }, op.Id);
     }
 }
 

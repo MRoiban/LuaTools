@@ -82,6 +82,8 @@ public sealed class AgentCliTests : IDisposable
         byte[] capability = RandomNumberGenerator.GetBytes(32);
         byte[] wrapped = LocalDiscovery.Protect(capability);
         Assert.NotEqual(capability, wrapped); Assert.Equal(capability, LocalDiscovery.Protect(wrapped, true));
+        string newFile = Path.Combine(_directory, "owned.new"); File.WriteAllText(newFile, "private");
+        LocalDiscovery.SecureNewFile(newFile); LocalDiscovery.Verify(newFile);
         var security = new DirectoryInfo(_directory).GetAccessControl();
         security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.Read, AccessControlType.Allow));
         new DirectoryInfo(_directory).SetAccessControl(security);

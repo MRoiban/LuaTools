@@ -155,7 +155,7 @@
     "variants": [
       "luatools mode list"
     ],
-    "purpose": "Discover the full compiled command catalogue.",
+    "purpose": "List supported Steam unlocker modes and current availability.",
     "capability_ids": [
       "C-157"
     ],

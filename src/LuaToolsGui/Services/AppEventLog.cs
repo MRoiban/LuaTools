@@ -69,6 +69,7 @@ public sealed class AppEventLog
     }
 
     public string Directory => _directory;
+    public event Action<string>? EntryWritten;
 
     /// <summary>Open a session: expire old files and drop the unbounded log this replaced.</summary>
     public void Start(string message)
@@ -98,6 +99,10 @@ public sealed class AppEventLog
                 Append(_events, now, line);
                 if (level >= LogLevel.Warning) Append(_important, now, line);
             }
+            // Publication follows redaction and persistence; observers cannot make logging throw.
+            if (EntryWritten is { } observers)
+                foreach (Action<string> observer in observers.GetInvocationList())
+                    try { observer(text); } catch { }
         }
         catch { /* logging must never throw */ }
     }

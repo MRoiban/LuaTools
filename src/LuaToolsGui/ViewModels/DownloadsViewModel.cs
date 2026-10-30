@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LuaToolsGui.Services;
@@ -120,13 +120,7 @@ public partial class DownloadsViewModel : ObservableObject
 
         if (choice == MessageBoxResult.Cancel) return; // leave the download running
 
-        _queue.Cancel(item);
-        if (choice != MessageBoxResult.Yes) return;
-
-        // The kill is asynchronous and the downloader holds handles on everything it pre-allocated, so
-        // deleting before the item settles would just fail on a locked file.
-        await item.Completion;
-        if (!DepotDownloaderService.TryDeleteCreatedFiles(outDir, item.CreatedFiles))
+        if (!await DownloadCancellationCoordinator.CancelAsync(_queue, item, choice == MessageBoxResult.Yes))
             _toast.Show(Resources.Strings.Depot_Cancel_Title,
                 string.Format(Resources.Strings.Depot_Cancel_DeleteFailed, outDir), error: true);
     }

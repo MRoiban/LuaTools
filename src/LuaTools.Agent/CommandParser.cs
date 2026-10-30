@@ -74,6 +74,7 @@ public static class CommandParser
         }
         if (flags.ContainsKey("json") && flags.TryGetValue("format", out var format) && format != "json") problems.Add(new("format", "--json conflicts with this format."));
         if (flags.ContainsKey("quiet") && flags.ContainsKey("verbose")) problems.Add(new("verbose", "Conflicts with --quiet."));
+        if (flags.ContainsKey("keep-files") && flags.ContainsKey("delete-created")) problems.Add(new("delete-created", "Conflicts with --keep-files."));
         if (flags.ContainsKey("all") && flags.ContainsKey("cursor")) problems.Add(new("cursor", "Conflicts with --all."));
         return new(command, identities, flags, problems.ToArray());
     }

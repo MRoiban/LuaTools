@@ -18,9 +18,12 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
     protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.Run(() => RunAsync(stoppingToken), CancellationToken.None);
     private async Task RunAsync(CancellationToken stoppingToken)
     {
+        void OnLog(string json) => commands.Events.Publish("activity-log", "entry", System.Text.Json.Nodes.JsonNode.Parse(json));
         try
         {
             if (!OperatingSystem.IsWindows()) return;
+            commands.BindEvents();
+            AppEventLog.Shared.EntryWritten += OnLog;
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             var discovery = new Discovery(Protocol.Version, commands.InstanceId, _pipe, process.Id, process.StartTime.ToUniversalTime().Ticks, process.SessionId,
                 Convert.ToBase64String(LocalDiscovery.Protect(_capability)), LocalDiscovery.IsElevated(), commands.SteamIdentity);
@@ -45,9 +48,10 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
             finally { listener.Dispose(); await Task.WhenAll(active).ConfigureAwait(false); }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        catch (Exception ex) { log.LogWarning("Agent pipe unavailable ({Type})", ex.GetType().Name); }
+        catch (Exception ex) { log.LogWarning("Agent pipe unavailable ({Type}): {Reason}", ex.GetType().Name, LogRedactor.Redact(ex.Message)); }
         finally
         {
+            AppEventLog.Shared.EntryWritten -= OnLog;
             try
             {
                 if (File.Exists(LocalDiscovery.Record) && LocalDiscovery.Read<Discovery>(LocalDiscovery.Record).InstanceId == commands.InstanceId) File.Delete(LocalDiscovery.Record);

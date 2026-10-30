@@ -18,7 +18,12 @@ public static class LocalDiscovery
     public static string Record => Path.Combine(Root, "agent-v1.json");
     public static string Launcher => Path.Combine(Root, "gui-path.json");
 
+    private static readonly object DirectoryGate = new();
     public static void SecureDirectory(string path)
+    {
+        lock (DirectoryGate) SecureDirectoryCore(path);
+    }
+    private static void SecureDirectoryCore(string path)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         CheckReparse(path);
@@ -31,6 +36,16 @@ public static class LocalDiscovery
         Verify(path, true);
     }
 
+    public static void SecureNewFile(string path)
+    {
+        // Elevated Windows tokens default new-file ownership to Administrators, not the user SID.
+        // Only call for our new private temporary files, never to repair untrusted existing records.
+        CheckReparse(path);
+        var sid = WindowsIdentity.GetCurrent().User!;
+        var security = new FileSecurity(); security.SetOwner(sid); security.SetAccessRuleProtection(true, false);
+        security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl, AccessControlType.Allow));
+        new FileInfo(path).SetAccessControl(security);
+    }
     public static void CheckReparse(string path)
     {
         for (var p = new DirectoryInfo(Path.GetFullPath(path)); p is not null; p = p.Parent)
@@ -53,7 +68,7 @@ public static class LocalDiscovery
         SecureDirectory(Root);
         if (File.Exists(path)) Verify(path);
         string temp = Path.Combine(Root, Guid.NewGuid().ToString("N") + ".new");
-        try { File.WriteAllText(temp, JsonSerializer.Serialize(record, Protocol.Json)); Verify(temp); File.Move(temp, path, true); }
+        try { File.WriteAllText(temp, JsonSerializer.Serialize(record, Protocol.Json)); SecureNewFile(temp); Verify(temp); File.Move(temp, path, true); }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
     public static T Read<T>(string path)

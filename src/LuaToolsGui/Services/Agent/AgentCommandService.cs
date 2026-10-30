@@ -14,16 +14,20 @@ namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
     DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null)
 {
+    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
+    public AgentEventHub Events => _jobs.Events;
     private readonly SnapshotPager _pager = new();
     private readonly MutationCoordinator _mutations = mutations ?? new();
     private readonly AgentJobRegistry _jobs = new(queue);
     internal AgentJobRegistry Jobs => _jobs;
+    internal void BindEvents() => Jobs.Events = new AgentEventHub(InstanceId);
+    private string PlanContext => MutationCoordinator.Hash(InstanceId + SteamIdentity + auth.IsSignedIn + string.Join(':',
+        Protocol.Node(ReadSettings(settings))!.AsArray().Select(n => n!["version"]!.ToString())));
     public void AfterReply(AgentRequest request)
     {
         if (request.Command == "application exit" && !request.Flags.ContainsKey("dry-run"))
             Application.Current?.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
     }
-    public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public string SteamIdentity => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((steam.EffectivePath ?? "").ToUpperInvariant())));
     private Task<T> Snapshot<T>(Func<T> read, CancellationToken ct)
     {
@@ -56,5 +60,12 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (reverse) rows = new JsonArray(rows.Reverse().Select(x => x?.DeepClone()).ToArray());
         string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
         return _pager.List(key, rows, request.Flags);
+    }    private bool? SelectedSteamRunning()
+    {
+        if (!steam.IsValid) return null;
+        try { return steam.IsSelectedSteamRunning(); }
+        catch (InvalidOperationException) { return null; }
+        catch (System.ComponentModel.Win32Exception) { return null; }
     }
+
 }

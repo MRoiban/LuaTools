@@ -30,7 +30,7 @@ public static class AgentCliInstallation
                 if (Path.GetFullPath(source).Equals(target, StringComparison.OrdinalIgnoreCase)) continue;
                 if (File.Exists(target)) LocalDiscovery.Verify(target);
                 string temp = Path.Combine(LocalDiscovery.Root, Guid.NewGuid().ToString("N") + ".new");
-                try { File.Copy(source, temp); LocalDiscovery.Verify(temp); File.Move(temp, target, true); }
+                try { File.Copy(source, temp); LocalDiscovery.SecureNewFile(temp); LocalDiscovery.Verify(temp); File.Move(temp, target, true); }
                 finally { if (File.Exists(temp)) File.Delete(temp); }
             }
             using var environment = Registry.CurrentUser.CreateSubKey("Environment", true);
@@ -43,7 +43,7 @@ public static class AgentCliInstallation
                 SendMessageTimeout(new IntPtr(0xffff), 0x001a, UIntPtr.Zero, "Environment", 2, 2000, out _);
             }
         }
-        catch (Exception ex) { log.LogWarning("Agent CLI installation unavailable ({Type})", ex.GetType().Name); }
+        catch (Exception ex) { log.LogWarning("Agent CLI installation unavailable ({Type}): {Reason}", ex.GetType().Name, LogRedactor.Redact(ex.Message)); }
     }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);

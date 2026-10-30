@@ -34,13 +34,13 @@ public sealed partial class AgentCommandService
             bool Supported(DownloadItem? item) => item is not null && (verb switch
             {
                 "pause" => item.CanPause, "resume" => item.CanResume && item.RunningAttempt is not { IsCompleted: false },
-                "retry" => item.CanRetry, "cancel" => item.CanCancel && !r.Flags.ContainsKey("delete-created"),
+                "retry" => item.CanRetry, "cancel" => item.CanCancel && (!r.Flags.ContainsKey("delete-created") || item.Job.Kind == DownloadKind.Depot && DepotDownloaderService.HasDownloadedContent(item.Job.OutputPath)),
                 "confirm" => item.NeedsAction && ConsentCoordinator.HasPending(item.Id), _ => false,
             });
             string version = items.Length == 1 ? items[0] is { } one ? AgentJobRegistry.Version(one) : "missing"
                 : MutationCoordinator.Hash(string.Join(':', items.Select(i => i is null ? "missing" : AgentJobRegistry.Version(i))));
-            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), InstanceId + SteamIdentity, version, targets,
-                [verb == "retry" ? Resources.Strings.Agent_RetryImpact : r.Command], verb == "retry" || verb == "confirm" && r.Flags.GetValueOrDefault("decision") == "replace");
+            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), PlanContext, version, targets,
+                [verb == "retry" ? Resources.Strings.Agent_RetryImpact : r.Command], r.Flags.ContainsKey("delete-created") || verb == "retry" || verb == "confirm" && r.Flags.GetValueOrDefault("decision") == "replace");
             return new PreparedMutation(plan, commitToken => Snapshot(() =>
             {
                 string fresh = items.Length == 1 ? items[0] is { } one ? AgentJobRegistry.Version(one) : "missing"
@@ -59,7 +59,19 @@ public sealed partial class AgentCommandService
                     {
                         case "pause": queue.Pause(item!); break;
                         case "resume": queue.Resume(item!); break;
-                        case "cancel": queue.Cancel(item!); break;
+                        case "cancel":
+                            if (r.Flags.ContainsKey("delete-created"))
+                            {
+                                var cancelled = item!;
+                                string operation = Jobs.Register("depot-cleanup", async _ =>
+                                    await DownloadCancellationCoordinator.CancelAsync(queue, cancelled, true)
+                                        ? Envelope.Success(new { child_job_id = cancelled.Id })
+                                        : Envelope.Fail("CLEANUP_FAILED", 1, Resources.Strings.Agent_MutationRejected), CancellationToken.None);
+                                last = new { id = operation, job_id = operation, child_job_id = cancelled.Id, state = "running" };
+                                results.Add(new { id = operation, ok = true, job = last });
+                                continue;
+                            }
+                            queue.Cancel(item!); break;
                         case "retry": item = queue.Retry(item!); break;
                         case "confirm": if (!ConsentCoordinator.Decide(item!.Id, r.Flags.GetValueOrDefault("decision") == "replace")) throw new MutationRejectedException("PLAN_STALE", 6); break;
                     }

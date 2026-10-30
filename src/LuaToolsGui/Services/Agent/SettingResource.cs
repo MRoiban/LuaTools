@@ -34,7 +34,7 @@ public sealed partial class AgentCommandService
             if (definition.ReadOnly) throw new MutationRejectedException("READ_ONLY_SETTING", 5);
             if (!ValidSettingValue(definition, value)) throw new MutationRejectedException("INVALID_VALUE", 2);
         }
-        var plan = new MutationPlan(Guid.NewGuid().ToString("N"), InstanceId + SteamIdentity, version, targets,
+        var plan = new MutationPlan(Guid.NewGuid().ToString("N"), PlanContext, version, targets,
             changes.Select(change => change.Key + (change.Definition is { } definition && ValidSettingValue(definition, value) ? " = " + value : " (invalid target or value)")).ToArray(), enabling);
         return new(plan, token => Snapshot(() =>
         {

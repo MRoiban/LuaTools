@@ -6,7 +6,7 @@
     "variants": [
       "luatools preset list --appid <appid>"
     ],
-    "purpose": "Discover the full compiled command catalogue.",
+    "purpose": "List saved Lua presets for the selected game.",
     "capability_ids": [
       "C-157"
     ],

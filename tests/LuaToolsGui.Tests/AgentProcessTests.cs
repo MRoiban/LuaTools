@@ -145,6 +145,11 @@ public sealed class AgentProcessTests
                 try { var record = JsonSerializer.Deserialize<Discovery>(File.ReadAllText(recordPath), Protocol.Json)!; var p = Process.GetProcessById(record.Pid); if (p.StartTime.ToUniversalTime().Ticks == record.StartTime && p.MainModule?.FileName?.StartsWith(scratch, StringComparison.OrdinalIgnoreCase) == true) children.Add(p); }
                 catch { }
             }
+            foreach (var candidate in Process.GetProcessesByName("LuaTools"))
+            {
+                try { if (candidate.MainModule?.FileName?.StartsWith(scratch + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) == true) children.Add(candidate); else candidate.Dispose(); }
+                catch { candidate.Dispose(); }
+            }
             foreach (var child in children) { try { if (!child.HasExited) { child.Kill(true); child.WaitForExit(10000); } } catch { } child.Dispose(); }
             if (savedPath is null) environment.DeleteValue("Path", false); else environment.SetValue("Path", savedPath, savedKind);
             try { Directory.Delete(scratch, true); } catch { }
