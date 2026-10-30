@@ -282,7 +282,7 @@ Test("embedded agent guide and recipes", () =>
     Assert(guide.Split('\n').Length < 150, "Guide too long");
     Assert(File.ReadAllText(Path.Combine(root, "docs/cli/AGENTS.md")).Replace("\r\n", "\n").TrimEnd() == guide.Replace("\r\n", "\n").TrimEnd(), "Regenerate docs/cli/AGENTS.md from luatools guide");
     foreach (string line in guide.Split('\n').Where(l => l.StartsWith("luatools ")))
-        Assert(CommandParser.Parse(line.Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Invalid recipe: " + line);
+        Assert(CommandParser.Parse(line.TrimEnd().Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Invalid recipe: " + line);
 });
 foreach (var command in Catalogue.Commands)
 await AsyncTest("fake host contract " + command.Key, async () =>
@@ -290,8 +290,15 @@ await AsyncTest("fake host contract " + command.Key, async () =>
     // Exercise the actual entrypoint and rendering. The fake host models admission only;
     // Windows service tests remain responsible for real coordinator effects and live gates.
     var arguments = command.Examples[0].Split(' ').Skip(1).ToList();
-    if (command.SecretChannels.Length > 0 || arguments.Any(x => x is "--file" or "--diff-file" or "--ids-from" or "--stdio") || command.Key == "session")
-        arguments = command.Key.Split(' ').Concat(new[] { "--help" }).ToList();
+    // Use bounded explicit fixture input so file and secret commands exercise transport too.
+    string fixture = Path.Combine(Path.GetTempPath(), "cli-contract-" + Guid.NewGuid().ToString("N") + ".lua");
+    bool needsFile = arguments.Any(x => x is "--file" or "--diff-file");
+    if (needsFile)
+    {
+        File.WriteAllText(fixture, "addappid(570)\n");
+        for (int i = 0; i < arguments.Count - 1; i++)
+            if (arguments[i] is "--file" or "--diff-file") arguments[i + 1] = fixture;
+    }
     arguments.Remove("--json"); arguments.Remove("--yes"); arguments.Remove("--dry-run"); arguments.Add("--json");
     int mutations = 0; bool called = false;
     Task<Envelope> Host(Parsed parsed, CancellationToken ct)
@@ -302,11 +309,12 @@ await AsyncTest("fake host contract " + command.Key, async () =>
         if (!parsed.Command.ReadOnly && !parsed.Has("dry-run")) mutations++;
         return Task.FromResult(Envelope.Success(new { plan = parsed.Has("dry-run") }));
     }
-    var oldOut = Console.Out; var oldErr = Console.Error;
+    var oldOut = Console.Out; var oldErr = Console.Error; var oldIn = Console.In;
+    using var input = new StringReader(command.Key == "session" ? "{\"type\":\"command\",\"id\":\"probe\",\"args\":[\"ping\"]}\n" : "fake-contract-secret");
     using var output = new StringWriter(); using var errors = new StringWriter();
     try
     {
-        Console.SetOut(output); Console.SetError(errors);
+        Console.SetOut(output); Console.SetError(errors); Console.SetIn(input);
         int exit = await Cli.RunAsync(arguments.ToArray(), Host).WaitAsync(TimeSpan.FromSeconds(3));
         if (called && command.Destructive) Assert(exit == 8 && mutations == 0, "Missing consent: " + command.Key);
         Assert(JsonNode.Parse(output.ToString()) is JsonObject && !output.ToString().Contains('\u001b'), command.Key + output);
@@ -317,7 +325,7 @@ await AsyncTest("fake host contract " + command.Key, async () =>
             Assert(mutations == 0 && JsonNode.Parse(output.ToString()) is JsonObject, "Dry run mutation: " + command.Key);
         }
     }
-    finally { Console.SetOut(oldOut); Console.SetError(oldErr); }
+    finally { Console.SetOut(oldOut); Console.SetError(oldErr); Console.SetIn(oldIn); if (needsFile) File.Delete(fixture); }
 });
 
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;

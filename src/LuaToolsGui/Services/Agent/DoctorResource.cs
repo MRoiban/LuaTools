@@ -30,8 +30,15 @@ public sealed partial class AgentCommandService
                 var flags = new Dictionary<string, string?>(parsed.Flags) { ["yes"] = null };
                 if (r.Flags.ContainsKey("dry-run")) flags["dry-run"] = null;
                 if (r.Flags.GetValueOrDefault("actor-note") is { } note) flags["actor-note"] = note;
-                result = await ExecuteAsync(r with { Command = parsed.Command!.Key, Arguments = parsed.Arguments, Flags = flags,
-                    RequestId = Guid.NewGuid().ToString("N"), ExpectedSteam = SteamIdentity }, ct);
+                try
+                {
+                    result = await ExecuteAsync(r with { Command = parsed.Command!.Key, Arguments = parsed.Arguments, Flags = flags,
+                        RequestId = Guid.NewGuid().ToString("N"), ExpectedSteam = SteamIdentity }, ct);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    result = Envelope.Fail("JOURNAL_UNAVAILABLE", 7, Resources.Strings.Agent_Doctor_Partial);
+                }
                 failed |= !result.Ok;
             }
             repairs.Add(new { command, status = safe ? r.Flags.ContainsKey("dry-run") ? "planned" : result!.Ok ? "accepted" : "failed" : "skipped", reason = safe ? null : Resources.Strings.Agent_Doctor_Unsafe, result });
