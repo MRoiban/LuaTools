@@ -32,7 +32,7 @@ public sealed partial class AgentCommandService
                 {
                     if (!service.Check(id, owned)) return AddFailure("BUSY", 7);
                     var batch = service.GetState(id)!;
-                    string job = Jobs.Register("dlc-check", async lifetime => { await batch.Work.WaitAsync(lifetime); return Envelope.Success(service.Describe(batch)); }, _hostLifetime);
+                    string job = Jobs.Register("dlc-check", async lifetime => { using var cancel = lifetime.Register(() => service.Cancel(batch.AppId, batch.Id)); await batch.Work.WaitAsync(lifetime); return batch.Phase == "failed" ? AddFailure("SOURCE_UNAVAILABLE", 7) : Envelope.Success(service.Describe(batch)); }, _hostLifetime);
                     return Envelope.Success(new { id = batch.Id, batch_id = batch.Id, job_id = job, state = "checking" });
                 }, ct);
             }
@@ -55,9 +55,10 @@ public sealed partial class AgentCommandService
                     if (!service.Apply(batch.AppId, batch.Id)) throw new MutationRejectedException("BATCH_NOT_READY", 6);
                     string job = Jobs.Register("dlc-apply", async lifetime =>
                     {
+                        using var cancel = lifetime.Register(() => service.Cancel(batch.AppId, batch.Id));
                         await batch.Work.WaitAsync(lifetime);
                         var outcome = service.Describe(batch);
-                        return batch.Items.Any(i => i.State is "failed" or "limit") ? Envelope.Fail("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed) with { Error = new("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed, Details: Protocol.Node(outcome)) } : Envelope.Success(outcome);
+                        return batch.Phase is "cancelled" or "failed" || batch.Items.Any(i => i.State is "failed" or "limit") ? Envelope.Fail("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed) with { Error = new("PARTIAL_FAILURE", 1, Resources.Strings.Agent_Add_InstallFailed, Details: Protocol.Node(outcome)) } : Envelope.Success(outcome);
                     }, _hostLifetime);
                     return Envelope.Success(new { id = job, job_id = job, batch_id = batch.Id, state = "running" });
                 }, commitToken));

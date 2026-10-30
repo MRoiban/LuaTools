@@ -7,6 +7,7 @@ using System.Text;
 using LuaTools.Agent;
 using LuaToolsCli;
 using LuaToolsGui.Services;
+using LuaToolsGui.Models;
 using LuaToolsGui.Services.Agent;
 using LuaToolsGui.Services.Downloads;
 using LuaToolsGui.ViewModels;
@@ -40,7 +41,7 @@ public sealed class AgentAcquisitionTests
         internal readonly byte[] Capability = RandomNumberGenerator.GetBytes(32);
         internal int Spent;
         internal bool FailHubcap;
-        internal Fixture(bool key = true)
+        internal Fixture(bool key = true, DlcBatchService? batchService = null)
         {
             Directory.CreateDirectory(Root);
             Directory.CreateDirectory(Path.Combine(Root, "details"));
@@ -53,6 +54,7 @@ public sealed class AgentAcquisitionTests
             var transport = new Stub(request =>
             {
                 string path = request.RequestUri!.AbsolutePath;
+                if (path == "/api/denuvo/fixes") return Json("{\"appid\":\"730\",\"name\":\"Fixture\",\"fixes\":[{\"id\":\"fixture-fix\",\"title\":\"Fixture manifest\",\"hasManifest\":true,\"manifestFilename\":\"730.zip\"}]}");
                 if (path.Contains("/status/")) return Json("{\"status\":\"success\",\"manifest_file_exists\":true}");
                 if (path.EndsWith("/stats")) return FailHubcap ? new(HttpStatusCode.ServiceUnavailable) : Json("{\"daily_usage\":0,\"daily_limit\":25,\"can_make_requests\":true}");
                 if (path.Contains("/manifest/"))
@@ -84,7 +86,7 @@ public sealed class AgentAcquisitionTests
             Sources = new(api, hubcap, Settings, auth, Queue, factory, Installer);
             var github = new GithubProxy();
             Facade = new(Settings, Steam, auth, Queue, new(Steam, Settings, cache, github), new(Steam, Settings, github, null!), new(),
-                mutations: new(Path.Combine(Root, "journal.json")), acquisition: new(Sources, Diff, Local, Installer, api, new(api, Depots, AppInfo, Installer), factory));
+                mutations: new(Path.Combine(Root, "journal.json")), acquisition: new(Sources, Diff, Local, Installer, api, batchService ?? new(api, Depots, AppInfo, Installer), factory));
         }
         private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         internal AgentRequest Request(string command = "game add", string[]? args = null, Dictionary<string, string?>? flags = null) => new(1, Convert.ToBase64String(Capability), Facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? ["730"], flags ?? new() { ["source"] = AcquisitionCoordinator.HubcapSource }, Facade.SteamIdentity);
@@ -212,4 +214,44 @@ public sealed class AgentAcquisitionTests
         await Assert.ThrowsAsync<DownloadAbortedException>(() => item.Job.DownloadAsync(item, new Progress<DownloadProgress>(), default));
         Assert.Equal(0, f.Spent);
     }
+    [Fact]
+    public async Task RealPipeDlcBatchReadOnlyCheckDryRunApplyPartialFailureAndCancelUseVerifiedGeneration()
+    {
+        var service = new DlcBatchService(new DlcBatchService.Ports(
+            (id, _) => Task.FromResult<GameDetails?>(new() { AppId = id, Type = "game", Name = "Fixture" }),
+            (_, _) => Task.FromResult<IReadOnlyList<long>>([741, 742, 743]), _ => [], _ => false,
+            (id, parent, _) => Task.FromResult<DlcInfo?>(id == "743" ? new() { DepotCount = 1, MissingCount = 1 } : new()),
+            (_, _, _) => throw new InvalidOperationException("No quota path is allowed"),
+            (path, id) => { ManifestContentPolicy.ValidateLuaFile(path, id); return id == 742 ? InstallResult.Fail("synthetic failure") : new(true, 0, [], null); }));
+        using var f = new Fixture(batchService: service);
+        var check = await f.Pipe(f.Request("dlc check", flags: new() { ["read-only"] = null }));
+        Assert.True(check!.Ok); string batchId = check.Data!["batch_id"]!.ToString();
+        var batch = service.Find(batchId)!; await batch.Work;
+        Assert.Equal("ready", batch.Phase); Assert.Equal("unavailable", batch.Items.Single(i => i.AppId == 743).State);
+        var get = await f.Pipe(f.Request("dlc get", flags: new() { ["batch"] = batchId })); Assert.True(get!.Ok);
+        var add = f.Request("dlc add", flags: new() { ["batch"] = batchId, ["dry-run"] = null });
+        Assert.True((await f.Pipe(add))!.Ok); Assert.Equal("ready", batch.Phase);
+        add.Flags.Remove("dry-run"); Assert.Equal(8, (await f.Pipe(add))!.Error!.ExitCode);
+        add.Flags["yes"] = null; var accepted = await f.Pipe(add); Assert.True(accepted!.Ok);
+        await batch.Work; Assert.Equal("installed", batch.Items.Single(i => i.AppId == 741).State); Assert.Equal("failed", batch.Items.Single(i => i.AppId == 742).State);
+        var job = await f.Pipe(f.Request("job get", [accepted.Data!["id"]!.ToString()], []));
+        Assert.Contains("PARTIAL_FAILURE", job!.Data!.ToJsonString());
+        var next = await f.Pipe(f.Request("dlc check", flags: []));
+        var ready = service.Find(next!.Data!["id"]!.ToString())!; await ready.Work;
+        var cancel = f.Request("dlc cancel", [ready.Id], new() { ["dry-run"] = null });
+        Assert.True((await f.Pipe(cancel))!.Ok); Assert.Equal("ready", ready.Phase);
+        cancel.Flags.Remove("dry-run"); Assert.True((await f.Pipe(cancel))!.Ok); Assert.Equal("cancelled", ready.Phase);
+        Assert.Equal(0, f.Spent);
+    }
+    [Fact]
+    public async Task RealPipeManifestPlanAndLoginGateNeverAcquireAsGuest()
+    {
+        using var f = new Fixture();
+        var request = f.Request("manifest add", ["fixture-fix"], new() { ["appid"] = "730", ["dry-run"] = null });
+        Assert.True((await f.Pipe(request))!.Ok); Assert.Empty(f.Queue.Items);
+        request.Flags.Remove("dry-run"); Assert.Equal(8, (await f.Pipe(request))!.Error!.ExitCode);
+        request.Flags["yes"] = null; Assert.Equal("LOGIN_REQUIRED", (await f.Pipe(request))!.Error!.Code);
+        Assert.Equal(0, f.Spent); Assert.Empty(f.Queue.Items);
+    }
+
 }

@@ -114,10 +114,10 @@ public sealed class LuaOverwriteCoordinator(LuaInstaller installer, SteamAppList
             using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
             var luaEntry = archive.Entries.FirstOrDefault(e =>
                 e.Name.EndsWith(".lua", StringComparison.OrdinalIgnoreCase));
-            if (luaEntry is null || luaEntry.Length > 4 * 1024 * 1024) return null;
+            if (luaEntry is null || luaEntry.Length > ManifestContentPolicy.MaxLuaBytes) return null;
 
             string tmp = Path.Combine(Path.GetTempPath(), $"luatools_diff_{appId}_{Guid.NewGuid():N}.lua");
-            luaEntry.ExtractToFile(tmp, overwrite: true);
+            using (var input = luaEntry.Open()) File.WriteAllBytes(tmp, ManifestContentPolicy.ReadBounded(input, ManifestContentPolicy.MaxLuaBytes));
             try { return LuaFileParser.Parse(tmp, appId); }
             finally { try { File.Delete(tmp); } catch { /* temp cleanup best-effort */ } }
         }

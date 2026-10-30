@@ -6,6 +6,8 @@ namespace LuaToolsGui.Services.Agent;
 internal sealed class AgentInputStaging : IDisposable
 {
     private static readonly SemaphoreSlim Uploads = new(2);
+    private static readonly object BudgetGate = new();
+    private static readonly Dictionary<string, long> Reserved = [];
     private readonly string _root;
     private readonly AgentRequest _request;
     private AgentInputStaging(string root, AgentRequest request) { _root = root; _request = request; }
@@ -17,6 +19,12 @@ internal sealed class AgentInputStaging : IDisposable
         if (!await Uploads.WaitAsync(0, ct)) throw new InvalidDataException();
         string root = Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName, "agent-input", Guid.NewGuid().ToString("N"));
         var staging = new AgentInputStaging(root, request);
+        lock (BudgetGate)
+        {
+            long bytes = files.Sum(f => f.Length);
+            if (Reserved.Values.Sum() + bytes > 2L * FileSubmission.MaxBytes) { Uploads.Release(); throw new InvalidDataException(); }
+            Reserved.Add(root, bytes);
+        }
         try
         {
             ManifestContentPolicy.EnsureNoReparsePoints(root);
@@ -47,12 +55,15 @@ internal sealed class AgentInputStaging : IDisposable
     }
     public void Dispose()
     {
-        if (!_request.RetainInputs) { try { Directory.Delete(_root, true); } catch (IOException) { } }
+        if (!_request.RetainInputs) { try { Directory.Delete(_root, true); } catch (IOException) { }
+            lock (BudgetGate) Reserved.Remove(_root); }
         Uploads.Release();
     }
     public static void DeleteRetained(string[] paths)
     {
         if (paths.Length == 0) return;
-        try { Directory.Delete(Path.GetDirectoryName(Path.GetDirectoryName(paths[0]))!, true); } catch (IOException) { }
+        string root = Path.GetDirectoryName(Path.GetDirectoryName(paths[0]))!;
+        try { Directory.Delete(root, true); } catch (IOException) { }
+        lock (BudgetGate) Reserved.Remove(root);
     }
 }

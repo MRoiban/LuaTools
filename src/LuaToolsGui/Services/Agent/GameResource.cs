@@ -39,7 +39,7 @@ public sealed partial class AgentCommandService
         long id = AddAppId(r.Arguments[0]);
         var context = await Snapshot(() => (Context: PlanContext, Version: AddVersion(id)), token);
         var sources = await Acquisition.Sources.CheckAsync(id, ct: token);
-        string selected = r.Flags.GetValueOrDefault("source") ?? "auto";
+        string selected = dlc ? PluginAddService.DlcSourceName : r.Flags.GetValueOrDefault("source") ?? "auto";
         var row = selected == "auto" ? sources.Sources.FirstOrDefault(s => s.CanDownload)
             : sources.Sources.FirstOrDefault(s => string.Equals(s.Name, selected, StringComparison.OrdinalIgnoreCase) || string.Equals(s.DisplayName, selected, StringComparison.OrdinalIgnoreCase));
         if (row is null) throw new MutationRejectedException("SOURCE_UNAVAILABLE", 6);
@@ -50,7 +50,7 @@ public sealed partial class AgentCommandService
             [Resources.Strings.Agent_Add_Impact, "source=" + row.Name, "existing_sha256=" + context.Version], true);
         return new PreparedMutation(plan, async commitToken =>
         {
-            if (!row.CanDownload) throw new MutationRejectedException(row.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", row.DisabledReasons.Contains("LOGIN_REQUIRED") || row.DisabledReasons.Contains("HUBCAP_KEY_REQUIRED") ? 4 : 7);
+            if (!row.CanDownload) throw new MutationRejectedException(row.DisabledReasons.FirstOrDefault(code => code != "SOURCE_UNKNOWN" && code != "SOURCE_UNAVAILABLE") ?? "SOURCE_UNAVAILABLE", row.DisabledReasons.Any(code => code == "LOGIN_REQUIRED" || code.StartsWith("HUBCAP_KEY_", StringComparison.Ordinal)) ? 4 : 7);
             var fresh = await Acquisition.Sources.CheckAsync(id, ct: commitToken);
             var current = fresh.Sources.FirstOrDefault(s => s.Name == row.Name);
             return await Snapshot(() =>

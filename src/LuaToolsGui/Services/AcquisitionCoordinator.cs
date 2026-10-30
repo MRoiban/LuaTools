@@ -50,11 +50,11 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         if (rows.Any(r => r.NeedsKey))
         {
             string? key = settings.HubcapApiKey;
-            var stats = string.IsNullOrEmpty(key) ? null : await hubcap.GetStatsAsync(key, ct);
+            var probe = string.IsNullOrEmpty(key) ? null : await hubcap.ProbeStatsAsync(key, ct);
+            var stats = probe?.Stats;
             foreach (var row in rows.Where(r => r.NeedsKey))
             {
-                string? reason = string.IsNullOrEmpty(key) ? "HUBCAP_KEY_REQUIRED" : !HubcapService.IsValidKeyFormat(key) ? "HUBCAP_KEY_INVALID"
-                    : stats is null ? "HUBCAP_STATS_UNAVAILABLE" : !stats.CanMakeRequests ? "QUOTA_EXHAUSTED" : null;
+                string? reason = string.IsNullOrEmpty(key) ? "HUBCAP_KEY_REQUIRED" : probe?.DisabledReason;
                 row.Locked = reason is not null;
                 row.DisabledReasons = (row.Status != "available" ? new[] { row.Status == "unknown" ? "SOURCE_UNKNOWN" : "SOURCE_UNAVAILABLE" } : []).Concat(reason is null ? [] : new[] { reason }).ToArray();
                 row.Stats = stats is null ? null : $"{stats.DailyUsage}/{stats.DailyLimit}";

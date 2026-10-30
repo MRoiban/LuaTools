@@ -34,19 +34,28 @@ public partial class HubcapService
     public static bool IsValidKeyFormat(string? key) => key is not null && KeyFormatRegex().IsMatch(key);
 
     /// <summary>Usage stats for a key. Null on any network/auth failure, never throws.</summary>
-    public async Task<HubcapStats?> GetStatsAsync(string key, CancellationToken ct = default)
+    public async Task<HubcapStats?> GetStatsAsync(string key, CancellationToken ct = default) => (await ProbeStatsAsync(key, ct)).Stats;
+
+    public sealed record StatsProbe(HubcapStats? Stats, string? DisabledReason);
+    /// <summary>Same provider request, with an explicit safe admission reason instead of conflating failures.</summary>
+    public async Task<StatsProbe> ProbeStatsAsync(string key, CancellationToken ct = default)
     {
         try
         {
-            if (!IsValidKeyFormat(key)) return null;
+            if (!IsValidKeyFormat(key)) return new(null, "HUBCAP_KEY_INVALID");
             using var req = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/user/stats?api_key={Uri.EscapeDataString(key)}");
             HttpCredentialPurpose.Hubcap.Apply(req);
             using var res = await _http.SendAsync(req, ct);
-            if (!res.IsSuccessStatusCode) return null;
+            if (res.StatusCode == HttpStatusCode.Unauthorized) return new(null, "HUBCAP_KEY_REJECTED");
+            if (res.StatusCode == HttpStatusCode.Forbidden) return new(null, "HUBCAP_KEY_REJECTED");
+            if (!res.IsSuccessStatusCode) return new(null, "HUBCAP_STATS_UNAVAILABLE");
             var stats = await ReadJsonAsync<HubcapStats>(res, ct);
-            return stats is not null && stats.DailyUsage >= 0 && stats.DailyLimit > 0 ? stats : null;
+            if (stats is null || stats.DailyUsage < 0 || stats.DailyLimit <= 0) return new(null, "HUBCAP_STATS_UNAVAILABLE");
+            string? reason = DateTimeOffset.TryParse(stats.ApiKeyExpiresAt, out var expires) && expires <= DateTimeOffset.UtcNow ? "HUBCAP_KEY_EXPIRED"
+                : !stats.CanMakeRequests ? "QUOTA_EXHAUSTED" : null;
+            return new(stats, reason);
         }
-        catch { return null; }
+        catch { return new(null, "HUBCAP_STATS_UNAVAILABLE"); }
     }
 
     /// <summary>Whether a manifest exists for an app (free, no usage count). Null on failure.</summary>
