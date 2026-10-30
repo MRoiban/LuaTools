@@ -334,8 +334,22 @@ namespace CabinetEngine
                 while (listener.IsListening)
                 {
                     HttpListenerContext c; try { c = listener.GetContext(); } catch (HttpListenerException) { break; } catch (ObjectDisposedException) { break; }
-                    try { Handle(c); } catch (Exception ex) { c.Response.StatusCode = 500; Reply(c, new Dictionary<string, object> { { "error", ex.Message } }); }
-                    finally { c.Response.Close(); }
+                    try { Handle(c); }
+                    catch (ObjectDisposedException) { break; }
+                    catch (HttpListenerException) { break; }
+                    catch (Exception ex)
+                    {
+                        try { c.Response.StatusCode = 500; Reply(c, new Dictionary<string, object> { { "error", ex.Message } }); }
+                        catch (ObjectDisposedException) { break; }
+                        catch (HttpListenerException) { break; }
+                    }
+                    finally
+                    {
+                        // Shutdown closes the HTTP queue before the worker's response handle.
+                        try { c.Response.Close(); }
+                        catch (ObjectDisposedException) { }
+                        catch (HttpListenerException) { }
+                    }
                 }
             }
             void Reply(HttpListenerContext c, object obj)

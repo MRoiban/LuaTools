@@ -18,7 +18,7 @@ public sealed partial class AgentCommandService
         JsonObject input;
         try { input = BulkSelection.Data(r, "key", "value"); }
         catch (JsonException) { throw new MutationRejectedException("INVALID_DATA", 2); }
-        string? value = r.Flags.GetValueOrDefault("value") ?? input["value"]?.ToString();
+        string? value = r.Flags.GetValueOrDefault("value") ?? (input.ContainsKey("value") && input["value"] is null ? "system" : input["value"]?.ToString());
         string[] targets;
         try { targets = BulkSelection.Select(r, Protocol.Node(ReadSettings(settings))!.AsArray(), "key", ["key", "type", "read_only"], input["key"]?.ToString()); }
         catch (ArgumentException) { throw new MutationRejectedException("INVALID_SELECTION", 2); }
@@ -27,7 +27,13 @@ public sealed partial class AgentCommandService
         var current = targets.Select(key => rows.FirstOrDefault(n => n?["key"]?.ToString() == key)).ToArray();
         string version = targets.Length == 1 ? current[0]?["version"]?.ToString() ?? "missing" : MutationCoordinator.Hash(string.Join(':', current.Select(n => n?["version"]?.ToString() ?? "missing")));
         var changes = targets.Select(key => (Key: key, Definition: SettingSchema.All.FirstOrDefault(d => d.Key == key))).ToArray();
-        bool enabling = value == "true" && targets.Any(ExecutableConsentCoordinator.Keys.Contains);
+        bool enabling = bool.TryParse(value, out bool enabled) && enabled && targets.Any(ExecutableConsentCoordinator.Keys.Contains);
+        if (changes.Length == 1)
+        {
+            if (changes[0].Definition is not { } definition) throw new MutationRejectedException("NOT_FOUND", 3);
+            if (definition.ReadOnly) throw new MutationRejectedException("READ_ONLY_SETTING", 5);
+            if (!ValidSettingValue(definition, value)) throw new MutationRejectedException("INVALID_VALUE", 2);
+        }
         var plan = new MutationPlan(Guid.NewGuid().ToString("N"), InstanceId + SteamIdentity, version, targets,
             changes.Select(change => change.Key + (change.Definition is { } definition && ValidSettingValue(definition, value) ? " = " + value : " (invalid target or value)")).ToArray(), enabling);
         return new(plan, token => Snapshot(() =>
@@ -57,7 +63,7 @@ public sealed partial class AgentCommandService
         return targets.Length == 1 ? versions[0] : MutationCoordinator.Hash(string.Join(':', versions));
     }
     private static bool ValidSettingValue(SettingDefinition definition, string value) => definition.AllowedValues.Length > 0
-        ? definition.AllowedValues.Any(v => string.Equals(v.ToString(), value, StringComparison.OrdinalIgnoreCase))
+        ? definition.AllowedValues.Any(v => string.Equals(v.ToString(), value, definition.Type == "bool" ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
         : definition.Type == "bool" && bool.TryParse(value, out _);
     private void SetSetting(string key, string value, string? note)
     {

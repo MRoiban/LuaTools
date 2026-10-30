@@ -126,10 +126,12 @@ public static class LocalDiscovery
                 throw new UnauthorizedAccessException();
         }
     }
+    public static string OwnerMutexName => @"Global\LuaToolsGui.SecurityHardened." + WindowsIdentity.GetCurrent().User!.Value
+        + (DataPaths.OwnerSuffix.Length == 0 ? "" : "." + DataPaths.OwnerSuffix);
     public static bool OwnerRunning()
     {
         if (!OperatingSystem.IsWindows()) return false;
-        string name = @"Global\LuaToolsGui.SecurityHardened." + WindowsIdentity.GetCurrent().User!.Value + "." + DataPaths.OwnerSuffix;
+        string name = OwnerMutexName;
         IntPtr handle = OpenMutex(0x00100000, false, name);
         if (handle != IntPtr.Zero) { CloseHandle(handle); return true; }
         // An inaccessible mutex is still an owner, never permission to start a competing process.
@@ -172,5 +174,15 @@ public static class DataPaths
     // Respect normal process AppData redirection, including isolated integration-test child profiles.
     public static string Roaming => Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
     public static string Local => Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    public static string OwnerSuffix => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(Roaming).ToUpperInvariant())))[..16];
+    public static string OwnerSuffix
+    {
+        get
+        {
+            static string Canonical(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)).ToUpperInvariant();
+            string root = Canonical(Roaming);
+            // Preserve the production mutex/event identity across versions; redirected profiles isolate tests.
+            return root == Canonical(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)) ? ""
+                : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root)))[..16];
+        }
+    }
 }

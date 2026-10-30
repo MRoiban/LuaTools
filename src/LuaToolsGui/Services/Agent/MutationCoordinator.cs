@@ -84,6 +84,20 @@ public sealed class MutationCoordinator(string? journalPath = null)
         catch (Exception ex) when (ex is IOException or JsonException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
         finally { _admission.Release(); }
     }
+    public async Task<Envelope?> FindAsync(string idempotencyKey, CancellationToken ct)
+    {
+        await _admission.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (!File.Exists(_path)) return null;
+            if (new FileInfo(_path).Length > 16 * 1024 * 1024) return Failure("JOURNAL_UNAVAILABLE", 7);
+            var entry = JsonSerializer.Deserialize<List<Entry>>(File.ReadAllText(_path), Protocol.Json)?.FirstOrDefault(e => e.Key == Hash(idempotencyKey));
+            return entry is null ? null : entry.Time < DateTimeOffset.UtcNow.AddDays(-7) ? Failure("REQUEST_EXPIRED", 3)
+                : entry.State == "accepted" ? entry.Receipt : Failure("OUTCOME_UNKNOWN", 7);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
+        finally { _admission.Release(); }
+    }
     private static string? CanonicalFlag(string name, string? value)
     {
         if (name != "data" || value is null) return value;

@@ -13,7 +13,7 @@ public sealed partial class AgentCommandService
         if (r.Command == "application exit")
             return await _mutations.ExecuteAsync(r, async token =>
             {
-                if (await Snapshot(() => queue.ActiveCount, token) > 0 || Cabinet.CabinetService.HasActiveHelpers)
+                if (await Snapshot(() => queue.ActiveCount + Jobs.ActiveOperations, token) > 0 || Cabinet.CabinetService.HasActiveHelpers)
                     throw new MutationRejectedException("JOBS_ACTIVE", 6);
                 return new(new(Guid.NewGuid().ToString("N"), InstanceId + SteamIdentity, "idle", [], [Resources.Strings.Agent_ExitImpact], true),
                     _ => Task.FromResult(Envelope.Success(new { state = "exiting" })));
@@ -30,7 +30,7 @@ public sealed partial class AgentCommandService
     }
     public async Task<Envelope> StatusAsync(CancellationToken ct)
     {
-        var counts = await Snapshot(() => new { active = queue.ActiveCount, total = queue.Items.Count, failed = queue.History.Count(i => i.Failed) }, ct);
+        var counts = await Snapshot(() => new { active = queue.ActiveCount, operations = Jobs.ActiveOperations, total = queue.Items.Count, failed = queue.History.Count(i => i.Failed) }, ct);
         return Envelope.Success(new
         {
             protocol = Protocol.Version, instance_id = InstanceId, version = UpdateService.CurrentVersion.ToString(),

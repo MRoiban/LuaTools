@@ -11,6 +11,16 @@ public sealed class AgentClient
     public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
+        if (parsed.Command?.Key == "application exit" && parsed.Has("drain") && !parsed.Has("dry-run"))
+        {
+            while (true)
+            {
+                var status = await InvokeAsync(new(Catalogue.Find("status"), [], new() { ["no-start"] = null }, []), ct);
+                if (!status.Ok) return status;
+                if (status.Data?["queue"]?["active"]?.GetValue<int>() == 0 && status.Data?["queue"]?["operations"]?.GetValue<int>() == 0 && status.Data?["helpers"]?.GetValue<int>() == 0) break;
+                await Task.Delay(100, ct).ConfigureAwait(false);
+            }
+        }
         bool started = false;
         string? expectedSteam = parsed.Value("expect-steam"), expectedInstance = null;
         var watch = Stopwatch.StartNew();

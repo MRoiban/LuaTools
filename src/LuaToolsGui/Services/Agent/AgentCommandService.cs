@@ -36,6 +36,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (request.InstanceId != InstanceId || request.Flags.GetValueOrDefault("expect-instance") is { } instance && instance != InstanceId || request.ExpectedSteam is { } selected && selected != SteamIdentity)
             return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         // Validate again at the trust boundary, including projections. Never trust client parsing.
+        if (request.Flags.ContainsKey("ids-from")) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
         var args = request.Command.Split(' ').Concat(request.Arguments).ToList();
         foreach (var (flag, value) in request.Flags) { args.Add("--" + flag); if (value is not null) args.Add(value); }
         var parsed = CommandParser.Parse(args.ToArray());

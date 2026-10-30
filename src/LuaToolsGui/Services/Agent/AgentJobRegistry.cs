@@ -26,6 +26,7 @@ public sealed class AgentJobRegistry
         queue.Items.CollectionChanged += (_, _) => Capture();
         Capture();
     }
+    public int ActiveOperations => _operations.Values.Count(x => x.State == "running");
     private void Capture()
     {
         foreach (var item in _queue.Items) _items[item.Id] = (DateTimeOffset.UtcNow, item);
@@ -42,12 +43,12 @@ public sealed class AgentJobRegistry
     {
         Capture();
         return _items.Values.Where(x => !active || x.Item.IsActive).Select(x => Describe(x.Item))
-            .Concat(_operations.Values.Where(x => !active || x.State == "running").Select(x => (object)new { id = x.Id, state = x.State, kind = x.Kind, version = x.State, available_actions = Array.Empty<object>() })).ToArray();
+            .Concat(_operations.Values.Where(x => !active || x.State == "running").Select(x => (object)new { id = x.Id, state = x.State, kind = x.Kind, version = x.State, available_actions = OperationActions() })).ToArray();
     }
     public object? Get(string id) => Find(id) is { } item ? Describe(item) : _queue.History.FirstOrDefault(x => x.Id == id) is { } history
-        ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind.ToString(), version = "history", available_actions = Array.Empty<object>() }
+        ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind.ToString(), version = "history", available_actions = OperationActions() }
         : _operations.TryGetValue(id, out var op)
-        ? new { id = op.Id, state = op.State, kind = op.Kind, result = op.Result, version = op.State, available_actions = Array.Empty<object>() } : null;
+        ? new { id = op.Id, state = op.State, kind = op.Kind, result = op.Result, version = op.State, available_actions = OperationActions() } : null;
     public static string Version(DownloadItem item) => MutationCoordinator.Hash(item.Id + ":" + item.Status);
     public static object Describe(DownloadItem item) => new
     {
@@ -56,11 +57,12 @@ public sealed class AgentJobRegistry
         eta_seconds = item.Eta?.TotalSeconds, cancel_requested = item.Cts.IsCancellationRequested && !item.PauseRequested,
         enqueued_at = item.EnqueuedAt, available_actions = AvailableActions.For("job", c => c.Verb switch
         {
-            "pause" when !item.CanPause => "PAUSE_UNSUPPORTED", "resume" when !item.CanResume => "NOT_PAUSED",
+            "pause" when !item.CanPause => "PAUSE_UNSUPPORTED", "resume" when !item.CanResume || item.RunningAttempt is { IsCompleted: false } => "NOT_PAUSED",
             "retry" when !item.CanRetry => "RETRY_UNSUPPORTED", "cancel" when !item.CanCancel => "CANCEL_UNSUPPORTED",
             "confirm" when !ConsentCoordinator.HasPending(item.Id) => "NO_PENDING_DECISION", _ => null,
         }),
     };
+    private static object[] OperationActions() => AvailableActions.For("job", c => c.ReadOnly ? null : "ACTION_UNSUPPORTED");
     public string Register(string kind, Func<CancellationToken, Task<Envelope>> run, CancellationToken hostLifetime)
     {
         foreach (string id in _operations.Where(p => p.Value.State != "running" && p.Value.Created < DateTimeOffset.UtcNow.AddHours(-24)).Select(p => p.Key).ToArray()) _operations.Remove(id);
