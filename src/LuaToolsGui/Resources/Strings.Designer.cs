@@ -769,4 +769,5 @@ public static class Strings
         public static string Agent_JobMissing => Get(nameof(Agent_JobMissing));
         public static string Agent_RetryImpact => Get(nameof(Agent_RetryImpact));
 
+    public static string Agent_CabinetImpact => Get(nameof(Agent_CabinetImpact));
 }

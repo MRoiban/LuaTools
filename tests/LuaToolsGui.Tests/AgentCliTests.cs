@@ -126,9 +126,11 @@ public sealed class AgentCliTests : IDisposable
     public void ActivityLogDeduplicatesDualStreamsPreservesEqualMessagesAndRedacts()
     {
         var log = new AppEventLog(_directory);
+        string? published = null; log.EntryWritten += value => published = value;
         log.Write(LogLevel.Warning, "Agent", "token=secret-value"); log.Write(LogLevel.Warning, "Agent", "token=secret-value");
         var rows = log.ReadAgentEvents(new() { ["severity"] = "warn" });
         Assert.Equal(2, rows.Count); Assert.DoesNotContain("secret-value", rows.ToJsonString());
+        Assert.NotNull(published); Assert.DoesNotContain("secret-value", published);
         Assert.NotEqual(rows[0]!["id"]!.ToString(), rows[1]!["id"]!.ToString());
         Assert.Empty(log.ReadAgentEvents(new() { ["category"] = "Other" }));
     }
@@ -158,6 +160,7 @@ public sealed class AgentCliTests : IDisposable
         Assert.True(dry.Ok); Assert.False(settings.FastFetch); Assert.False(File.Exists(Path.Combine(_directory, "journal.json")));
         var consent = await Update("SteamlessEnabled", "true"); Assert.Equal(8, consent.Error!.ExitCode); Assert.NotNull(consent.Error.Details!["plan"]);
         Assert.False(settings.IsExecutableWorkflowEnabled("Steamless"));
+        Assert.Equal(8, (await Update("SteamlessEnabled", "True")).Error!.ExitCode);
         Assert.True((await Update("SteamlessEnabled", "true", new() { ["yes"] = null, ["actor-note"] = "unit-proof" })).Ok);
         Assert.True(settings.IsExecutableWorkflowEnabled("Steamless"));
         Assert.True((await Update("SteamlessEnabled", "false")).Ok); Assert.False(settings.IsExecutableWorkflowEnabled("Steamless"));
@@ -215,9 +218,13 @@ public sealed class AgentCliTests : IDisposable
                         Assert.True((await Call("job resume", [item.Id])).Ok);
                         Assert.True((await Call("job cancel", [item.Id])).Ok);
                         await item.Completion.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(DownloadStatus.Cancelled, item.Status);
-                        Assert.True((await Call("job retry", [item.Id], new() { ["yes"] = null })).Ok);
+                        var retried = await Call("job retry", [item.Id], new() { ["yes"] = null, ["idempotency-key"] = "queue-retry" }); Assert.True(retried.Ok);
                         var next = queue.Items.Single(x => x.IsActive); Assert.NotEqual(item.Id, next.Id);
                         await Call("job cancel", [next.Id]); await next.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+                        Assert.Equal(next.Id, (await Call("job retry", [item.Id], new() { ["yes"] = null, ["idempotency-key"] = "queue-retry" })).Data!["id"]!.ToString());
+                        Assert.Equal(next.Id, (await Call("job list", flags: new() { ["idempotency-key"] = "queue-retry" })).Data![0]!["id"]!.ToString());
+                        string operation = facade.Jobs.Register("synthetic-operation", _ => Task.FromResult(Envelope.Success(new { complete = true })), default);
+                        Assert.Equal("completed", (await Call("job wait", [operation])).Data!["state"]!.ToString());
                         var decision = queue.Enqueue(new DownloadJob(DownloadKind.Manifest, "manifest:synthetic", 571, "Decision", "No network", null,
                             (_, _, _) => Task.FromResult(new DownloadedFile(Path.Combine(_directory, "absent.bin"), "absent.bin")),
                             (_, _, _) => Task.FromResult(new JobResult(true, null)),

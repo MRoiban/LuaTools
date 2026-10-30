@@ -34,13 +34,17 @@ public sealed partial class AgentCommandService
             if (definition.ReadOnly) throw new MutationRejectedException("READ_ONLY_SETTING", 5);
             if (!ValidSettingValue(definition, value)) throw new MutationRejectedException("INVALID_VALUE", 2);
         }
-        var plan = new MutationPlan(Guid.NewGuid().ToString("N"), PlanContext, version, targets,
-            changes.Select(change => change.Key + (change.Definition is { } definition && ValidSettingValue(definition, value) ? " = " + value : " (invalid target or value)")).ToArray(), enabling);
+        if (targets.Any(k => k.StartsWith("Cabinet", StringComparison.Ordinal)) && cabinet is null) throw new MutationRejectedException("SERVICE_UNAVAILABLE", 7);
+        if (targets.Any(k => k.StartsWith("Cabinet", StringComparison.Ordinal) && k != "CabinetEnabled") && !settings.CabinetEnabled) throw new MutationRejectedException("CABINET_DISABLED", 5);
+        bool sharing = enabled && targets.Any(k => k.StartsWith("Cabinet", StringComparison.Ordinal));
+        string context = PlanContext;
+        var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, targets,
+            changes.Select(change => change.Key + (change.Definition is { } definition && ValidSettingValue(definition, value) ? " = " + value : " (invalid target or value)")).Concat(sharing ? [Resources.Strings.Agent_CabinetImpact] : Array.Empty<string>()).ToArray(), enabling || sharing);
         return new(plan, token => Snapshot(() =>
         {
             // Dispatcher turn owns the settings transaction. GUI writes cannot interleave validation/commit.
             var fresh = PrepareSettingVersion(targets);
-            if (fresh != version) throw new MutationRejectedException("PLAN_STALE", 6);
+            if (PlanContext != context || fresh != version) throw new MutationRejectedException("PLAN_STALE", 6);
             var results = new List<object>(); bool failed = false;
             foreach (var (key, definition) in changes)
             {
@@ -79,7 +83,10 @@ public sealed partial class AgentCommandService
             case "StartWithWindows": settings.StartWithWindows = bool.Parse(value); break;
             case "MinimizeToTray": settings.MinimizeToTray = bool.Parse(value); break;
             case "FastFetch": settings.FastFetch = bool.Parse(value); break;
-            // Cabinet effects need the Cabinet coordinator; do not claim a plain persisted write is enough.
+            case "CabinetEnabled": settings.CabinetEnabled = bool.Parse(value); cabinet!.SettingsChanged(); break;
+            case "CabinetLivePlaytime": settings.CabinetLivePlaytime = bool.Parse(value); cabinet!.SettingsChanged(); break;
+            case "CabinetFetchSchemas": settings.CabinetFetchSchemas = bool.Parse(value); cabinet!.SettingsChanged(); break;
+            case "CabinetWorkshopLinks": settings.CabinetWorkshopLinks = bool.Parse(value); cabinet!.SettingsChanged(); break;
             default: throw new MutationRejectedException("REFACTOR_REQUIRED", 5);
         }
     }

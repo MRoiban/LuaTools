@@ -39,13 +39,14 @@ public sealed partial class AgentCommandService
             });
             string version = items.Length == 1 ? items[0] is { } one ? AgentJobRegistry.Version(one) : "missing"
                 : MutationCoordinator.Hash(string.Join(':', items.Select(i => i is null ? "missing" : AgentJobRegistry.Version(i))));
-            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), PlanContext, version, targets,
+            string context = PlanContext;
+            var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, targets,
                 [verb == "retry" ? Resources.Strings.Agent_RetryImpact : r.Command], r.Flags.ContainsKey("delete-created") || verb == "retry" || verb == "confirm" && r.Flags.GetValueOrDefault("decision") == "replace");
             return new PreparedMutation(plan, commitToken => Snapshot(() =>
             {
                 string fresh = items.Length == 1 ? items[0] is { } one ? AgentJobRegistry.Version(one) : "missing"
                     : MutationCoordinator.Hash(string.Join(':', items.Select(i => i is null ? "missing" : AgentJobRegistry.Version(i))));
-                if (fresh != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (PlanContext != context || fresh != version) throw new MutationRejectedException("PLAN_STALE", 6);
                 var results = new List<object>(); bool failed = false; object? last = null;
                 for (int index = 0; index < items.Length; index++)
                 {
@@ -66,7 +67,7 @@ public sealed partial class AgentCommandService
                                 string operation = Jobs.Register("depot-cleanup", async _ =>
                                     await DownloadCancellationCoordinator.CancelAsync(queue, cancelled, true)
                                         ? Envelope.Success(new { child_job_id = cancelled.Id })
-                                        : Envelope.Fail("CLEANUP_FAILED", 1, Resources.Strings.Agent_MutationRejected), CancellationToken.None);
+                                        : Envelope.Fail("CLEANUP_FAILED", 1, Resources.Strings.Agent_MutationRejected), _hostLifetime);
                                 last = new { id = operation, job_id = operation, child_job_id = cancelled.Id, state = "running" };
                                 results.Add(new { id = operation, ok = true, job = last });
                                 continue;

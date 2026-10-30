@@ -178,3 +178,5 @@ with that maintainer before sharing credentials, keys or exploit details. Do not
 Steam keys, authentication files or complete local configuration files in a public issue.
 
 Discovery advertises elevation; a verified live owner at the other elevation produces ELEVATION_MISMATCH (5), identifies both sides and gives matching-terminal/restart instructions before any start attempt. A present owner mutex prevents auto-starting a competing instance even during discovery publication. ACLs and token checks remain unchanged. AppData redirection applies consistently to state and owner identity for isolated process tests. The mutation journal stores hashed keys/payloads and safe receipts only, with durable intent before side effects; uncertain intents are never replayed.
+
+Automatic GUI launch uses CreateProcess with handle inheritance disabled, preserving the client token, session and environment. This prevents a long-lived owner from holding redirected CLI stdout/stderr open after the client exits.

@@ -77,7 +77,7 @@ public sealed class AgentClient
                     {
                         var launcher = LocalDiscovery.Read<LauncherRecord>(LocalDiscovery.Launcher);
                         if (!Path.IsPathFullyQualified(launcher.Executable) || !Path.GetFileName(launcher.Executable).Equals("LuaTools.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(launcher.Executable)) return Unavailable();
-                        Process.Start(new ProcessStartInfo(launcher.Executable) { UseShellExecute = false, Arguments = "--minimized", WorkingDirectory = Path.GetDirectoryName(launcher.Executable)! });
+                        WindowsGuiLauncher.Start(launcher.Executable);
                         started = true;
                     }
                     catch (Exception startError) when (startError is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException) { return Unavailable(); }

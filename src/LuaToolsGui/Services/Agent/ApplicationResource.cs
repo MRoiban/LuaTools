@@ -14,7 +14,12 @@ public sealed partial class AgentCommandService
                 if (await Snapshot(() => queue.ActiveCount + Jobs.ActiveOperations, token) > 0 || Cabinet.CabinetService.HasActiveHelpers)
                     throw new MutationRejectedException("JOBS_ACTIVE", 6);
                 return new(new(Guid.NewGuid().ToString("N"), PlanContext, "idle", [], [Resources.Strings.Agent_ExitImpact], true),
-                    _ => Task.FromResult(Envelope.Success(new { state = "exiting" })));
+                    commitToken => Snapshot(() =>
+                    {
+                        if (queue.ActiveCount + Jobs.ActiveOperations > 0 || Cabinet.CabinetService.HasActiveHelpers) throw new MutationRejectedException("JOBS_ACTIVE", 6);
+                        _exiting = true; _shutdownReplies.TryAdd(r.RequestId, 0);
+                        return Envelope.Success(new { state = "exiting", instance_id = InstanceId, request_id = r.RequestId });
+                    }, commitToken));
             }, ct);
         return Ping();
     }

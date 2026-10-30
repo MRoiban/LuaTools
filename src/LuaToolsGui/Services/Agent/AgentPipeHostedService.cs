@@ -22,7 +22,7 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
         try
         {
             if (!OperatingSystem.IsWindows()) return;
-            commands.BindEvents();
+            commands.BindHost(stoppingToken);
             AppEventLog.Shared.EntryWritten += OnLog;
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             var discovery = new Discovery(Protocol.Version, commands.InstanceId, _pipe, process.Id, process.StartTime.ToUniversalTime().Ticks, process.SessionId,
@@ -90,8 +90,8 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
             }
             using var write = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
             write.CancelAfter(TimeSpan.FromSeconds(5));
-            await Protocol.WriteAsync(pipe, reply, Protocol.MaxFrame, write.Token).ConfigureAwait(false);
-            if (reply.Ok) commands.AfterReply(request);
+            try { await Protocol.WriteAsync(pipe, reply, Protocol.MaxFrame, write.Token).ConfigureAwait(false); }
+            finally { commands.AfterReply(request); }
 
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or ArgumentException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)

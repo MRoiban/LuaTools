@@ -326,15 +326,23 @@ Mutation admission serializes short plan/commit stages and journals intent atomi
 service calls. Journal: seven days/10000 entries; plans: five minutes/1000 entries. Secret-free
 receipts reconcile retries across owner restart; incomplete intents report OUTCOME_UNKNOWN.
 Setting update supports JSON, bulk selection, plans, versions, explicit executable consent and
-actor attribution. Cabinet setting writes remain read-only pending their service coordinator.
+actor attribution. Cabinet writes use its existing SettingsChanged service path; enabling sharing
+requires --yes and subordinate options require Cabinet enabled.
 Queue job controls operate on real IDs, retain dismissed rows, and use existing queue methods.
 Nonqueue operations can register asynchronous service tasks without another scheduler.
-Unsupported tracked-output deletion and unregistered GUI confirmation delegates fail explicitly.
-Application exit works for idle owners; active-job drain, application restart and update apply
-still need their lifecycle extraction and are not advertised as enabled by this pass.
+Tracked-output deletion shares the GUI cancellation helper and returns a cleanup operation.
+Downloaded-manifest GUI confirmations share the agent decision coordinator; other unregistered
+confirmation delegates remain unavailable.
+Application exit works for idle owners; --drain polls short status observations first. Application
+restart and update apply still need their lifecycle extraction and remain disabled.
 Windows process tests redirect both AppData roots consistently (including mutex identity),
 restore HKCU PATH, and never select the runner's Steam. Folder rotation tests client survival
 and launcher refresh; they do not simulate release-signature verification.
 
 Simple allowlisted non-executable setting writes are the safe atomic contract: the explicit
 key/value is sufficient consent. Executable enabling requires --yes; revocation requires none.
+
+The bounded event hub retains 1000 events and supports 16 independent readers (128 queued frames
+per reader, explicit reset on overflow). Download progress is coalesced at 100ms; state changes
+are never coalesced. Activity publication happens only after redaction and disk append. Future
+watch handlers can reuse this adapter; watch/session wire commands remain disabled.

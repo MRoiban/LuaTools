@@ -12,20 +12,23 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
+    private volatile bool _exiting;
+    private CancellationToken _hostLifetime;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _shutdownReplies = new();
     private readonly SnapshotPager _pager = new();
     private readonly MutationCoordinator _mutations = mutations ?? new();
     private readonly AgentJobRegistry _jobs = new(queue);
     internal AgentJobRegistry Jobs => _jobs;
-    internal void BindEvents() => Jobs.Events = new AgentEventHub(InstanceId);
+    internal void BindHost(CancellationToken lifetime) { _hostLifetime = lifetime; Jobs.Events = new AgentEventHub(InstanceId); }
     private string PlanContext => MutationCoordinator.Hash(InstanceId + SteamIdentity + auth.IsSignedIn + string.Join(':',
         Protocol.Node(ReadSettings(settings))!.AsArray().Select(n => n!["version"]!.ToString())));
     public void AfterReply(AgentRequest request)
     {
-        if (request.Command == "application exit" && !request.Flags.ContainsKey("dry-run"))
+        if (_shutdownReplies.TryRemove(request.RequestId, out _))
             Application.Current?.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
     }
     public string SteamIdentity => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((steam.EffectivePath ?? "").ToUpperInvariant())));
@@ -38,7 +41,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     {
         if (request.Protocol != Protocol.Version) return Envelope.Fail("PROTOCOL_MISMATCH", 6, Resources.Strings.Agent_ContextChanged);
         if (request.InstanceId != InstanceId || request.Flags.GetValueOrDefault("expect-instance") is { } instance && instance != InstanceId || request.ExpectedSteam is { } selected && selected != SteamIdentity)
-            return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
+            return Envelope.Fail(request.Flags.ContainsKey("plan-id") ? "PLAN_STALE" : "CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         // Validate again at the trust boundary, including projections. Never trust client parsing.
         if (request.Flags.ContainsKey("ids-from")) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
         var args = request.Command.Split(' ').Concat(request.Arguments).ToList();
@@ -46,6 +49,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         var parsed = CommandParser.Parse(args.ToArray());
         if (parsed.Problems.Length != 0) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments, problems: parsed.Problems);
         if (parsed.Command is null || parsed.Command.Key != request.Command) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
+        if (_exiting && !parsed.Command.ReadOnly) return Envelope.Fail("BUSY", 7, Resources.Strings.Agent_MutationRejected);
         if (request.Flags.ContainsKey("read-only") && !parsed.Command.ReadOnly) return Envelope.Fail("READ_ONLY", 5, Resources.Strings.Agent_ReadOnly);
         if (!parsed.Command.ReadOnly && request.ExpectedSteam is null) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         if (parsed.Command.Status != "enabled" || request.Flags.ContainsKey("fix")) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);

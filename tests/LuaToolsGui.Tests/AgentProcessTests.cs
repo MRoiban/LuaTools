@@ -41,7 +41,7 @@ public sealed class AgentProcessTests
         async Task<(int Exit, string Output)> Run(ProcessStartInfo start, int seconds = 45)
         {
             var p = Spawn(start); var output = p.StandardOutput.ReadToEndAsync(); var error = p.StandardError.ReadToEndAsync();
-            await p.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(seconds));
+            await Task.WhenAll(p.WaitForExitAsync(), output, error).WaitAsync(TimeSpan.FromSeconds(seconds));
             return (p.ExitCode, await output + (p.ExitCode == 0 ? "" : await error));
         }
         async Task<JsonNode> Cli(params string[] args)

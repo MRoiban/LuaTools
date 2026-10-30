@@ -171,4 +171,18 @@ Test("bulk input and command deadlines", () =>
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["doctor"]))) == TimeSpan.FromSeconds(30), "doctor budget");
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["ping", "--timeout", "10ms"]))) == TimeSpan.FromMilliseconds(10), "requested budget");
 });
+await AsyncTest("event retention rejects expired cursor", async () =>
+{
+    var hub = new AgentEventHub("test"); for (int i = 0; i < 1001; i++) hub.Publish("test", "state", new { value = i });
+    await using var stream = hub.Watch("test:1", default).GetAsyncEnumerator();
+    Assert(await stream.MoveNextAsync() && stream.Current.Error?.Code == "CURSOR_EXPIRED", "retention");
+});
+Test("bulk selection bounds and JSON schema", () =>
+{
+    var request = Request(CommandParser.Parse(["setting", "update", "--where", "type=bool", "--value", "false"]));
+    var ids = BulkSelection.Select(request, new JsonArray(Protocol.Node(new { key = "FastFetch", type = "bool" }), Protocol.Node(new { key = "Language", type = "string" })), "key", ["type"]);
+    Assert(ids.SequenceEqual(new[] { "FastFetch" }), "selection");
+    bool rejected = false; try { BulkSelection.Data(request with { Flags = new() { ["data"] = "{\"secret\":true}" } }, "value"); } catch (JsonException) { rejected = true; }
+    Assert(rejected, "unknown data field");
+});
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;
