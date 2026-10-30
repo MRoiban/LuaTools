@@ -415,7 +415,7 @@
     "variants": [
       "luatools depot get <depotid> --appid <appid>"
     ],
-    "purpose": "Get SteamDB URL for depot or DLC diff row.",
+    "purpose": "Read a depot row including platform, language, manifest pins and availability.",
     "capability_ids": [
       "C-030"
     ],

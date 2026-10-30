@@ -7,7 +7,7 @@
       "luatools game list [--featured | --pending-added | --cabinet] [--refresh]",
       "luatools game list [--type <type>] [--genre <genre>] [--year <year>] [--price <free-or-paid>]"
     ],
-    "purpose": "List added games (games with a live Lua), including those not installed in Steam; filter, sort, count or show recent and pending additions.",
+    "purpose": "List added Lua games, even when Steam-uninstalled; --featured lists remote games, --pending-added recent additions, --cabinet tracked games. Filter, sort or count.",
     "capability_ids": [
       "C-054",
       "C-062",
@@ -32,7 +32,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
+      "Read library or catalogue metadata without changing games or Steam."
     ],
     "flags": [
       {
@@ -281,7 +281,8 @@
       "added",
       "paths.install",
       "image",
-      "category"
+      "category",
+      "cabinet"
     ]
   },
   {
@@ -308,7 +309,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
+      "Read library or catalogue metadata without changing games or Steam."
     ],
     "flags": [
       {
@@ -490,7 +491,7 @@
     "destructive": false,
     "reversible": null,
     "side_effects": [
-      "Read added library and cached metadata; --installed searches added games, otherwise search uses the remote catalogue. No installation changes."
+      "Read library or catalogue metadata without changing games or Steam."
     ],
     "flags": [
       {

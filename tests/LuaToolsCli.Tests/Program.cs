@@ -123,6 +123,20 @@ await AsyncTest("file validation precedes transport", async () =>
         Assert(exit == 2 && capture.ToString().Contains(arguments[Array.IndexOf(arguments, "--file") + 1]), capture.ToString());
     }
 });
+await AsyncTest("valid local input preserves absent-owner exit", async () =>
+{
+    var directory = Directory.CreateTempSubdirectory("luatools-input-");
+    try
+    {
+        string file = Path.Combine(directory.FullName, "570.lua"); await File.WriteAllTextAsync(file, "addappid(570)\n");
+        var old = Console.Out; var capture = new StringWriter(); Console.SetOut(capture);
+        int exit;
+        try { exit = await Cli.RunAsync(["lua", "add", "--file", file, "--dry-run", "--no-start", "--json"], (parsed, ct) => new AgentClient().InvokeAsync(parsed, ct)); }
+        finally { Console.SetOut(old); }
+        Assert(exit == 9, capture.ToString());
+    }
+    finally { directory.Delete(true); }
+});
 Test("parser aggregates", () => Assert(CommandParser.Parse(["activity-log", "list", "--limit", "0", "--severity", "bad", "--quiet", "--verbose", "--since", "yesterday"]).Problems.Length == 4, "all problems"));
 Test("unknown suggestions", () => Assert(CommandParser.Parse(["statuz"]).Problems.Any(p => p.Message.Contains("status")), "suggestion"));
 Test("enum allowed values", () => Assert(CommandParser.Parse(["completion", "bad"]).Problems.Single().AllowedValues!.Contains("bash"), "values"));

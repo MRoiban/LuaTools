@@ -105,7 +105,17 @@ public sealed partial class AgentCommandService
         }
         return reasons.ToArray();
     }
-    private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data) => _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
+    private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data)
+    {
+        foreach (var row in data.OfType<System.Text.Json.Nodes.JsonObject>())
+        {
+            if (!long.TryParse(row["appid"]?.ToString() ?? row["id"]?.ToString(), out long id)) continue;
+            row["appid"] ??= id;
+            row["added"] ??= steam.StPlugInDir is { } plug && File.Exists(Path.Combine(plug, id + ".lua"));
+            row["installed"] ??= libraryInstalls?.GetInstallDir(id) is { } install && Directory.Exists(install);
+        }
+        return _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
+    }
     private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
     {
         if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);
