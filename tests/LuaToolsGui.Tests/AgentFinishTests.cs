@@ -221,6 +221,8 @@ public sealed class AgentFinishTests
         await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var batch = Assert.Single(f.Local.Operations);
         var job = await f.Call("job get", [batch.Id]); Assert.True(job.Ok); Assert.NotNull(job.Data!["pending_decision"]);
+        var waitingJob = await f.Call("job wait", [batch.Id]); Assert.Equal("awaiting_confirmation", waitingJob.Data!["state"]!.ToString());
+        var observation = AgentClient.WaitOutcome(waitingJob)!; Assert.Equal("CONSENT_REQUIRED", observation.Error!.Code); Assert.NotNull(observation.Error.Details!["pending_decision"]);
         if (replaced) Assert.Equal("CONSENT_REQUIRED", (await f.Call("job confirm", [batch.Id], new() { ["decision"] = decision })).Error!.Code);
         var confirm = await f.Call("job confirm", [batch.Id], new() { ["decision"] = decision, ["yes"] = null }); Assert.True(confirm.Ok);
         var outcomes = await run.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(!replaced, Assert.Single(outcomes).Skipped);

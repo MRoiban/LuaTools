@@ -165,6 +165,15 @@ Test("per-command guide order", () =>
     string[] sections = ["Usage:", "Flags:", "Side effects:", "Reversibility:", "Preconditions:", "Examples:", "See also:"];
     Assert(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).SequenceEqual(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).OrderBy(i => i)) && sections.All(help.Contains), help);
 });
+Test("job wait preserves failed outcomes and pending decisions", () =>
+{
+    foreach (string state in new[] { "failed", "cancelled", "awaiting_confirmation" })
+    {
+        var outcome = AgentClient.WaitOutcome(Envelope.Success(new { id = "batch", state, result = new { results = new[] { new { ok = false } } }, pending_decision = new { readable = false } }))!;
+        Assert(!outcome.Ok && outcome.Error!.Details!["id"]!.ToString() == "batch" && outcome.Error.Details["result"] is not null, "job result details");
+    }
+    Assert(AgentClient.WaitOutcome(Envelope.Success(new { state = "running" })) is null, "continue observation");
+});
 Test("depot repeated selection is canonical and entry zero is valid", () =>
 {
     var parsed = CommandParser.Parse(["depot", "plan", "570", "--depot", "571", "--depot", "572"]);

@@ -49,7 +49,12 @@ public sealed class AgentClient
                         if (expectedSteam is null) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The owner did not advertise mutation context.");
                         continue;
                     }
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown", parsed.Files) { Secret = parsed.Secret };
+                    var requestFlags = parsed.Flags;
+                    if (parsed.Command.Key == "job wait" && parsed.Value("fields") is { } projection)
+                    {
+                        requestFlags = new(parsed.Flags) { ["fields"] = string.Join(',', projection.Split(',').Append("state").Distinct()) };
+                    }
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, requestFlags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown", parsed.Files) { Secret = parsed.Secret };
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
                     if (request.Secret is { } secret) await Protocol.WriteAsync(pipe, new SecretFrame(secret), 8192, ct).ConfigureAwait(false);
                     await UploadAsync(pipe, parsed.FileBytes, ct).ConfigureAwait(false);
@@ -63,11 +68,11 @@ public sealed class AgentClient
                             onEvent?.Invoke(reply);
                         }
                     }
-                    if (parsed.Command.Key == "job wait" && reply.Ok && reply.Data?["state"]?.ToString() is { } state)
+                    if (parsed.Command.Key == "job wait")
                     {
-                        if (state == "awaiting_confirmation") return Envelope.Fail("CONSENT_REQUIRED", 8, "The job needs a decision.");
-                        if (state is "failed" or "cancelled") return Envelope.Fail(state == "failed" ? "JOB_FAILED" : "JOB_CANCELLED", 1, "The job did not complete successfully.");
-                        if (state != "completed") { await Task.Delay(100, ct).ConfigureAwait(false); continue; }
+                        var outcome = WaitOutcome(reply);
+                        if (outcome is null) { await Task.Delay(100, ct).ConfigureAwait(false); continue; }
+                        return Results.Project(outcome, parsed.Value("fields"));
                     }
                     if (reply.Ok && !parsed.Has("dry-run") && parsed.Command.Key is ("application restart" or "update apply"))
                     {
@@ -120,6 +125,17 @@ public sealed class AgentClient
             }
         }
     }
+    // Preserve per-operation results/diffs when observation stops on a failed job or decision.
+    public static Envelope? WaitOutcome(Envelope reply)
+    {
+        if (!reply.Ok || reply.Data?["state"]?.ToString() is not { } state) return reply;
+        if (state == "completed") return reply;
+        string? code = state switch { "awaiting_confirmation" => "CONSENT_REQUIRED", "failed" => "JOB_FAILED", "cancelled" => "JOB_CANCELLED", _ => null };
+        if (code is null) return null;
+        var error = Envelope.Fail(code, state == "awaiting_confirmation" ? 8 : 1, state == "awaiting_confirmation" ? "The job needs a decision." : "The job did not complete successfully.");
+        return error with { Error = error.Error! with { Details = reply.Data } };
+    }
+
     public static async Task UploadAsync(Stream pipe, byte[][] files, CancellationToken ct)
     {
         foreach (byte[] file in files)
