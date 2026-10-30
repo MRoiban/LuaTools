@@ -141,13 +141,4 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
         if (!Authenticate(request)) return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied);
         return await commands.ExecuteAsync(request, ct).ConfigureAwait(false);
     }
-    private bool Authenticate(AgentRequest request)
-    {
-        byte[] supplied;
-        try { supplied = Convert.FromBase64String(request.Capability); }
-        catch (FormatException) { return false; }
-        bool allowed = CryptographicOperations.FixedTimeEquals(supplied, _capability);
-        CryptographicOperations.ZeroMemory(supplied);
-        return allowed;
-    }
 }
