@@ -102,7 +102,7 @@ public sealed partial class AgentCommandService
         {
             if (PlanContext != context || VaultVersion(id) != version) throw new MutationRejectedException("PLAN_STALE", 6);
             var coordinator = new DepotPresetCoordinator(vault!);
-            var saved = create ? coordinator.Create(id, text, name) : coordinator.SaveLive(id, origin);
+            var saved = create ? fromLive ? coordinator.Create(id, text, name) : coordinator.Import(id, text, name) : coordinator.SaveLive(id, origin);
             return saved is null ? Envelope.Fail("SAVE_FAILED", 1, Resources.Strings.Agent_Depot_Unavailable) : Envelope.Success(new { appid = id, hash = saved.Hash, version = VaultVersion(id) });
         }, commit));
     }, ct);

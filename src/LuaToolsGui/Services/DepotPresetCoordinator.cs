@@ -56,7 +56,8 @@ public sealed class DepotPresetCoordinator(LuaVault vault)
         RememberEditBase(appId);
         return vault.WriteLive(appId, text) ? SaveLive(appId) : null;
     }
-    public LuaVariant? Create(long appId, string text, string? name = null) => vault.ImportText(appId, text, name);
+    public LuaVariant? Create(long appId, string text, string? name = null) => vault.SaveText(appId, text, name);
+    public LuaVariant? Import(long appId, string text, string? name = null) => vault.ImportText(appId, text, name);
     public bool Apply(long appId, LuaVariant variant) => vault.Apply(appId, variant);
     public bool Delete(long appId, string hash) => vault.Delete(appId, hash);
     public void Rename(long appId, string hash, string? name) => vault.Rename(appId, hash, name);

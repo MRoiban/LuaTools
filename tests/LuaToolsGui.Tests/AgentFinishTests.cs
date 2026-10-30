@@ -350,6 +350,10 @@ public sealed class AgentFinishTests
         Assert.True(f.Vault.Delete(570, origin.Hash));
         var fallback = coordinator.SaveLive(570, origin.Hash); Assert.NotNull(fallback); Assert.Null(f.Vault.GetEditBase(570));
         var dedup = coordinator.Create(570, f.Vault.ReadLiveText(570)); Assert.Equal(fallback!.Hash, dedup!.Hash);
+        f.Vault.SetEditBase(570, dedup.Hash);
+        f.Live("addappid(570)\n-- saved GUI live preset\n");
+        Assert.NotNull(coordinator.Create(570, f.Vault.ReadLiveText(570), "GUI preset"));
+        Assert.Null(f.Vault.GetEditBase(570));
     }
 
     [Fact]
