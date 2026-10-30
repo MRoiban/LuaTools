@@ -1,0 +1,1431 @@
+[
+  {
+    "resource": "depot",
+    "verb": "list",
+    "syntax": "luatools depot list [--games | --appid <appid>] [--section <name>]",
+    "variants": [
+      "luatools depot list [--games | --appid <appid>] [--section <name>]"
+    ],
+    "purpose": "List games with live or loose-build Lua and active preset badges.",
+    "capability_ids": [
+      "C-021",
+      "C-024"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "games",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "appid",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "section",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "default": 50,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "all",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "count",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "sort",
+        "type": "enum",
+        "default": "default",
+        "allowed_values": [
+          "default",
+          "reverse"
+        ],
+        "required": false
+      }
+    ],
+    "identities": [],
+    "identity_values": [],
+    "examples": [
+      "luatools depot list",
+      "luatools depot list --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "depot",
+    "verb": "plan",
+    "syntax": "luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]",
+    "variants": [
+      "luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]"
+    ],
+    "purpose": "Plan download, choose rows/all, destination and inspect required/free bytes.",
+    "capability_ids": [
+      "C-028"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "depot",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "all-depots",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "output",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools depot plan 570",
+      "luatools depot plan 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "depot",
+    "verb": "get",
+    "syntax": "luatools depot get <depotid> --appid <appid>",
+    "variants": [
+      "luatools depot get <depotid> --appid <appid>"
+    ],
+    "purpose": "Get SteamDB URL for depot or DLC diff row.",
+    "capability_ids": [
+      "C-030"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "appid",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      }
+    ],
+    "identities": [
+      "depotid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools depot get 571 --appid 570",
+      "luatools depot get 571 --appid 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "depot",
+    "verb": "search",
+    "syntax": "luatools depot search --appid <appid> --query <text>",
+    "variants": [
+      "luatools depot search --appid <appid> --query <text>"
+    ],
+    "purpose": "Search depot metadata in LuaTools.",
+    "capability_ids": [
+      "C-025"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "appid",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      },
+      {
+        "name": "query",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      }
+    ],
+    "identities": [],
+    "identity_values": [],
+    "examples": [
+      "luatools depot search --appid 570 --query Portal",
+      "luatools depot search --appid 570 --query Portal --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "depot",
+    "verb": "reconcile",
+    "syntax": "luatools depot reconcile <appid> [--refresh]",
+    "variants": [
+      "luatools depot reconcile <appid> [--refresh]"
+    ],
+    "purpose": "Select game and reconcile vault with live or loose-build files.",
+    "capability_ids": [
+      "C-022",
+      "C-023"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": false,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": true,
+    "reversible": false,
+    "side_effects": [
+      "See capability-map intent preconditions; disabled in this slice."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "refresh",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools depot reconcile 570",
+      "luatools depot reconcile 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
+    ]
+  },
+  {
+    "resource": "depot",
+    "verb": "update",
+    "syntax": "luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]",
+    "variants": [
+      "luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]"
+    ],
+    "purpose": "Lock or unlock existing manifest pins.",
+    "capability_ids": [
+      "C-026",
+      "C-027"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": false,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": true,
+    "reversible": false,
+    "side_effects": [
+      "See capability-map intent preconditions; disabled in this slice."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "appid",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      },
+      {
+        "name": "preset",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "locked",
+        "type": "boolean",
+        "default": null,
+        "allowed_values": [
+          "true",
+          "false"
+        ],
+        "required": false
+      },
+      {
+        "name": "enabled",
+        "type": "boolean",
+        "default": null,
+        "allowed_values": [
+          "true",
+          "false"
+        ],
+        "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "depotid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools depot update 571 --appid 570",
+      "luatools depot update 571 --appid 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
+    ]
+  },
+  {
+    "resource": "depot",
+    "verb": "download",
+    "syntax": "luatools depot download <appid> --depot <id>... --output <path>",
+    "variants": [
+      "luatools depot download <appid> --depot <id>... --output <path>"
+    ],
+    "purpose": "Download selected depots to chosen output directory.",
+    "capability_ids": [
+      "C-029"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": false,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": true,
+    "reversible": false,
+    "side_effects": [
+      "See capability-map intent preconditions; disabled in this slice."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "depot",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      },
+      {
+        "name": "output",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": true
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua",
+      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --format text"
+    ],
+    "see_also": [
+      "luatools describe depot",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
+    ]
+  }
+]

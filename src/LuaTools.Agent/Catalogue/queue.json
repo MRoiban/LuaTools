@@ -1,0 +1,192 @@
+[
+  {
+    "resource": "queue",
+    "verb": "list",
+    "syntax": "luatools queue list",
+    "variants": [
+      "luatools queue list"
+    ],
+    "purpose": "Read immutable queue snapshot.",
+    "capability_ids": [
+      "C-156"
+    ],
+    "status": "enabled",
+    "disabled_code": null,
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "default": 50,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "all",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "count",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "sort",
+        "type": "enum",
+        "default": "default",
+        "allowed_values": [
+          "default",
+          "reverse"
+        ],
+        "required": false
+      }
+    ],
+    "identities": [],
+    "identity_values": [],
+    "examples": [
+      "luatools queue list",
+      "luatools queue list --format text"
+    ],
+    "see_also": [
+      "luatools describe queue",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "id",
+      "appid",
+      "title",
+      "state",
+      "bytes",
+      "total_bytes",
+      "rate",
+      "eta_seconds",
+      "enqueued_at",
+      "available_actions"
+    ]
+  }
+]

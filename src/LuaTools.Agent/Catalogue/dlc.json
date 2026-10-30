@@ -1,0 +1,779 @@
+[
+  {
+    "resource": "dlc",
+    "verb": "get",
+    "syntax": "luatools dlc get <appid> [--batch <id>]",
+    "variants": [
+      "luatools dlc get <appid> [--batch <id>]"
+    ],
+    "purpose": "Read DLC depot coverage.",
+    "capability_ids": [
+      "C-031",
+      "C-034"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "batch",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools dlc get 570",
+      "luatools dlc get 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe dlc",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "dlc",
+    "verb": "check",
+    "syntax": "luatools dlc check <appid> [--owned <appid>...]",
+    "variants": [
+      "luatools dlc check <appid> [--owned <appid>...]"
+    ],
+    "purpose": "Check batch DLC availability/ownership.",
+    "capability_ids": [
+      "C-033"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "owned",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools dlc check 570",
+      "luatools dlc check 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe dlc",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": []
+  },
+  {
+    "resource": "dlc",
+    "verb": "add",
+    "syntax": "luatools dlc add <appid> [--batch <id>]",
+    "variants": [
+      "luatools dlc add <appid> [--batch <id>]"
+    ],
+    "purpose": "Generate and install DLC Lua.",
+    "capability_ids": [
+      "C-032",
+      "C-035"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": false,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": true,
+    "reversible": false,
+    "side_effects": [
+      "See capability-map intent preconditions; disabled in this slice."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "batch",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "appid"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools dlc add 570",
+      "luatools dlc add 570 --format text"
+    ],
+    "see_also": [
+      "luatools describe dlc",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
+    ]
+  },
+  {
+    "resource": "dlc",
+    "verb": "cancel",
+    "syntax": "luatools dlc cancel <id>",
+    "variants": [
+      "luatools dlc cancel <id>"
+    ],
+    "purpose": "Cancel checking, ready or applying DLC batch.",
+    "capability_ids": [
+      "C-036"
+    ],
+    "status": "disabled",
+    "disabled_code": "NOT_IMPLEMENTED",
+    "aliases": [],
+    "read_only": false,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": true,
+    "reversible": false,
+    "side_effects": [
+      "See capability-map intent preconditions; disabled in this slice."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "dry-run",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "yes",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "data",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "ids-from",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "where",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "if-version",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "actor-note",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "idempotency-key",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "plan-id",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "restart-steam",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "drain",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "id"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0",
+      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+    ],
+    "see_also": [
+      "luatools describe dlc",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated same-user GUI owner"
+    ],
+    "output_fields": [
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
+    ]
+  }
+]

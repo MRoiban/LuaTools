@@ -12,7 +12,7 @@ public sealed class UpdateService
 {
     internal const string Repository = "MRoiban/LuaTools";
     internal const long MaxPackageBytes = 256L * 1024 * 1024;
-    private static readonly string DefaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.DataDirectoryName, "signed-updates");
+    private static readonly string DefaultRoot = Path.Combine(LuaTools.Agent.DataPaths.Local, AppConfig.DataDirectoryName, "signed-updates");
     private static readonly HttpClient DefaultHttp = AppHttp.Create(TimeSpan.FromMinutes(5), responseBudget: HttpResponseBudget.Download);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _http;

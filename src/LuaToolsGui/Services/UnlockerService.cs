@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
@@ -867,7 +867,7 @@ public class UnlockerService(SteamService steam, SettingsService settings, Cache
     }
 
     internal static string ConsentReceiptPath(string component) => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName,
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName,
         "consent", "install", component + ".json");
 
     private bool IsConsentedCloudAddon(string root)

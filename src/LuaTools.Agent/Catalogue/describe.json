@@ -1,0 +1,149 @@
+[
+  {
+    "resource": "describe",
+    "verb": "",
+    "syntax": "luatools describe <resource>",
+    "variants": [
+      "luatools describe <resource>"
+    ],
+    "purpose": "Describe resource input/output schemas.",
+    "capability_ids": [
+      "C-158"
+    ],
+    "status": "enabled",
+    "disabled_code": null,
+    "aliases": [],
+    "read_only": true,
+    "dry_run": false,
+    "job_behavior": "none",
+    "destructive": false,
+    "reversible": null,
+    "side_effects": [
+      "No application state changes; RPC may start the minimized owner."
+    ],
+    "flags": [
+      {
+        "name": "json",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "format",
+        "type": "enum",
+        "default": null,
+        "allowed_values": [
+          "json",
+          "jsonl",
+          "csv",
+          "table",
+          "text"
+        ],
+        "required": false
+      },
+      {
+        "name": "fields",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "quiet",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "verbose",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-color",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "timeout",
+        "type": "duration",
+        "default": "30s",
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-input",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "read-only",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "no-start",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-instance",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "expect-steam",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      }
+    ],
+    "identities": [
+      "resource"
+    ],
+    "identity_values": [],
+    "examples": [
+      "luatools describe setting",
+      "luatools describe setting --format text"
+    ],
+    "see_also": [
+      "luatools describe describe",
+      "luatools commands --json"
+    ],
+    "exit_codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "preconditions": [
+      "Authenticated owner in the same Windows account, session and elevation for RPC."
+    ],
+    "output_fields": [
+      "resource",
+      "commands",
+      "settings"
+    ]
+  }
+]

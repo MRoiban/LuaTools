@@ -29,7 +29,7 @@ public sealed class AppEventLog
     private const int MaxExceptionChars = 8000;
 
     public static string DefaultDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "logs");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "logs");
 
     public static AppEventLog Shared { get; } = new(DefaultDirectory);
 

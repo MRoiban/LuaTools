@@ -27,7 +27,7 @@ public static class Program
                 Command? target = parsed.Has("help") ? parsed.Command!.Key == "help" ? null : parsed.Command : parsed.Arguments.Length > 0 ? Catalogue.Find(string.Join(' ', parsed.Arguments)) : null;
                 string? resource = target is null ? parsed.Arguments.FirstOrDefault() : null;
                 string help = Rendering.Help(target, resource);
-                if (parsed.Format(tty) is "text" or "table") { Console.WriteLine(help); return 0; }
+                if (!parsed.Has("json") && parsed.Value("format") is not ("json" or "jsonl")) { Console.WriteLine(help); return 0; }
                 result = Envelope.Success(new { help });
             }
             else if (parsed.Command.Key == "version") result = Envelope.Success(new { version = typeof(Program).Assembly.GetName().Version?.ToString(), protocol = Protocol.Version });
@@ -45,7 +45,11 @@ public static class Program
             }
             else if (parsed.Has("read-only") && !parsed.Command.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
             else if (parsed.Command.Status != "enabled" || parsed.Has("fix")) result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This action is not implemented in this release.");
-            else result = await transport(parsed, cancellation.Token);
+            else
+            {
+                parsed = await CommandInput.LoadAsync(parsed, cancellation.Token);
+                result = parsed.Problems.Length > 0 ? Envelope.Fail("INVALID_USAGE", 2, "Invalid input data.", problems: parsed.Problems) : await transport(parsed, cancellation.Token);
+            }
             result = Results.Project(result, parsed.Value("fields"));
         }
         catch (OperationCanceledException) { result = interrupted ? Envelope.Fail("INTERRUPTED", 130, "Interrupted.") : Envelope.Fail("TIMEOUT", 7, "Call deadline exceeded."); }

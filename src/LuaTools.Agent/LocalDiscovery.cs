@@ -14,7 +14,7 @@ namespace LuaTools.Agent;
 /// <summary>Only discovery and launcher records live here. Business state is never opened by the client.</summary>
 public static class LocalDiscovery
 {
-    public static string Root => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LuaToolsGui-SecurityHardened", "bin");
+    public static string Root => Path.Combine(DataPaths.Local, "LuaToolsGui-SecurityHardened", "bin");
     public static string Record => Path.Combine(Root, "agent-v1.json");
     public static string Launcher => Path.Combine(Root, "gui-path.json");
 
@@ -70,6 +70,7 @@ public static class LocalDiscovery
         using var process = Process.GetProcessById(d.Pid);
         if (process.StartTime.ToUniversalTime().Ticks != d.StartTime) throw new InvalidDataException();
         if (process.SessionId != d.SessionId || process.SessionId != Process.GetCurrentProcess().SessionId) throw new UnauthorizedAccessException();
+        if (d.Elevated != IsElevated()) throw new ElevationMismatchException(IsElevated(), d.Elevated);
         var launcher = Read<LauncherRecord>(Launcher);
         if (!string.Equals(process.MainModule?.FileName, launcher.Executable, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
     }
@@ -125,6 +126,19 @@ public static class LocalDiscovery
                 throw new UnauthorizedAccessException();
         }
     }
+    public static bool OwnerRunning()
+    {
+        if (!OperatingSystem.IsWindows()) return false;
+        string name = @"Global\LuaToolsGui.SecurityHardened." + WindowsIdentity.GetCurrent().User!.Value + "." + DataPaths.OwnerSuffix;
+        IntPtr handle = OpenMutex(0x00100000, false, name);
+        if (handle != IntPtr.Zero) { CloseHandle(handle); return true; }
+        // An inaccessible mutex is still an owner, never permission to start a competing process.
+        return Marshal.GetLastWin32Error() == 5;
+    }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr OpenMutex(uint access, bool inherit, string name);
+    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
     public static bool IsElevated()
     {
         if (!OperatingSystem.IsWindows()) return false;
@@ -149,3 +163,14 @@ public static class LocalDiscovery
     private static extern bool GetNamedPipeClientComputerName(SafePipeHandle handle, StringBuilder name, uint length);
 }
 public sealed record LauncherRecord(string Executable);
+
+public sealed class ElevationMismatchException(bool clientElevated, bool hostElevated) : UnauthorizedAccessException(
+    $"The CLI is {(clientElevated ? "elevated" : "unelevated")} and LuaTools is {(hostElevated ? "elevated" : "unelevated")}. Run the terminal at the same elevation as LuaTools, or exit LuaTools and restart it at the terminal's elevation.");
+
+public static class DataPaths
+{
+    // Respect normal process AppData redirection, including isolated integration-test child profiles.
+    public static string Roaming => Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    public static string Local => Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    public static string OwnerSuffix => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(Roaming).ToUpperInvariant())))[..16];
+}

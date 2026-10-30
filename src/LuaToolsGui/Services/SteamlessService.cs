@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
@@ -19,7 +19,7 @@ public class SteamlessService(GithubProxy gh, SteamLibraryService library, Steam
     private bool IsEnabled(string component) => settings?.IsExecutableWorkflowEnabled(component) == true;
 
     private static readonly string ToolDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "steamless");
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "steamless");
     private static string CliPath => Path.Combine(ToolDir, "Steamless.CLI.exe");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };

@@ -20,11 +20,21 @@ string root = Directory.GetCurrentDirectory();
 while (!File.Exists(Path.Combine(root, "docs/cli/capability-map.md"))) root = Directory.GetParent(root)?.FullName ?? throw new Exception("Run inside the repository.");
 Test("ledger parity", () =>
 {
-    string map = string.Join("\n", File.ReadLines(Path.Combine(root, "docs/cli/capability-map.md")).Where(l => l.StartsWith("| C-", StringComparison.Ordinal)).Select(l => l.Split(" | ")[^2]));
-    foreach (Match m in Regex.Matches(map, @"luatools ([a-z-]+)(?: ([a-z][a-z-]*))?"))
+    var ids = new HashSet<string>();
+    foreach (string row in File.ReadLines(Path.Combine(root, "docs/cli/capability-map.md")).Where(l => l.StartsWith("| C-", StringComparison.Ordinal)))
     {
-        string key = (m.Groups[1].Value + " " + m.Groups[2].Value).Trim();
-        Assert(Catalogue.Find(key) is not null, key);
+        string[] cells = Regex.Split(row.Trim().Trim('|'), @"(?<!\\)\|").Select(x => x.Trim()).ToArray();
+        Assert(cells.Length == 11, "Expected exactly 11 cells: " + row);
+        Assert(ids.Add(cells[0]), "Duplicate " + cells[0]);
+        Assert(new[] { "mapped", "needs-refactor", "not-applicable", "owner-decision", "implemented" }.Contains(cells[10]), "Invalid status " + cells[0]);
+        if (cells[9] == "—") continue;
+        var matches = Regex.Matches(cells[9], @"luatools ([a-z-]+)(?: ([a-z][a-z-]*))?");
+        Assert(matches.Count > 0, "Missing command " + cells[0]);
+        foreach (Match m in matches)
+        {
+            string key = (m.Groups[1].Value + " " + m.Groups[2].Value).Trim();
+            Assert(Catalogue.Find(key) is { } command && command.Resource == m.Groups[1].Value && command.Verb == m.Groups[2].Value, "Exact command not found: " + key);
+        }
     }
 });
 Test("grammar parity", () =>
@@ -36,7 +46,9 @@ foreach (var c in Catalogue.Commands)
 {
     Test("descriptor " + c.Key, () =>
     {
-        Assert(!string.IsNullOrWhiteSpace(c.Purpose) && c.Flags.Length > 0 && c.Examples.Length >= 2 && c.SeeAlso.Length > 0, c.Key);
+        Assert(c.Purpose.Trim().TrimEnd('.').ToLowerInvariant() != c.Key && c.Purpose.EndsWith('.') && c.Purpose.Split(' ').Length >= 4, "Placeholder purpose: " + c.Key);
+        Assert(c.Flags.Length > 0 && c.Examples.Distinct().Count() >= 2 && c.SeeAlso.Length > 0 && c.SideEffects.Length > 0 && c.Preconditions.Length > 0, "Missing guide part: " + c.Key);
+        foreach (var flag in c.Flags) Assert(flag.Name.Length > 0 && flag.Type.Length > 0 && flag.Default.ValueKind != JsonValueKind.Undefined && flag.AllowedValues is not null, "Incomplete flag " + c.Key);
         Assert(c.Status is "enabled" or "disabled", c.Key);
         foreach (string example in c.Examples) Assert(CommandParser.Parse(example.Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Example invalid: " + example);
     });
@@ -113,9 +125,9 @@ await AsyncTest("fresh-process fake-host ping", async () =>
 foreach (var (arguments, expected) in new (string[], int)[]
 {
     (["version", "--json"], 0), (["help", "setting", "--json"], 0), (["commands", "--json"], 0),
-    (["completion", "bash", "--json"], 0), (["setting", "update", "Language", "--value", "fr", "--json"], 5),
+    (["completion", "bash", "--json"], 0), (["setting", "update", "Language", "--value", "fr", "--no-start", "--json"], 9),
     (["statuz", "--json"], 2), (["activity-log", "list", "--severity", "bad", "--limit", "0", "--json"], 2),
-    (["ping", "--no-start", "--json"], OperatingSystem.IsWindows() && LocalDiscovery.IsElevated() ? 5 : 9),
+    (["ping", "--no-start", "--json"], 9),
 })
 await AsyncTest("entrypoint " + string.Join(' ', arguments), async () =>
 {

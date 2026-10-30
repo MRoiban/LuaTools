@@ -761,4 +761,12 @@ public static class Strings
     public static string Agent_DoctorDownloads => Get(nameof(Agent_DoctorDownloads));
     public static string Agent_DoctorActivity => Get(nameof(Agent_DoctorActivity));
     public static string Agent_DoctorUpdate => Get(nameof(Agent_DoctorUpdate));
+    public static string Agent_Timeout => Get(nameof(Agent_Timeout));
+        public static string Agent_MutationRejected => Get(nameof(Agent_MutationRejected));
+        public static string Agent_ExitImpact => Get(nameof(Agent_ExitImpact));
+        public static string Agent_ExecutableWarning => Get(nameof(Agent_ExecutableWarning));
+        public static string Agent_ConsentTitle => Get(nameof(Agent_ConsentTitle));
+        public static string Agent_JobMissing => Get(nameof(Agent_JobMissing));
+        public static string Agent_RetryImpact => Get(nameof(Agent_RetryImpact));
+
 }

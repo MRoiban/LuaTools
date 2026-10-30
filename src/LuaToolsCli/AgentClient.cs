@@ -11,7 +11,6 @@ public sealed class AgentClient
     public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
-        if (LocalDiscovery.IsElevated()) return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "Run the agent and LuaTools unelevated in the same Windows session.");
         bool started = false;
         var watch = Stopwatch.StartNew();
         while (true)
@@ -29,21 +28,29 @@ public sealed class AgentClient
                 byte[] capability = LocalDiscovery.Protect(Convert.FromBase64String(record.Capability), true);
                 try
                 {
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, parsed.Value("expect-steam"), typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, parsed.Value("expect-steam") ?? record.SteamIdentity, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
-                    return await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
+                    var reply = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
+                    if (parsed.Command.Key == "job wait" && reply.Ok && reply.Data?["state"]?.ToString() is { } state)
+                    {
+                        if (state == "awaiting_confirmation") return Envelope.Fail("CONSENT_REQUIRED", 8, "The job needs a decision.");
+                        if (state is "failed" or "cancelled") return Envelope.Fail(state == "failed" ? "JOB_FAILED" : "JOB_CANCELLED", 1, "The job did not complete successfully.");
+                        if (state != "completed") { await Task.Delay(100, ct).ConfigureAwait(false); continue; }
+                    }
+                    return reply;
                 }
                 finally { CryptographicOperations.ZeroMemory(capability); }
             }
+            catch (ElevationMismatchException ex) { return Envelope.Fail("ELEVATION_MISMATCH", 5, ex.Message); }
             catch (CryptographicException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "The local discovery capability is invalid."); }
             catch (FormatException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "The local discovery capability is invalid."); }
-            catch (UnauthorizedAccessException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "Local owner, session or elevation mismatch. Run LuaTools and the agent unelevated in the same Windows session."); }
+            catch (UnauthorizedAccessException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "Local owner, session or elevation mismatch. Run LuaTools and the agent at matching elevation in the same Windows session."); }
             catch (Exception ex) when (ex is IOException or TimeoutException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
             {
                 if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
                 if (connected) return Envelope.Fail("TRANSPORT_FAILURE", 7, "Invalid or unavailable local pipe response.");
                 if (parsed.Has("no-start")) return Unavailable();
-                if (!started)
+                if (!started && !LocalDiscovery.OwnerRunning())
                 {
                     try
                     {

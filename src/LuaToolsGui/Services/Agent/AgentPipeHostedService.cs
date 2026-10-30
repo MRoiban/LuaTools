@@ -20,10 +20,10 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
     {
         try
         {
-            if (!OperatingSystem.IsWindows() || LocalDiscovery.IsElevated()) { log.LogWarning("Agent pipe requires an unelevated Windows owner"); return; }
+            if (!OperatingSystem.IsWindows()) return;
             using var process = System.Diagnostics.Process.GetCurrentProcess();
             var discovery = new Discovery(Protocol.Version, commands.InstanceId, _pipe, process.Id, process.StartTime.ToUniversalTime().Ticks, process.SessionId,
-                Convert.ToBase64String(LocalDiscovery.Protect(_capability)));
+                Convert.ToBase64String(LocalDiscovery.Protect(_capability)), LocalDiscovery.IsElevated(), commands.SteamIdentity);
             // Create a listener before advertising readiness. Publication is off the UI thread.
             var listener = CreatePipe();
             try { LocalDiscovery.Write(LocalDiscovery.Launcher, new LauncherRecord(Environment.ProcessPath!)); LocalDiscovery.Write(LocalDiscovery.Record, discovery); }
@@ -75,8 +75,20 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
         {
             LocalDiscovery.VerifyClient(pipe);
             var request = await Protocol.ReadAsync<AgentRequest>(pipe, Protocol.MaxRequest, deadline.Token).ConfigureAwait(false);
-            var reply = await HandleAsync(request, deadline.Token).ConfigureAwait(false);
-            await Protocol.WriteAsync(pipe, reply, Protocol.MaxFrame, deadline.Token).ConfigureAwait(false);
+            // Framing/identity is bounded separately from authenticated execution and reply writing.
+            Envelope reply;
+            using (var execution = CancellationTokenSource.CreateLinkedTokenSource(shutdown))
+            {
+                execution.CancelAfter(RequestDeadlines.For(request));
+                try { reply = await HandleAsync(request, execution.Token).WaitAsync(execution.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!shutdown.IsCancellationRequested)
+                { reply = Envelope.Fail("TIMEOUT", 7, Resources.Strings.Agent_Timeout); }
+            }
+            using var write = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
+            write.CancelAfter(TimeSpan.FromSeconds(5));
+            await Protocol.WriteAsync(pipe, reply, Protocol.MaxFrame, write.Token).ConfigureAwait(false);
+            if (reply.Ok) commands.AfterReply(request);
+
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or ArgumentException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { /* Unauthenticated/malformed clients receive no information. Deadlines release the slot. */ }

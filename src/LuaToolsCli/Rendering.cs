@@ -22,15 +22,28 @@ public static class Rendering
     }
     public static string Help(Command? command = null, string? resource = null)
     {
-        var text = new StringBuilder("LuaTools agent CLI\n\nStart here:\n  luatools ping --json\n  luatools doctor --json\n  luatools commands --json\n  luatools describe setting\n\n");
-        foreach (var c in command is null ? Catalogue.Commands.Where(c => resource is null || c.Resource == resource) : [command])
+        var text = new StringBuilder("LuaTools agent CLI — operate the running LuaTools application.\n\n");
+        if (command is null && resource is null)
         {
-            text.AppendLine(c.Syntax + "  [" + c.Status + "]").AppendLine("  " + c.Purpose);
-            if (command is not null || resource is not null)
-            {
-                foreach (var flag in c.Flags) text.AppendLine($"  --{flag.Name} ({flag.Type}; default {flag.Default}; allowed: {string.Join(", ", flag.AllowedValues)})");
-                foreach (string example in c.Examples) text.AppendLine("  " + example);
-            }
+            text.AppendLine("Resources:");
+            foreach (var group in Catalogue.Commands.GroupBy(c => c.Resource))
+                text.AppendLine("  " + group.Key.PadRight(18) + group.First().Purpose);
+            text.AppendLine("\nGlobal flags:");
+            foreach (var flag in Catalogue.Find("ping")!.Flags) text.AppendLine("  --" + flag.Name + " (" + flag.Type + "; default " + flag.Default + ")");
+            text.AppendLine("  Mutations: --dry-run --yes --plan-id --idempotency-key --if-version --actor-note --restart-steam");
+            text.AppendLine("\nStart here:\n  luatools ping --json\n  luatools doctor --json\n  luatools help setting\n  luatools describe setting --json");
+        }
+        else foreach (var c in command is null ? Catalogue.Commands.Where(c => c.Resource == resource) : [command])
+        {
+            text.AppendLine(c.Key).AppendLine(c.Purpose).AppendLine("Usage: " + c.Syntax).AppendLine("Flags:");
+            foreach (var flag in c.Flags) text.AppendLine($"  --{flag.Name}: {flag.Type}; default {flag.Default}; allowed {(flag.AllowedValues.Length == 0 ? "any value of this type" : string.Join(", ", flag.AllowedValues))}; required {flag.Required.ToString().ToLowerInvariant()}");
+            text.AppendLine("Side effects: " + string.Join("; ", c.SideEffects));
+            text.AppendLine("Reversibility: " + (c.Reversible is null ? "Not applicable for reads; mutation effects may be irreversible." : c.Reversible.Value ? "Reversible through the corresponding GUI operation." : "Irreversible."));
+            text.AppendLine("Preconditions: " + string.Join("; ", c.Preconditions));
+            text.AppendLine("Status: " + c.Status + "; job: " + c.JobBehavior);
+            text.AppendLine("Examples:");
+            foreach (string example in c.Examples) text.AppendLine("  " + example);
+            text.AppendLine("See also: " + string.Join(", ", c.SeeAlso)).AppendLine();
         }
         text.AppendLine("\nExit codes: 0 success; 1 failure; 2 usage; 3 not found; 4 login; 5 permission/disabled; 6 conflict; 7 unavailable/timeout; 8 consent; 9 GUI not running; 130 interrupted.");
         return text.ToString();

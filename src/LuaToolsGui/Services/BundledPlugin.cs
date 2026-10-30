@@ -9,7 +9,7 @@ namespace LuaToolsGui.Services;
 public static class BundledPlugin
 {
     public static string Version => typeof(BundledPlugin).Assembly.GetName().Version?.ToString() ?? "1.0.0";
-    public static string InstallationDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "plugin");
+    public static string InstallationDirectory => Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "plugin");
     public static string ReceiptPath => Path.Combine(InstallationDirectory, "installed.json");
     public static bool IsActivated => ReadReceipt(ReceiptPath)?.ActivationEnabled == true;
     /// <summary>The updater must retain this installed bootstrap executable until explicit reinstall.</summary>

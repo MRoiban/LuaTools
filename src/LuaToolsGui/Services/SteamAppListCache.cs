@@ -17,7 +17,7 @@ public class SteamAppListCache
     private readonly ConcurrentDictionary<long, string> _names = new();
     private Task? _loadTask;
     public SteamAppListCache() : this(AppHttp.Create(TimeSpan.FromSeconds(60), responseBudget: HttpResponseBudget.LargeList),
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "steam-applist.json")) { }
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "steam-applist.json")) { }
     internal SteamAppListCache(HttpMessageHandler handler, string cacheFile) : this(AppHttp.CreateForTesting(TimeSpan.FromSeconds(60), handler, HttpResponseBudget.LargeList), cacheFile) { }
     private SteamAppListCache(HttpClient http, string cacheFile) { _http = http; _cacheFile = cacheFile; }
     public string? GetName(long appid) => _names.TryGetValue(appid, out var name) ? name : null;

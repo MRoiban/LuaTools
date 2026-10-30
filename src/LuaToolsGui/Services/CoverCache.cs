@@ -12,7 +12,7 @@ namespace LuaToolsGui.Services;
 public class CoverCache
 {
     private readonly string CoversDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "covers");
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "covers");
 
     // Reject only truncated/empty bodies. We don't gate on a size threshold: some legit covers are
     // tiny (e.g. Undertale 391540's header.jpg is ~5 KB. Mostly black, highly compressible), and a

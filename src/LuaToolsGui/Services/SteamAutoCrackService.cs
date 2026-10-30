@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -31,7 +31,7 @@ public class SteamAutoCrackService(
     private bool IsEnabled(string component) => settings?.IsExecutableWorkflowEnabled(component) == true;
 
     private static readonly string ToolDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "steamautocrack");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "steamautocrack");
 
     private static string ExePath => Path.Combine(ToolDir, "SteamAutoCrack.exe");
 

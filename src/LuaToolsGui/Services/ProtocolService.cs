@@ -8,7 +8,7 @@ public static class ProtocolService
     private const string ProtocolName = "luatools";
 
     private static readonly string PendingFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        LuaTools.Agent.DataPaths.Roaming,
         AppConfig.DataDirectoryName, "protocol_url.tmp");
 
     public static void Register()

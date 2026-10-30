@@ -82,7 +82,7 @@ public class SettingsService : Cabinet.ICabinetSettings
     private AppSettings _settings = new();
 
     public SettingsService() : this(null, Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName), new WindowsStartupRegistration()) { }
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName), new WindowsStartupRegistration()) { }
 
     // Without a directory, policy tests remain entirely in memory. A supplied directory isolates
     // persistence tests from the real user profile and exercises the normal atomic save/load path.

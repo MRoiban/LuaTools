@@ -60,7 +60,7 @@ public class CacheData
 public class CacheService
 {
     private readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName);
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName);
     private readonly string FilePath;
 
 
@@ -79,7 +79,7 @@ public class CacheService
 
     private CacheData _cache = new();
 
-    public CacheService() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "cache.json")) { }
+    public CacheService() : this(Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "cache.json")) { }
     internal CacheService(string path) { FilePath = path; Dir = Path.GetDirectoryName(path)!; Load(); }
 
     /// <summary>OpenSteamTools: the release tag last installed (for the up-to-date check).</summary>

@@ -152,28 +152,28 @@ public partial class SettingsViewModel : ObservableObject
 
     // Executable workflow switches persist consent only; actions remain on their original pages.
     [ObservableProperty] private bool _executableGameFixesEnabled;
-    partial void OnExecutableGameFixesEnabledChanged(bool value) => _settings.ExecutableGameFixesEnabled = value;
+    partial void OnExecutableGameFixesEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "ExecutableGameFixesEnabled", value, "gui");
 
     [ObservableProperty] private bool _betterSteamToolsEnabled;
-    partial void OnBetterSteamToolsEnabledChanged(bool value) => _settings.BetterSteamToolsEnabled = value;
+    partial void OnBetterSteamToolsEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "BetterSteamToolsEnabled", value, "gui");
 
     [ObservableProperty] private bool _openSteamToolsEnabled;
-    partial void OnOpenSteamToolsEnabledChanged(bool value) => _settings.OpenSteamToolsEnabled = value;
+    partial void OnOpenSteamToolsEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "OpenSteamToolsEnabled", value, "gui");
 
     [ObservableProperty] private bool _steamPluginEnabled;
-    partial void OnSteamPluginEnabledChanged(bool value) => _settings.SteamPluginEnabled = value;
+    partial void OnSteamPluginEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "SteamPluginEnabled", value, "gui");
 
     [ObservableProperty] private bool _depotDownloaderEnabled;
-    partial void OnDepotDownloaderEnabledChanged(bool value) => _settings.DepotDownloaderEnabled = value;
+    partial void OnDepotDownloaderEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "DepotDownloaderEnabled", value, "gui");
 
     [ObservableProperty] private bool _steamlessEnabled;
-    partial void OnSteamlessEnabledChanged(bool value) => _settings.SteamlessEnabled = value;
+    partial void OnSteamlessEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "SteamlessEnabled", value, "gui");
 
     [ObservableProperty] private bool _steamAutoCrackEnabled;
-    partial void OnSteamAutoCrackEnabledChanged(bool value) => _settings.SteamAutoCrackEnabled = value;
+    partial void OnSteamAutoCrackEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "SteamAutoCrackEnabled", value, "gui");
 
     [ObservableProperty] private bool _cloudRedirectEnabled;
-    partial void OnCloudRedirectEnabledChanged(bool value) => _settings.CloudRedirectEnabled = value;
+    partial void OnCloudRedirectEnabledChanged(bool value) => ExecutableConsentCoordinator.Set(_settings, "CloudRedirectEnabled", value, "gui");
 
     /// <summary>Donate spare Steam decryption keys to the community pool. Persisted via SettingsService.</summary>
     [ObservableProperty] private bool _donateKeys;

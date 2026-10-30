@@ -307,10 +307,34 @@ The owner's requirement overrides every earlier "reserved" note in this document
 
 1. **Zero install:** `luatools.exe` ships inside the app's published output and signed ZIP, with no workflow change: the GUI project publishes it through an MSBuild target. On every startup the GUI copies it to a stable per-user folder, `%LOCALAPPDATA%\LuaToolsGui-SecurityHardened\bin`, records the current GUI path there, and adds that folder to the user PATH if missing, broadcasting the environment change. This survives update run-directory changes and works on first launch.
 2. **App not running:** the CLI starts the recorded GUI itself with `--minimized`, through the normal single-owner startup, waits for authenticated readiness, then runs the command. `--no-start` opts out. Exit 9 means it could not be started; a host with no recorded GUI gets a hint with the expected install location. `application start` is enabled and explicit.
-3. **Sessions and elevation:** one unelevated per-user owner. A second session or an elevation mismatch fails with a clear error. Never widen pipe access.
+3. **Sessions and elevation:** one per-user/data-root owner, serving at its launch elevation (default asInvoker). The client must match. A second session or an elevation mismatch fails with a clear error. Never widen pipe access.
 4. **App lifecycle:** `application exit`, `application restart` and `update apply` are enabled with `--yes`. They refuse with exit 6 while jobs are active unless `--drain` is passed, which waits for them to finish within `--timeout`. They reply before shutting down, and the CLI rediscovers the new owner.
 5. **Friend labels:** enable only. Disabling is reported as unsupported because the app has no working disable.
 6. **Onboarding:** there is no CLI onboarding step and no first-run requirement. Agents configure the app with the individual `setting`, `mode` and `plugin` commands. C-101 is not-applicable.
 7. **Agent authority:** an agent can do everything the GUI can, without a human present, including `setting update <executable-key> --value true --yes`. This reverses the earlier human-only rule. Because it lets an agent run downloaded executables, enabling one always requires `--yes`, writes a warning to the activity log naming the key and any `--actor-note`, and shows a toast. Disabling needs no confirmation. Existing quarantine, digest and path checks still apply. Everything else in the gate list above stays, except the statements that CLI commands can never enable a workflow.
 8. **Passwords:** agents never see one. Discord login stays a human browser step, and it is the only such step. Public sources work without it, and `doctor` reports what login would unlock. Hubcap and Cabinet secrets can be supplied by an agent through their stdin channels.
 9. **Checkups:** `luatools doctor` is one read-only health report: app and CLI versions, Steam location and process state, mode and add-on state, plugin, login and Hubcap state, disabled workflows, active and failed downloads, recent warnings and errors from the activity log, and available updates. Each finding has a severity, a code, a plain explanation and the exact command that would fix it where one exists. `luatools doctor --fix --dry-run` lists those commands; `--fix --yes` runs the safe ones.
+
+## Second implementation pass
+
+Resource JSON files are embedded and merged automatically. Attribute-discovered resource facade
+files share one validation/admission boundary; see `CONTRIBUTING-commands.md`.
+Five-second frame/authentication and write limits are separate from execution (10s for short
+commands, 30s for doctor, reduced by --timeout). Authenticated expiry sends TIMEOUT (7).
+Job wait polls short real-pipe observations; accepted work is independent of client lifetime.
+Mutation admission serializes short plan/commit stages and journals intent atomically before
+service calls. Journal: seven days/10000 entries; plans: five minutes/1000 entries. Secret-free
+receipts reconcile retries across owner restart; incomplete intents report OUTCOME_UNKNOWN.
+Setting update supports JSON, bulk selection, plans, versions, explicit executable consent and
+actor attribution. Cabinet setting writes remain read-only pending their service coordinator.
+Queue job controls operate on real IDs, retain dismissed rows, and use existing queue methods.
+Nonqueue operations can register asynchronous service tasks without another scheduler.
+Unsupported tracked-output deletion and unregistered GUI confirmation delegates fail explicitly.
+Application exit works for idle owners; active-job drain, application restart and update apply
+still need their lifecycle extraction and are not advertised as enabled by this pass.
+Windows process tests redirect both AppData roots consistently (including mutex identity),
+restore HKCU PATH, and never select the runner's Steam. Folder rotation tests client survival
+and launcher refresh; they do not simulate release-signature verification.
+
+Simple allowlisted non-executable setting writes are the safe atomic contract: the explicit
+key/value is sufficient consent. Executable enabling requires --yes; revocation requires none.

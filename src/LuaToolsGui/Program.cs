@@ -32,7 +32,7 @@ public static class Program
 
         // Loader flags and external protocol URLs are deliberately not interpreted.
         using var single = new Mutex(initiallyOwned: true,
-            "Global\\LuaToolsGui.SecurityHardened." + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value, out bool isFirst);
+            "Global\\LuaToolsGui.SecurityHardened." + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value + "." + LuaTools.Agent.DataPaths.OwnerSuffix, out bool isFirst);
         if (!isFirst)
         {
             if (StartMinimized) return;
@@ -75,7 +75,7 @@ public static class Program
     private static bool TryRunCabinetHelper(string[] args) => CabinetEngine.HelperEntry.Handle(args);
 
     /// <summary>Named event a second instance sets to ask the running one to surface its window.</summary>
-    private const string ShowWindowEventName = "LuaToolsGui.SecurityHardened.ShowWindow";
+    private static string ShowWindowEventName => "LuaToolsGui.SecurityHardened.ShowWindow." + LuaTools.Agent.DataPaths.OwnerSuffix;
 
     /// <summary>Owned by the live instance; App wires a listener that restores the window when it's set.</summary>
     internal static EventWaitHandle? ShowWindowSignal;
@@ -138,7 +138,7 @@ public static class Program
         try
         {
             string path = settingsPath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                LuaTools.Agent.DataPaths.Roaming,
                 AppConfig.DataDirectoryName, "settings.json");
             if (!File.Exists(path)) return null;
 

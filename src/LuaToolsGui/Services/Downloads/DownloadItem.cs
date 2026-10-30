@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace LuaToolsGui.Services.Downloads;
 
@@ -69,6 +69,7 @@ public partial class DownloadItem : ObservableObject
     /// should settle the item.
     /// </summary>
     internal bool PauseRequested { get; set; }
+    internal Task? RunningAttempt { get; set; }
 
     /// <summary>
     /// Set by Resume. Makes the next depot run pass -validate, which is MANDATORY on a resume: without

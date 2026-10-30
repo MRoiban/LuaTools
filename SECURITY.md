@@ -97,7 +97,7 @@ Signed-update redirection and minimized update relaunch preserve normal single-o
 An always-on GUI hosted service, independent of Steam-plugin opt-in, serves a random per-lifetime
 named pipe. Both ends use `CurrentUserOnly` (account and elevation); the server rejects remote
 clients before reading a request using the kernel's `ERROR_PIPE_LOCAL` result and independently
-checks the client process session. The normal owner is unelevated. A per-user global owner mutex
+checks the client process session. The owner serves at its launch elevation (the default asInvoker manifest inherits it). The client must match; neither elevated nor unelevated owners disable the pipe. A per-user/data-root global owner mutex
 prevents a second Windows session from opening another writer. Cross-session or elevation mismatch
 must not be solved by widening ACLs. Owner-only discovery and launcher records reject reparse
 paths and permissive ACLs. Discovery contains PID/start/session identity and a 256-bit random
@@ -107,7 +107,7 @@ Capabilities never appear in arguments, environment, stdout or logs. Same-user h
 are inside this trust boundary; DPAPI does not isolate hostile applications under one account.
 
 Control requests are bounded to 64 KiB, replies to 1 MiB. Eight independent connections each have
-a five-second deadline and shutdown cancellation; a stalled client cannot block other reads.
+five-second framing and write deadlines, with separate per-command execution deadlines and shutdown cancellation. Authenticated execution expiry returns TIMEOUT (7) with a fresh reply-write budget. Long work returns a job; job wait polls snapshots without occupying a server connection. A stalled client cannot block other reads.
 Only typed facade operations are exposed. No arbitrary DI resolution, plugin route forwarding,
 shell execution or generic state-file access exists. Queue snapshots briefly use the dispatcher;
 transport, log reads and installation work run off it. The client never opens business state files.
@@ -176,3 +176,5 @@ Use a private security report to the maintainer of the repository hosting this f
 if that repository has enabled private reporting. Otherwise arrange a private contact
 with that maintainer before sharing credentials, keys or exploit details. Do not send
 Steam keys, authentication files or complete local configuration files in a public issue.
+
+Discovery advertises elevation; a verified live owner at the other elevation produces ELEVATION_MISMATCH (5), identifies both sides and gives matching-terminal/restart instructions before any start attempt. A present owner mutex prevents auto-starting a competing instance even during discovery publication. ACLs and token checks remain unchanged. AppData redirection applies consistently to state and owner identity for isolated process tests. The mutation journal stores hashed keys/payloads and safe receipts only, with durable intent before side effects; uncertain intents are never replayed.

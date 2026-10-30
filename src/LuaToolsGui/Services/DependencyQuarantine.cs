@@ -15,7 +15,7 @@ internal static class DependencyQuarantine
     private static readonly SemaphoreSlim CacheGate = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly string DefaultRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "dependency-quarantine");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "dependency-quarantine");
 
     public static async Task<string?> PrepareToolAsync(GithubProxy gh, string component, string repo,
         string toolDirectory, string entryPath, Func<GithubAsset, bool> select,

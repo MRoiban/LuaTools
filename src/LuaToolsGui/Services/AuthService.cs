@@ -14,7 +14,7 @@ public class AuthService
 {
     private readonly string AuthFile;
     private static readonly string DefaultAuthFile = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "auth.dat");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "auth.dat");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { MaxDepth = 32 };
     private readonly HttpClient _http;

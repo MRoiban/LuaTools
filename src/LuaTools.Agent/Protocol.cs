@@ -39,7 +39,7 @@ public static class Protocol
 
 public sealed record Problem(string Field, string Message, string[]? AllowedValues = null);
 public sealed record AgentError(string Code, int ExitCode, string Message, string Hint = "luatools help", bool Retryable = false,
-    Problem[]? Problems = null, string? RequestId = null);
+    Problem[]? Problems = null, string? RequestId = null, JsonNode? Details = null);
 public sealed record Warning(string Code, string Message, object? Details = null);
 public sealed record Page(int Limit, string? NextCursor, bool HasMore, int Total);
 [JsonConverter(typeof(EnvelopeConverter))]
@@ -74,4 +74,4 @@ internal sealed class EnvelopeConverter : JsonConverter<Envelope>
 }
 public sealed record AgentRequest(int Protocol, string Capability, string InstanceId, string RequestId, string Command,
     string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown");
-public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability);
+public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability, bool Elevated = false, string? SteamIdentity = null);

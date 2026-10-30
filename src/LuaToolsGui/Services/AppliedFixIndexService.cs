@@ -29,7 +29,7 @@ namespace LuaToolsGui.Services;
 public class AppliedFixIndexService(SteamLibraryService library, ILogger<AppliedFixIndexService> log)
 {
     private static readonly string Dir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName);
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName);
 
     private static readonly string FilePath = Path.Combine(Dir, "applied-fixes.json");
 

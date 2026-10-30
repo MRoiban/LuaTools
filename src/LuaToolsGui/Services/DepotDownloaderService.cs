@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -92,7 +92,7 @@ public partial class DepotDownloaderService(
     public bool IsGuest => auth.IsGuest;
 
     private static readonly string ToolDir = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "depotdownloader");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "depotdownloader");
 
     private static string ExePath => Path.Combine(ToolDir, "DepotDownloaderMod.exe");
 

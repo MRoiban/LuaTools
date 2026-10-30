@@ -23,7 +23,7 @@ internal sealed class CloudRedirectCabinetConfig
         Func<byte[], byte[]>? unprotector = null)
     {
         _directory = Path.GetFullPath(directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CloudRedirect"));
+            LuaTools.Agent.DataPaths.Roaming, "CloudRedirect"));
         _protect = protector ?? (bytes => ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser));
         _unprotect = unprotector ?? (bytes => ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser));
     }

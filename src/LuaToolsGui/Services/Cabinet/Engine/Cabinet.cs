@@ -1651,7 +1651,7 @@ namespace CabinetEngine
     // only App's static helpers used by the engine and helper processes are kept.
     static partial class App
     {
-        public static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Cabinet");
+        public static readonly string DataDir = Path.Combine(LuaTools.Agent.DataPaths.Local, "Cabinet");
         static readonly string StatePath = Path.Combine(DataDir, "state.txt");
         static readonly string LogPath = Path.Combine(DataDir, "log.txt");
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

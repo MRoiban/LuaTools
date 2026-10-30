@@ -12,7 +12,7 @@ public class CloudRedirectService(GithubProxy gh, SettingsService? settings = nu
     private bool IsEnabled(string component) => settings?.IsExecutableWorkflowEnabled(component) == true;
 
     private static readonly string ToolDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "cloudredirect");
+        Path.Combine(LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "cloudredirect");
     private static string ExePath => Path.Combine(ToolDir, "CloudRedirect.exe");
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };

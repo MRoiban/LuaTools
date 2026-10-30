@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
@@ -50,8 +50,10 @@ public class DownloadQueue : IHostedService
         _log = log;
     }
 
-    private Dispatcher Dispatcher =>
-        Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+    private readonly Dispatcher? _dispatcher;
+    internal Dispatcher? CommandDispatcher => _dispatcher ?? Application.Current?.Dispatcher;
+    internal DownloadQueue(CacheService cache, ILogger<DownloadQueue> log, Dispatcher dispatcher) : this(cache, log) => _dispatcher = dispatcher;
+    private Dispatcher Dispatcher => CommandDispatcher ?? Dispatcher.CurrentDispatcher;
 
     /// <summary>Active and recently finished items, in scheduling order. Index = priority.</summary>
     public ObservableCollection<DownloadItem> Items { get; } = [];
@@ -187,7 +189,7 @@ public class DownloadQueue : IHostedService
     /// <summary>Resume a paused depot download from the first depot it hadn't finished.</summary>
     public void Resume(DownloadItem item) => Dispatcher.Invoke(() =>
     {
-        if (!item.CanResume) return;
+        if (!item.CanResume || item.RunningAttempt is { IsCompleted: false }) return;
         item.PauseRequested = false;
         item.NeedsValidate = true;   // the interrupted depot must be re-hashed, not trusted
         item.ResetCts();
@@ -296,7 +298,7 @@ public class DownloadQueue : IHostedService
         {
             item.Status = DownloadStatus.Downloading;
             StateChanged?.Invoke();
-            _ = RunItemAsync(item);
+            item.RunningAttempt = RunItemAsync(item);
         }
     }
 

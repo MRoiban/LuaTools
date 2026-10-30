@@ -819,4 +819,11 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_DoctorDownloads" xml:space="preserve"><value>Active queue and failed download history in the running application.</value></data>
   <data name="Agent_DoctorActivity" xml:space="preserve"><value>Warnings and errors recorded in the last 24 hours.</value></data>
   <data name="Agent_DoctorUpdate" xml:space="preserve"><value>Available staged signed update; this read does not check or stage updates.</value></data>
+  <data name="Agent_Timeout" xml:space="preserve"><value>The command deadline expired. Accepted jobs continue; query their ID before retrying.</value></data>
+  <data name="Agent_MutationRejected" xml:space="preserve"><value>The operation could not be committed. Review the error code and plan.</value></data>
+  <data name="Agent_ExitImpact" xml:space="preserve"><value>Exit LuaTools and disconnect all agent clients.</value></data>
+  <data name="Agent_ExecutableWarning" xml:space="preserve"><value>Executable workflow {0} enabled by {1}. Actor note: {2}</value></data>
+  <data name="Agent_ConsentTitle" xml:space="preserve"><value>Executable workflow consent changed</value></data>
+  <data name="Agent_JobMissing" xml:space="preserve"><value>This job is missing or its retention period has expired.</value></data>
+  <data name="Agent_RetryImpact" xml:space="preserve"><value>Retry acquisition and installation; quota may be spent again.</value></data>
 </root>

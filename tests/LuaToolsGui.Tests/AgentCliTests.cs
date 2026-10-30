@@ -20,7 +20,7 @@ public sealed class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
-    private AgentCommandService Facade(SettingsService? settings = null)
+    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null)
     {
         Directory.CreateDirectory(_directory);
         settings ??= new SettingsService(new AppSettings());
@@ -28,8 +28,8 @@ public sealed class AgentCliTests : IDisposable
         var cache = new CacheService(Path.Combine(_directory, "cache.json"));
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
-            new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService());
+            queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: new MutationCoordinator(Path.Combine(_directory, "journal.json")));
     }
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? []);
     [Fact]
@@ -142,6 +142,103 @@ public sealed class AgentCliTests : IDisposable
         await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
         Assert.True(child.ExitCode == 0, await output + await error);
         Assert.Contains("CLI TEST PASS", await output);
+    }
+    [Fact]
+    public async Task MutationPlansVersionsBulkConsentAndJournalUseRealSettings()
+    {
+        var settings = new SettingsService(new AppSettings()); var facade = Facade(settings);
+        Task<Envelope> Update(string key, string value, Dictionary<string, string?>? options = null)
+        {
+            var flags = options ?? []; flags["value"] = value;
+            return facade.ExecuteAsync(Request(facade, "setting update", [key], flags), default);
+        }
+        var dry = await Update("FastFetch", "true", new() { ["dry-run"] = null });
+        Assert.True(dry.Ok); Assert.False(settings.FastFetch); Assert.False(File.Exists(Path.Combine(_directory, "journal.json")));
+        var consent = await Update("SteamlessEnabled", "true"); Assert.Equal(8, consent.Error!.ExitCode); Assert.NotNull(consent.Error.Details!["plan"]);
+        Assert.False(settings.IsExecutableWorkflowEnabled("Steamless"));
+        Assert.True((await Update("SteamlessEnabled", "true", new() { ["yes"] = null, ["actor-note"] = "unit-proof" })).Ok);
+        Assert.True(settings.IsExecutableWorkflowEnabled("Steamless"));
+        Assert.True((await Update("SteamlessEnabled", "false")).Ok); Assert.False(settings.IsExecutableWorkflowEnabled("Steamless"));
+        Assert.Equal("READ_ONLY", (await Update("FastFetch", "true", new() { ["read-only"] = null })).Error!.Code);
+        Assert.Equal("VERSION_CONFLICT", (await Update("FastFetch", "true", new() { ["if-version"] = "old" })).Error!.Code);
+        settings.FastFetch = true;
+        Assert.Equal("PLAN_STALE", (await Update("FastFetch", "true", new() { ["plan-id"] = dry.Data!["plan"]!["id"]!.ToString() })).Error!.Code);
+        var first = await Update("Language", "fr", new() { ["idempotency-key"] = "unit-key" });
+        settings.Language = "en";
+        var repeat = await Update("Language", "fr", new() { ["idempotency-key"] = "unit-key" });
+        Assert.Equal(JsonSerializer.Serialize(first, Protocol.Json), JsonSerializer.Serialize(repeat, Protocol.Json)); Assert.Equal("en", settings.Language);
+        Assert.Equal("REQUEST_ID_CONFLICT", (await Update("Language", "en", new() { ["idempotency-key"] = "unit-key" })).Error!.Code);
+        var restarted = Facade(settings);
+        Assert.True((await restarted.ExecuteAsync(Request(restarted, "setting update", ["Language"], new() { ["value"] = "fr", ["idempotency-key"] = "unit-key" }), default)).Ok);
+        var partial = await facade.ExecuteAsync(Request(facade, "setting update", flags: new() { ["ids"] = "FastFetch,unknown", ["value"] = "false" }), default);
+        Assert.Equal("PARTIAL_FAILURE", partial.Error!.Code); Assert.Equal(2, partial.Error.Details!["results"]!.AsArray().Count); Assert.False(settings.FastFetch);
+        Assert.True((await facade.ExecuteAsync(Request(facade, "setting update", flags: new() { ["data"] = "{\"key\":\"Language\",\"value\":\"fr\"}" }), default)).Ok);
+        string journal = File.ReadAllText(Path.Combine(_directory, "journal.json")); Assert.DoesNotContain("unit-key", journal); Assert.DoesNotContain("unit-proof", journal);
+    }
+    [Fact]
+    public async Task SyntheticQueueJobRunsAndControlsCrossTheRealPipe()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(dispatcher));
+            dispatcher.BeginInvoke(async () =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(_directory);
+                    var queue = new DownloadQueue(new CacheService(Path.Combine(_directory, "queue.json")), NullLogger<DownloadQueue>.Instance, dispatcher);
+                    var facade = Facade(queue: queue); byte[] capability = RandomNumberGenerator.GetBytes(32);
+                    using var service = new AgentPipeHostedService(facade, NullLogger<AgentPipeHostedService>.Instance, capability);
+                    async Task<Envelope> Call(string command, string[]? args = null, Dictionary<string, string?>? flags = null)
+                    {
+                        string name = "LuaTools-test-" + Guid.NewGuid().ToString("N");
+                        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 2, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        var host = Task.Run(async () => { await server.WaitForConnectionAsync(timeout.Token); await service.ServeAsync(server, timeout.Token); });
+                        var reply = await AgentClient.ExchangeAsync(name, Request(facade, command, args, flags, Convert.ToBase64String(capability)), timeout.Token); await host; return reply;
+                    }
+                    await queue.StartAsync(default);
+                    try
+                    {
+                        var item = queue.Enqueue(new DownloadJob(DownloadKind.Depot, "depot:synthetic", 570, "Synthetic", "No network", null,
+                            async (_, _, ct) => { await Task.Delay(TimeSpan.FromSeconds(60), ct); return new DownloadedFile(_directory, "synthetic"); },
+                            (_, _, _) => Task.FromResult(new JobResult(true, null))));
+                        Assert.True((await Call("job list")).Ok);
+                        Assert.Equal(item.Id, (await Call("job get", [item.Id])).Data!["id"]!.ToString());
+                        Assert.True((await Call("job pause", [item.Id])).Ok); Assert.Equal(DownloadStatus.Paused, item.Status);
+                        if (item.RunningAttempt is { } attempt) await attempt.WaitAsync(TimeSpan.FromSeconds(5));
+                        Assert.True((await Call("job resume", [item.Id])).Ok);
+                        Assert.True((await Call("job cancel", [item.Id])).Ok);
+                        await item.Completion.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(DownloadStatus.Cancelled, item.Status);
+                        Assert.True((await Call("job retry", [item.Id], new() { ["yes"] = null })).Ok);
+                        var next = queue.Items.Single(x => x.IsActive); Assert.NotEqual(item.Id, next.Id);
+                        await Call("job cancel", [next.Id]); await next.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+                        var decision = queue.Enqueue(new DownloadJob(DownloadKind.Manifest, "manifest:synthetic", 571, "Decision", "No network", null,
+                            (_, _, _) => Task.FromResult(new DownloadedFile(Path.Combine(_directory, "absent.bin"), "absent.bin")),
+                            (_, _, _) => Task.FromResult(new JobResult(true, null)),
+                            (_, item, ct) => ConsentCoordinator.WaitAsync(item.Id, ct)));
+                        while (!ConsentCoordinator.HasPending(decision.Id)) await Task.Delay(10);
+                        Assert.Equal("CONSENT_REQUIRED", (await Call("job confirm", [decision.Id], new() { ["decision"] = "replace" })).Error!.Code);
+                        Assert.True((await Call("job confirm", [decision.Id], new() { ["decision"] = "replace", ["yes"] = null })).Ok);
+                        await decision.Completion.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(DownloadStatus.Completed, decision.Status);
+                        queue.Remove(decision);
+                        Assert.True((await Call("job get", [decision.Id])).Ok);
+                        dispatcher.BeginInvoke(() => Thread.Sleep(50), System.Windows.Threading.DispatcherPriority.Send);
+                        var timeout = await Call("doctor", flags: new() { ["timeout"] = "1ms" });
+                        Assert.Equal("TIMEOUT", timeout.Error!.Code); Assert.Equal(7, timeout.Error.ExitCode);
+                    }
+                    finally { await queue.StopAsync(default); }
+                    done.TrySetResult();
+                }
+                catch (Exception ex) { done.TrySetException(ex); }
+                finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background); }
+            });
+            System.Windows.Threading.Dispatcher.Run();
+        });
+        thread.SetApartmentState(ApartmentState.STA); thread.IsBackground = true; thread.Start();
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(60));
     }
     public void Dispose() { _http.Dispose(); try { Directory.Delete(_directory, true); } catch { } }
 }

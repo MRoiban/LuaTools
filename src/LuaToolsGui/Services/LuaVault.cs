@@ -84,7 +84,7 @@ internal class VaultIndex
 public class LuaVault
 {
     private static readonly string DefaultRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppConfig.DataDirectoryName, "luavault");
+        LuaTools.Agent.DataPaths.Roaming, AppConfig.DataDirectoryName, "luavault");
 
     private readonly string _root;
     private readonly Func<string?> _stPlugInDir;
