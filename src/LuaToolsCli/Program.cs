@@ -50,23 +50,7 @@ public static class Program
             else
             {
                 parsed = await CommandInput.LoadAsync(parsed, cancellation.Token);
-                if (parsed.Problems.Length == 0 && parsed.Command!.Key == "download watch")
-                {
-                    if (!parsed.Has("format") && !parsed.Has("json")) parsed.Flags["format"] = "jsonl";
-                    string format = parsed.Value("format") ?? "json";
-                    if (format is not ("json" or "jsonl")) result = Envelope.Fail("INVALID_USAGE", 2, "Watch requires jsonl or json format.");
-                    else
-                    {
-                        while (true)
-                        {
-                            var frame = await transport(parsed, cancellation.Token);
-                            Console.WriteLine(Rendering.Render(Results.Project(frame, parsed.Value("fields")), "json"));
-                            if (!frame.Ok) return frame.Error!.ExitCode;
-                            if (frame.Data?["event"]?["cursor"]?.ToString() is { } cursor) parsed.Flags["cursor"] = cursor;
-                        }
-                    }
-                }
-                else result = parsed.Problems.Length > 0 ? Envelope.Fail("INVALID_USAGE", 2, "Invalid input data.", problems: parsed.Problems) : await transport(parsed, cancellation.Token);
+                result = parsed.Problems.Length > 0 ? Envelope.Fail("INVALID_USAGE", 2, "Invalid input data.", problems: parsed.Problems) : await transport(parsed, cancellation.Token);
             }
             result = Results.Project(result, parsed.Value("fields"));
         }

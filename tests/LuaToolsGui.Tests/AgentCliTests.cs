@@ -315,6 +315,19 @@ public sealed partial class AgentCliTests : IDisposable
                         var host = Task.Run(async () => { await server.WaitForConnectionAsync(timeout.Token); await service.ServeAsync(server, timeout.Token); });
                         var reply = await AgentClient.ExchangeAsync(name, Request(facade, command, args, flags, Convert.ToBase64String(capability)), timeout.Token); await host; return reply;
                     }
+                    async Task<Envelope> Watch(Dictionary<string, string?> flags)
+                    {
+                        string name = "LuaTools-test-" + Guid.NewGuid().ToString("N");
+                        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                        var server = new NamedPipeServerStream(name, PipeDirection.InOut, 2, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        var host = Task.Run(async () => { await server.WaitForConnectionAsync(timeout.Token); await service.ServeAsync(server, timeout.Token); });
+                        await using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                        await client.ConnectAsync(250, timeout.Token);
+                        await Protocol.WriteAsync(client, Request(facade, "download watch", null, flags, Convert.ToBase64String(capability)), Protocol.MaxRequest, timeout.Token);
+                        Assert.True((await Protocol.ReadAsync<Envelope>(client, Protocol.MaxFrame, timeout.Token)).Ok); // the acknowledgement precedes the stream
+                        var frame = await Protocol.ReadAsync<Envelope>(client, Protocol.MaxFrame, timeout.Token);
+                        timeout.Cancel(); await host; return frame;
+                    }
                     DownloadJob Pending(string key) => new(DownloadKind.Manifest, key, 570, "Pending", "No network", null,
                         (_, _, _) => Task.FromResult(new DownloadedFile(Path.Combine(_directory, "absent.bin"), "absent.bin")),
                         (_, _, _) => Task.FromResult(new JobResult(true, null)));
@@ -364,8 +377,8 @@ public sealed partial class AgentCliTests : IDisposable
                         Assert.True((await Call("game list")).Ok);
                         string cursor = facade.Events.CurrentCursor;
                         facade.Events.Publish("download", "test", new { id = decision.Id });
-                        Assert.Equal("test", (await Call("download watch", flags: new() { ["cursor"] = cursor })).Data!["event"]!["kind"]!.ToString());
-                        Assert.Equal("RESET_REQUIRED", (await Call("download watch", flags: new() { ["cursor"] = "expired" })).Error!.Code);
+                        Assert.Equal("test", (await Watch(new() { ["cursor"] = cursor })).Data!["event"]!["kind"]!.ToString());
+                        Assert.Equal("RESET_REQUIRED", (await Watch(new() { ["cursor"] = "expired" })).Error!.Code);
                         Assert.True((await Call("job get", [decision.Id])).Ok);
                         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         var holding = coordinator.ExecuteAsync(Request(facade, "setting update", ["FastFetch"], new() { ["value"] = "false", ["dry-run"] = null }), async ct =>

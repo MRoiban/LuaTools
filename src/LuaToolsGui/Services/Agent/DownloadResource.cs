@@ -8,23 +8,6 @@ public sealed partial class AgentCommandService
     [AgentResource("download"), AgentResource("queue")]
     private async Task<Envelope> DownloadAsync(AgentRequest r, CancellationToken ct)
     {
-        if (r.Command == "download watch")
-        {
-            string cursor = r.Flags.GetValueOrDefault("cursor") ?? Events.CurrentCursor;
-            using var observation = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            observation.CancelAfter(TimeSpan.FromSeconds(8));
-            try
-            {
-                await foreach (var frame in Events.Watch(cursor, observation.Token))
-                {
-                    if (!frame.Ok) return frame;
-                    cursor = frame.Data?["event"]?["cursor"]?.ToString() ?? cursor;
-                    if (frame.Data?["event"]?["category"]?.ToString() == "download" || frame.Data?["event"]?["kind"]?.ToString() == "reset") return frame;
-                }
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
-            return Envelope.Success(new { @event = new { kind = "heartbeat", cursor } });
-        }
         if (r.Command is "download list" or "queue list") return List(r, await DownloadSnapshotAsync(ct));
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {

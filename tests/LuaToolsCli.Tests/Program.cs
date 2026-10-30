@@ -208,6 +208,12 @@ await AsyncTest("slow event consumer gets GAP without blocking publisher", async
     Assert(watch.Elapsed < TimeSpan.FromSeconds(1), "publisher blocked");
     Assert(await events.MoveNextAsync() && events.Current.Data?["event"]?["kind"]?.ToString() == "GAP", "gap");
 });
+await AsyncTest("download watch stops at GAP instead of reconnecting", async () =>
+{
+    int calls = 0;
+    await LuaToolsCli.Program.RunAsync(["download", "watch", "--json"], (_, _) => { calls++; return Task.FromResult(Envelope.Success(new { @event = new { kind = "GAP" } })); });
+    Assert(calls == 1, "reconnected after GAP");
+});
 await AsyncTest("session read-only is inherited and cannot be cleared", async () =>
 {
     int mutations = 0;
