@@ -160,7 +160,8 @@
       "plan",
       "results",
       "state",
-      "job_id"
+      "job_id",
+      "cloudredirect"
     ]
   },
   {

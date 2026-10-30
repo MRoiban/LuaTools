@@ -28,7 +28,7 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
         }
         finally { _write.Release(); }
     }
-    public async Task<(UnlockerMode? Detected, ModeState[] States)> ReadAsync(bool refresh = false, bool adoptDetection = false, CancellationToken ct = default)
+    public async Task<(UnlockerMode? Detected, ModeState[] States, CloudRedirectAddonState Cloud)> ReadAsync(bool refresh = false, bool adoptDetection = false, CancellationToken ct = default)
     {
         bool force = refresh && DateTimeOffset.UtcNow - _lastRefresh >= TimeSpan.FromSeconds(30);
         if (force) _lastRefresh = DateTimeOffset.UtcNow;
@@ -38,16 +38,18 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
             states.Add(def.Mode == unlocker.SelectedMode || def.Mode == UnlockerMode.Custom
                 ? await unlocker.GetStateAsync(def.Mode, force, ct)
                 : new(def.Mode, ModeStatus.NotInstalled, false, null));
-        return (detected, states.ToArray());
+        return (detected, states.ToArray(), await ReadCloudAsync(force, ct));
     }
     public bool CloudUnlocked => unlocker.SelectedMode is UnlockerMode.Ost or UnlockerMode.Bst;
     public Task<CloudRedirectAddonState> ReadCloudAsync(bool refresh = false, CancellationToken ct = default) =>
         unlocker.GetCloudRedirectStateAsync(CloudUnlocked, refresh, ct);
-    public async Task<ModeInstallResult> UpdateCloudAsync(bool? enabled, bool refresh, IProgress<double?>? progress = null, CancellationToken ct = default)
+    public async Task<ModeInstallResult> UpdateCloudAsync(bool? enabled, bool refresh, IProgress<double?>? progress = null, CancellationToken ct = default, Action? revalidate = null)
     {
         await _write.WaitAsync(ct);
         try
         {
+            revalidate?.Invoke();
+            using var selected = steam.PinSelectedInstallation();
             if (!CloudUnlocked) return ModeInstallResult.Fail(Resources.Strings.Mode_CloudRedirect_Locked);
             var result = refresh ? await unlocker.UpdateCloudRedirectAsync(progress, ct)
                 : enabled == true ? await unlocker.EnableCloudRedirectAsync(progress, ct) : unlocker.DisableCloudRedirect();

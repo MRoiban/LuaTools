@@ -91,8 +91,29 @@ public class FixCoordinator(LuaToolsApiClient api, AuthService auth, SettingsSer
     public DownloadJob CreateJob(long appId, string name, DenuvoFix fix, Uri? folder, string slot, Action<DownloadItem, JobResult?>? finished = null)
     {
         RequireApply(appId, folder is not null, slot == "manifest");
-        return folder is not null ? jobs.CreateOnlineFixMeJob(folder, fix.FixFilename!, appId, name, finished)
+        string? selectedRoot = steam.EffectivePath;
+        var job = folder is not null ? jobs.CreateOnlineFixMeJob(folder, fix.FixFilename!, appId, name, finished)
             : jobs.CreateDenuvoJob(fix.Id, slot, slot == "manifest" ? fix.ManifestFilename ?? $"{appId}.zip" : fix.FixFilename ?? $"{appId}_fix.zip", appId, name, fix.Title, finished);
+        void RequireSameSteam()
+        {
+            if (!string.Equals(selectedRoot, steam.EffectivePath, StringComparison.OrdinalIgnoreCase))
+                throw new DownloadAbortedException(Resources.Strings.Agent_System_TargetChanged);
+        }
+        return job with
+        {
+            DownloadAsync = async (item, progress, ct) =>
+            {
+                RequireSameSteam();
+                using var selected = steam.PinSelectedInstallation();
+                return await job.DownloadAsync(item, progress, ct);
+            },
+            InstallAsync = async (file, item, ct) =>
+            {
+                RequireSameSteam();
+                using var selected = steam.PinSelectedInstallation();
+                return await job.InstallAsync(file, item, ct);
+            },
+        };
     }
     public JobResult Revert(long appId, string id, string name) => jobs.RevertDenuvoFix(appId, id, name);
     public string? InstallDir(long appId) => library.GetInstallDir(appId);

@@ -142,10 +142,10 @@ public partial class ModeViewModel : ObservableObject
 
     /// <summary>Refresh the add-on panel state. Reads dll/toml from disk (cheap); checks GitHub for an
     /// update only when unlocked (Nightly active), respecting forceRefresh.</summary>
-    private async Task RefreshCloudRedirectAsync(bool forceRefresh)
+    private async Task RefreshCloudRedirectAsync(bool forceRefresh, CloudRedirectAddonState? state = null)
     {
         CloudRedirectUnlocked = _unlocker.SelectedMode is UnlockerMode.Ost or UnlockerMode.Bst;
-        var s = await _operations.ReadCloudAsync(forceRefresh);
+        var s = state ?? await _operations.ReadCloudAsync(forceRefresh);
         CloudRedirectInstalled = s.Installed;
         CloudRedirectEnabled = s.Enabled;
         CloudRedirectUpdateAvailable = s.UpdateAvailable;
@@ -289,7 +289,7 @@ public partial class ModeViewModel : ObservableObject
             if (snapshot.States.FirstOrDefault(s => s.Mode == card.Mode) is { } state) Apply(card, state);
 
         // Bottom CloudRedirect add-on panel (locked unless Nightly BST is the active mode).
-        await RefreshCloudRedirectAsync(forceRefresh);
+        await RefreshCloudRedirectAsync(forceRefresh, snapshot.Cloud);
     }
 
     private DateTime _lastCheck;

@@ -829,6 +829,7 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet may publish progress and presence, credit playtime, download schemas or link Workshop content while enabled.</value></data>
 
   <!-- Agent system commands -->
+  <data name="Agent_System_TargetChanged" xml:space="preserve"><value>The selected Steam installation changed. Submit a new operation for the current selection.</value></data>
   <data name="Agent_System_PluginSelection" xml:space="preserve"><value>Select the Steam installation where this plugin was installed before removing it.</value></data>
   <data name="Agent_System_Failed" xml:space="preserve"><value>The operation failed. Inspect the job result and activity log.</value></data>
   <data name="Agent_System_SteamRestart" xml:space="preserve"><value>Stop and restart only the selected Steam installation in this session; running games and downloads are interrupted.</value></data>

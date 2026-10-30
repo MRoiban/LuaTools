@@ -43,6 +43,7 @@ public sealed class AgentSystemTests : IDisposable
     private readonly DownloadQueue _queue;
     private readonly ModeCoordinator _modes;
     private readonly FixCoordinator _fixes;
+    private readonly ManifestJobFactory _factory;
     private readonly AgentCommandService _facade;
     private readonly string _game;
     public AgentSystemTests()
@@ -65,6 +66,7 @@ public sealed class AgentSystemTests : IDisposable
         var api = new LuaToolsApiClient(auth, null!, covers, _http);
         var online = new OnlineFixMeClient(_http);
         var factory = new ManifestJobFactory(api, null!, _settings, null!, library, covers, new ToastService(), null!, null!, null!, new AppliedFixIndexService(library, NullLogger<AppliedFixIndexService>.Instance, Path.Combine(_root, "index")), online);
+        _factory = factory;
         _fixes = new(api, auth, _settings, _steam, library, online, factory);
         _queue = new(cache, NullLogger<DownloadQueue>.Instance);
         _facade = new(_settings, _steam, auth, _queue, unlocker, new PluginInstallerService(_steam, _settings, gh, null!), new UpdateService(),
@@ -121,6 +123,28 @@ public sealed class AgentSystemTests : IDisposable
         _settings.ExecutableGameFixesEnabled = false;
         await Assert.ThrowsAsync<InvalidOperationException>(() => job.DownloadAsync(null!, null!, default));
         Assert.Equal(0, _network.Requests); Assert.Equal(0, _steam.Stops);
+    }
+    [Fact]
+    public async Task ActualFixApplyHonoursRevocationBeforeReadingOrWritingTheArchive()
+    {
+        _settings.ExecutableGameFixesEnabled = true;
+        var job = _factory.CreateDenuvoJob("test", "fix", "test.zip", 620, "TestGame", "test");
+        _settings.ExecutableGameFixesEnabled = false;
+        var result = await job.InstallAsync(new DownloadedFile(Path.Combine(_root, "never-opened.zip"), "test.zip"), null!, default);
+        Assert.False(result.Ok);
+        Assert.Contains("disabled", result.Message!, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(Path.Combine(_game, ManifestJobFactory.FixRecordDir)));
+        Assert.Equal(0, _network.Requests);
+    }
+    [Fact]
+    public async Task QueuedFixRefusesAChangedSteamInstallationBeforeAcquisition()
+    {
+        _settings.ExecutableGameFixesEnabled = true;
+        var job = _fixes.CreateJob(620, "TestGame", new DenuvoFix { Id = "test", Title = "test", FixFilename = "test.zip" }, new Uri("https://uploads.online-fix.me/Game/"), "fix");
+        _settings.SteamPathOverride = Path.Combine(_root, "other-steam");
+        await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(null!, null!, default));
+        await Assert.ThrowsAsync<DownloadAbortedException>(() => job.InstallAsync(new DownloadedFile("unused", "unused"), null!, default));
+        Assert.Equal(0, _network.Requests);
     }
     [Fact]
     public async Task RevertWithDisabledWorkflowRestoresOnlyRecordedFiles()
@@ -208,6 +232,11 @@ public sealed class AgentSystemTests : IDisposable
         _steam.Running = false;
         var partial = await Pipe("fix revert", flags: new() { ["appid"] = "620", ["ids"] = "missing-one,missing-two", ["yes"] = null });
         Assert.Equal("PARTIAL_FAILURE", partial.Error!.Code); Assert.Equal(1, partial.Error.ExitCode); Assert.Equal(2, partial.Error.Details!["results"]!.AsArray().Count);
+        var pending = new TaskCompletionSource<Envelope>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _facade.Jobs.Register("fake-pipe", _ => pending.Task, default);
+        Assert.Equal("JOBS_ACTIVE", (await Pipe("application restart", flags: new() { ["yes"] = null })).Error!.Code);
+        Assert.Equal("TIMEOUT", (await Pipe("application restart", flags: new() { ["yes"] = null, ["drain"] = null, ["timeout"] = "100ms" })).Error!.Code);
+        pending.SetResult(Envelope.Success(new { state = "completed" }));
         Assert.Equal(0, _steam.Stops); Assert.Equal(0, _network.Requests);
     }
     public void Dispose() { _http.Dispose(); if (Directory.Exists(_root)) Directory.Delete(_root, true); }

@@ -80,7 +80,12 @@ public sealed partial class AgentCommandService
                             else
                             {
                                 string fixId = id;
-                                string job = Jobs.Register("fix.revert", lifetime => Task.Run(() => SystemResult(fixes.Revert(appId, fixId, appId.ToString()).Ok), lifetime), _hostLifetime);
+                                string job = Jobs.Register("fix.revert", lifetime => Task.Run(() =>
+                                {
+                                    if (r.ExpectedSteam != SteamIdentity) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_System_TargetChanged);
+                                    using var selected = steam.PinSelectedInstallation();
+                                    return SystemResult(fixes.Revert(appId, fixId, appId.ToString()).Ok);
+                                }, lifetime), _hostLifetime);
                                 results.Add(new { id, ok = true, job_id = job, state = "accepted" });
                             }
                         }

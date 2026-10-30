@@ -771,6 +771,7 @@ public static class Strings
 
     public static string Agent_CabinetImpact => Get(nameof(Agent_CabinetImpact));
     // Agent system commands
+    public static string Agent_System_TargetChanged => Get(nameof(Agent_System_TargetChanged));
     public static string Agent_System_PluginSelection => Get(nameof(Agent_System_PluginSelection));
         public static string Agent_System_Failed => Get(nameof(Agent_System_Failed));
         public static string Agent_System_SteamRestart => Get(nameof(Agent_System_SteamRestart));

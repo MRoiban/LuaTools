@@ -156,7 +156,9 @@
       "plan",
       "results",
       "state",
-      "job_id"
+      "job_id",
+      "cabinet_connected",
+      "connected_server_host"
     ]
   },
   {

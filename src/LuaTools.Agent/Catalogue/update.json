@@ -170,7 +170,7 @@
     "dry_run": true,
     "job_behavior": "job",
     "destructive": false,
-    "reversible": null,
+    "reversible": false,
     "side_effects": [
       "Reads requested data; RPC may start the minimized owner and warm rebuildable metadata caches. Local help, describe, commands, version and completion require no owner."
     ],

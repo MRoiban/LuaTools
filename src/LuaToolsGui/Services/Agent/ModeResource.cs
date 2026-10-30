@@ -17,7 +17,7 @@ public sealed partial class AgentCommandService
                 detected_mode = state.Detected?.ToString().ToLowerInvariant(), version = SystemVersion("mode"),
                 available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c).Concat(c.Verb == "update" && s.Mode != UnlockerMode.Custom && !settings.IsExecutableWorkflowEnabled(s.Mode == UnlockerMode.Bst ? "BetterSteamTools" : "OpenSteamTools") ? new[] { "WORKFLOW_DISABLED" } : []).ToArray(), r.Flags.ContainsKey("read-only")),
             }).ToArray(), ct);
-            return r.Command == "mode list" ? List(r, Protocol.Node(rows)!.AsArray()) : Envelope.Success(new { selected_mode = unlocker.SelectedMode?.ToString().ToLowerInvariant(), detected_mode = state.Detected?.ToString().ToLowerInvariant(), modes = rows, version = SystemVersion("mode") });
+            return r.Command == "mode list" ? List(r, Protocol.Node(rows)!.AsArray()) : Envelope.Success(new { selected_mode = unlocker.SelectedMode?.ToString().ToLowerInvariant(), detected_mode = state.Detected?.ToString().ToLowerInvariant(), modes = rows, cloudredirect = state.Cloud, version = SystemVersion("mode"), available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c), r.Flags.ContainsKey("read-only")) });
         }
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {

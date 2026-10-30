@@ -13,7 +13,7 @@ public sealed partial class AgentCommandService
             object cabinetState;
             try { var s = new CloudRedirectCabinetConfig().Status(); cabinetState = new { configured = s.Configured, server_host = s.Server is { } server ? new Uri(server).Host : null }; }
             catch { cabinetState = new { configured = false, error = "CONFIG_ERROR" }; }
-            return await Snapshot(() => Envelope.Success(new { status, cabinet = cabinetState, unlocked = modes.CloudUnlocked, version = SystemVersion("cloudredirect"), available_actions = AvailableActions.ForReasons("cloudredirect", c => SystemReasons("cloudredirect", c), r.Flags.ContainsKey("read-only")) }), ct);
+            return await Snapshot(() => Envelope.Success(new { status, cabinet = cabinetState, cabinet_connected = cabinet?.Status.Cloud.Connected == true, connected_server_host = cabinet?.Status.Cloud.ServerHost, unlocked = modes.CloudUnlocked, version = SystemVersion("cloudredirect"), available_actions = AvailableActions.ForReasons("cloudredirect", c => SystemReasons("cloudredirect", c), r.Flags.ContainsKey("read-only")) }), ct);
         }
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
@@ -38,7 +38,7 @@ public sealed partial class AgentCommandService
                     {
                         RequireSystemContext(r, version, "cloudredirect"); Gate();
                         if (manage) return SystemResult(await modes.ManageCloudAsync(ct: lifetime));
-                        return SystemResult((await modes.UpdateCloudAsync(enabled, refresh, ct: lifetime)).Success);
+                        return SystemResult((await modes.UpdateCloudAsync(enabled, refresh, ct: lifetime, revalidate: () => { RequireSystemContext(r, version, "cloudredirect"); Gate(); })).Success);
                     });
                 }, commit));
         }, token), ct);

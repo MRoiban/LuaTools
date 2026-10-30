@@ -794,6 +794,7 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet peut publier la progression et la présence, comptabiliser du temps de jeu, télécharger des schémas ou lier du contenu Workshop lorsqu’il est activé.</value></data>
 
   <!-- Agent system commands -->
+  <data name="Agent_System_TargetChanged" xml:space="preserve"><value>L’installation Steam sélectionnée a changé. Soumettez une nouvelle opération pour la sélection actuelle.</value></data>
   <data name="Agent_System_PluginSelection" xml:space="preserve"><value>Sélectionnez l’installation Steam où ce plugin a été installé avant de le supprimer.</value></data>
   <data name="Agent_System_Failed" xml:space="preserve"><value>L’opération a échoué. Consultez le résultat de la tâche et le journal d’activité.</value></data>
   <data name="Agent_System_SteamRestart" xml:space="preserve"><value>Arrêter et relancer uniquement l’installation Steam sélectionnée dans cette session ; les jeux et téléchargements en cours seront interrompus.</value></data>
