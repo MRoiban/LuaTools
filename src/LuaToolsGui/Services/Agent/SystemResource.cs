@@ -20,7 +20,7 @@ public sealed partial class AgentCommandService
             }, ct);
         return Ping();
     }
-    public Envelope Ping() => Envelope.Success(new { protocol = Protocol.Version, instance_id = InstanceId, ready = true, minimized = Program.StartMinimized, elevated = LocalDiscovery.IsElevated() });
+    public Envelope Ping() => Envelope.Success(new { protocol = Protocol.Version, instance_id = InstanceId, ready = true, steam_identity = SteamIdentity, minimized = Program.StartMinimized, elevated = LocalDiscovery.IsElevated() });
     private bool? SelectedSteamRunning()
     {
         if (!steam.IsValid) return null;

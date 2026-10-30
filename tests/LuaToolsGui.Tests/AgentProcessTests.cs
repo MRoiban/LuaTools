@@ -62,7 +62,14 @@ public sealed class AgentProcessTests
                 }
                 await Task.Delay(100);
             }
-            throw new TimeoutException("Published GUI never advertised readiness.");
+            var diagnostic = new List<string> { "Published GUI never advertised readiness." };
+            foreach (var child in children)
+            {
+                try { diagnostic.Add($"PID {child.Id}: exited={child.HasExited}" + (child.HasExited ? $" code={child.ExitCode} stderr={await child.StandardError.ReadToEndAsync()} stdout={await child.StandardOutput.ReadToEndAsync()}" : "")); } catch { }
+            }
+            if (Directory.Exists(roaming)) foreach (string log in Directory.GetFiles(roaming, "*.jsonl", SearchOption.AllDirectories)) diagnostic.Add(string.Join('\n', File.ReadLines(log).TakeLast(12)));
+            diagnostic.Add("bin files: " + (Directory.Exists(bin) ? string.Join(',', Directory.GetFiles(bin).Select(Path.GetFileName)) : "missing"));
+            throw new TimeoutException(string.Join("\n", diagnostic));
         }
         async Task ExitOwner()
         {

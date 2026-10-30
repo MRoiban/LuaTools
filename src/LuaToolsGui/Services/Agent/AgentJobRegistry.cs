@@ -44,7 +44,9 @@ public sealed class AgentJobRegistry
         return _items.Values.Where(x => !active || x.Item.IsActive).Select(x => Describe(x.Item))
             .Concat(_operations.Values.Where(x => !active || x.State == "running").Select(x => (object)new { id = x.Id, state = x.State, kind = x.Kind, version = x.State, available_actions = Array.Empty<object>() })).ToArray();
     }
-    public object? Get(string id) => Find(id) is { } item ? Describe(item) : _operations.TryGetValue(id, out var op)
+    public object? Get(string id) => Find(id) is { } item ? Describe(item) : _queue.History.FirstOrDefault(x => x.Id == id) is { } history
+        ? new { id = history.Id, state = JsonNamingPolicy.SnakeCaseLower.ConvertName(history.Record.Status.ToString()), kind = history.Record.Kind.ToString(), version = "history", available_actions = Array.Empty<object>() }
+        : _operations.TryGetValue(id, out var op)
         ? new { id = op.Id, state = op.State, kind = op.Kind, result = op.Result, version = op.State, available_actions = Array.Empty<object>() } : null;
     public static string Version(DownloadItem item) => MutationCoordinator.Hash(item.Id + ":" + item.Status);
     public static object Describe(DownloadItem item) => new
@@ -79,11 +81,17 @@ public static class ConsentCoordinator
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<bool>> Pending = new();
     public static bool HasPending(string id) => Pending.ContainsKey(id);
-    public static async Task<bool> WaitAsync(string id, CancellationToken ct)
+    public static Task<bool> WaitAsync(string id, CancellationToken ct) => WaitWithGuiAsync(id, null, ct);
+    public static async Task<bool> WaitWithGuiAsync(string id, Task<bool>? guiDecision, CancellationToken ct)
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!Pending.TryAdd(id, decision)) throw new InvalidOperationException();
-        try { return await decision.Task.WaitAsync(ct); }
+        try
+        {
+            if (guiDecision is null) return await decision.Task.WaitAsync(ct);
+            var winner = await Task.WhenAny(decision.Task, guiDecision).WaitAsync(ct);
+            return await winner;
+        }
         finally { Pending.TryRemove(id, out _); }
     }
     public static bool Decide(string id, bool replace) => Pending.TryGetValue(id, out var decision) && decision.TrySetResult(replace);

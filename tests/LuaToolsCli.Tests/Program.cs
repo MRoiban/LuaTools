@@ -149,4 +149,26 @@ await AsyncTest("entrypoint " + string.Join(' ', arguments), async () =>
     }
     if (arguments[0] == "activity-log") Assert(envelope["error"]!["problems"]!.AsArray().Count == 2, output);
 });
+foreach (string[] helpArgs in new[] { new[] { "--help" }, ["help", "setting"], ["setting", "update", "--help"] })
+await AsyncTest("redirected readable help " + string.Join(' ', helpArgs), async () =>
+{
+    var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+    start.ArgumentList.Add(typeof(Cli).Assembly.Location); foreach (string argument in helpArgs) start.ArgumentList.Add(argument);
+    using var child = Process.Start(start)!; string text = await child.StandardOutput.ReadToEndAsync(); await child.WaitForExitAsync();
+    Assert(child.ExitCode == 0 && text.StartsWith("LuaTools agent CLI") && !text.Contains("\\n"), text);
+    if (helpArgs.Length == 1) Assert(!text.Contains("luatools game get") && text.Contains("Global flags:"), "short help");
+});
+Test("per-command guide order", () =>
+{
+    string help = Rendering.Help(Catalogue.Find("setting update"));
+    string[] sections = ["Usage:", "Flags:", "Side effects:", "Reversibility:", "Preconditions:", "Examples:", "See also:"];
+    Assert(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).SequenceEqual(sections.Select(s => help.IndexOf(s, StringComparison.Ordinal)).OrderBy(i => i)) && sections.All(help.Contains), help);
+});
+Test("bulk input and command deadlines", () =>
+{
+    var p = CommandParser.Parse(["job", "cancel", "--ids", "one,two", "--dry-run"]); Assert(p.Problems.Length == 0, "bulk identity");
+    Assert(CommandParser.Parse(["job", "wait", "one"]).Timeout == TimeSpan.FromMinutes(5), "wait budget");
+    Assert(RequestDeadlines.For(Request(CommandParser.Parse(["doctor"]))) == TimeSpan.FromSeconds(30), "doctor budget");
+    Assert(RequestDeadlines.For(Request(CommandParser.Parse(["ping", "--timeout", "10ms"]))) == TimeSpan.FromMilliseconds(10), "requested budget");
+});
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;

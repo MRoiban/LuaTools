@@ -12,6 +12,7 @@ public sealed class AgentClient
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
         bool started = false;
+        string? expectedSteam = parsed.Value("expect-steam"), expectedInstance = null;
         var watch = Stopwatch.StartNew();
         while (true)
         {
@@ -28,7 +29,17 @@ public sealed class AgentClient
                 byte[] capability = LocalDiscovery.Protect(Convert.FromBase64String(record.Capability), true);
                 try
                 {
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, parsed.Value("expect-steam") ?? record.SteamIdentity, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
+                    if (!parsed.Command!.ReadOnly && expectedSteam is null)
+                    {
+                        var hello = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), record.InstanceId, Guid.NewGuid().ToString("N"), "ping", [], []);
+                        await Protocol.WriteAsync(pipe, hello, Protocol.MaxRequest, ct).ConfigureAwait(false);
+                        var context = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
+                        if (!context.Ok) return context;
+                        expectedSteam = context.Data?["steam_identity"]?.ToString(); expectedInstance = record.InstanceId;
+                        if (expectedSteam is null) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The owner did not advertise mutation context.");
+                        continue;
+                    }
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
                     var reply = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
                     if (parsed.Command.Key == "job wait" && reply.Ok && reply.Data?["state"]?.ToString() is { } state)

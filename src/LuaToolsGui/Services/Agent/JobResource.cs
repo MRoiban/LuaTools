@@ -29,6 +29,9 @@ public sealed partial class AgentCommandService
                 [verb == "retry" ? Resources.Strings.Agent_RetryImpact : r.Command], verb == "retry" || verb == "confirm" && r.Flags.GetValueOrDefault("decision") == "replace");
             return new PreparedMutation(plan, commitToken => Snapshot(() =>
             {
+                string fresh = items.Length == 1 ? items[0] is { } one ? AgentJobRegistry.Version(one) : "missing"
+                    : MutationCoordinator.Hash(string.Join(':', items.Select(i => i is null ? "missing" : AgentJobRegistry.Version(i))));
+                if (fresh != version) throw new MutationRejectedException("PLAN_STALE", 6);
                 var results = new List<object>(); bool failed = false; object? last = null;
                 for (int index = 0; index < items.Length; index++)
                 {

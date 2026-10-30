@@ -20,7 +20,7 @@ public sealed class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
-    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null)
+    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null)
     {
         Directory.CreateDirectory(_directory);
         settings ??= new SettingsService(new AppSettings());
@@ -29,9 +29,9 @@ public sealed class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: new MutationCoordinator(Path.Combine(_directory, "journal.json")));
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")));
     }
-    private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? []);
+    private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
     [Fact]
     public async Task FacadeReadsOnlyAllowlistedSettingsAndRefusesSecretNames()
     {
@@ -189,7 +189,8 @@ public sealed class AgentCliTests : IDisposable
                 {
                     Directory.CreateDirectory(_directory);
                     var queue = new DownloadQueue(new CacheService(Path.Combine(_directory, "queue.json")), NullLogger<DownloadQueue>.Instance, dispatcher);
-                    var facade = Facade(queue: queue); byte[] capability = RandomNumberGenerator.GetBytes(32);
+                    var coordinator = new MutationCoordinator(Path.Combine(_directory, "journal.json"));
+                    var facade = Facade(queue: queue, mutations: coordinator); byte[] capability = RandomNumberGenerator.GetBytes(32);
                     using var service = new AgentPipeHostedService(facade, NullLogger<AgentPipeHostedService>.Instance, capability);
                     async Task<Envelope> Call(string command, string[]? args = null, Dictionary<string, string?>? flags = null)
                     {
@@ -225,9 +226,15 @@ public sealed class AgentCliTests : IDisposable
                         await decision.Completion.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(DownloadStatus.Completed, decision.Status);
                         queue.Remove(decision);
                         Assert.True((await Call("job get", [decision.Id])).Ok);
-                        dispatcher.BeginInvoke(() => Thread.Sleep(50), System.Windows.Threading.DispatcherPriority.Send);
-                        var timeout = await Call("doctor", flags: new() { ["timeout"] = "1ms" });
-                        Assert.Equal("TIMEOUT", timeout.Error!.Code); Assert.Equal(7, timeout.Error.ExitCode);
+                        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                        var holding = coordinator.ExecuteAsync(Request(facade, "setting update", ["FastFetch"], new() { ["value"] = "false", ["dry-run"] = null }), async ct =>
+                        {
+                            held.SetResult(); await Task.Delay(200, ct);
+                            return new(new("test", "test", "test", [], [], false), _ => Task.FromResult(Envelope.Success(null)));
+                        }, default);
+                        await held.Task;
+                        var timeout = await Call("setting update", ["FastFetch"], new() { ["value"] = "true", ["timeout"] = "10ms" });
+                        Assert.Equal("TIMEOUT", timeout.Error!.Code); Assert.Equal(7, timeout.Error.ExitCode); await holding;
                     }
                     finally { await queue.StopAsync(default); }
                     done.TrySetResult();

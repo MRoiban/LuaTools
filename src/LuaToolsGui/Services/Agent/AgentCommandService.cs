@@ -42,6 +42,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (parsed.Problems.Length != 0) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments, problems: parsed.Problems);
         if (parsed.Command is null || parsed.Command.Key != request.Command) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
         if (request.Flags.ContainsKey("read-only") && !parsed.Command.ReadOnly) return Envelope.Fail("READ_ONLY", 5, Resources.Strings.Agent_ReadOnly);
+        if (!parsed.Command.ReadOnly && request.ExpectedSteam is null) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         if (parsed.Command.Status != "enabled" || request.Flags.ContainsKey("fix")) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);
         Envelope result = handler is null ? Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented)

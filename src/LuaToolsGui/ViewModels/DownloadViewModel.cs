@@ -687,7 +687,7 @@ public partial class DownloadViewModel : ObservableObject
         var job = _jobs.CreateManifestJob(
             appId, gameName, source.Name, needsKey,
             // Silent/headless installs have no surfaced window to confirm on, so they skip the gate.
-            confirm: _silentInstall ? null : (file, _, ct) => ConfirmOverwriteAsync(file, appId, gameName, ct),
+            confirm: _silentInstall ? null : (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
             onFinished: (item, result) => OnManifestFinished(item, result, needsKey),
             onReveal: () => NavigateToGame?.Invoke(appId));
 
@@ -764,7 +764,7 @@ public partial class DownloadViewModel : ObservableObject
     /// concurrent confirmations queue behind <c>_confirmGate</c>.</para>
     /// </remarks>
     private async Task<bool> ConfirmOverwriteAsync(
-        DownloadedFile file, long appId, string gameName, CancellationToken ct)
+        DownloadedFile file, string jobId, long appId, string gameName, CancellationToken ct)
     {
         // No existing lua → nothing to confirm against, install straight away.
         string? existing = _installer.ReadInstalledLua(appId);
@@ -810,7 +810,7 @@ public partial class DownloadViewModel : ObservableObject
 
             // Cancelling the download while the overlay is open closes it and declines.
             await using var reg = ct.Register(() => tcs.TrySetResult(false));
-            bool answer = await tcs.Task;
+            bool answer = await Services.Agent.ConsentCoordinator.WaitWithGuiAsync(jobId, tcs.Task, ct);
 
             await App.Current.Dispatcher.InvokeAsync(() =>
             {

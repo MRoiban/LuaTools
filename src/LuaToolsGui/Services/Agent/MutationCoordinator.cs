@@ -15,7 +15,7 @@ public sealed record PreparedMutation(MutationPlan Plan, Func<CancellationToken,
 public sealed class MutationCoordinator(string? journalPath = null)
 {
     private readonly SemaphoreSlim _admission = new(1);
-    private readonly Dictionary<string, (DateTimeOffset Time, MutationPlan Plan)> _plans = [];
+    private readonly Dictionary<string, (DateTimeOffset Time, MutationPlan Plan, string Digest)> _plans = [];
     private readonly string _path = journalPath ?? Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName, "agent-journal.json");
     private sealed record Entry(string Key, string Digest, string Instance, DateTimeOffset Time, string State, Envelope? Receipt);
     public static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
@@ -29,7 +29,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
         {
             // Fingerprints exclude rendering and consent, but include all operands and actor attribution.
             string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam,
-                flags = request.Flags.Where(f => f.Key is not ("yes" or "dry-run" or "plan-id" or "json" or "format" or "no-input" or "timeout" or "no-start" or "verbose" or "quiet" or "fields" or "idempotency-key")).OrderBy(f => f.Key) }, Protocol.Json));
+                flags = request.Flags.Where(f => f.Key is not ("yes" or "dry-run" or "plan-id" or "json" or "format" or "no-input" or "timeout" or "no-start" or "verbose" or "quiet" or "fields" or "idempotency-key")).OrderBy(f => f.Key).ToDictionary(f => f.Key, f => CanonicalFlag(f.Key, f.Value)) }, Protocol.Json));
             string key = Hash(request.Flags.GetValueOrDefault("idempotency-key") ?? request.RequestId);
             List<Entry> journal = [];
             if (!request.Flags.ContainsKey("dry-run"))
@@ -53,16 +53,14 @@ public sealed class MutationCoordinator(string? journalPath = null)
             if (request.Flags.GetValueOrDefault("plan-id") is { } planId)
             {
                 if (!_plans.TryGetValue(planId, out var saved)) return Failure("PLAN_EXPIRED", 3);
-                if (saved.Plan.Context != plan.Context || saved.Plan.Version != plan.Version || !saved.Plan.Targets.SequenceEqual(plan.Targets) || !saved.Plan.Impact.SequenceEqual(plan.Impact)) return Failure("PLAN_STALE", 6, plan);
+                if (saved.Digest != digest || saved.Plan.Context != plan.Context || saved.Plan.Version != plan.Version || !saved.Plan.Targets.SequenceEqual(plan.Targets) || !saved.Plan.Impact.SequenceEqual(plan.Impact)) return Failure("PLAN_STALE", 6, plan);
                 plan = saved.Plan;
             }
             if (request.Flags.GetValueOrDefault("if-version") is { } version && version != plan.Version) return Failure("VERSION_CONFLICT", 6, new { current_version = plan.Version });
             if (_plans.Count >= 1000) _plans.Remove(_plans.Keys.First());
-            _plans[plan.Id] = (DateTimeOffset.UtcNow, plan);
+            _plans[plan.Id] = (DateTimeOffset.UtcNow, plan, digest);
             if (request.Flags.ContainsKey("dry-run"))
             {
-                if (_plans.Count >= 1000) _plans.Remove(_plans.Keys.First());
-                _plans[plan.Id] = (DateTimeOffset.UtcNow, plan);
                 return Envelope.Success(new { plan });
             }
             if (plan.RequiresConfirmation && !request.Flags.ContainsKey("yes")) return Failure("CONSENT_REQUIRED", 8, new { plan });
@@ -83,13 +81,29 @@ public sealed class MutationCoordinator(string? journalPath = null)
             return receipt;
         }
         catch (MutationRejectedException ex) { return Failure(ex.Code, ex.ExitCode); }
+        catch (Exception ex) when (ex is IOException or JsonException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
         finally { _admission.Release(); }
     }
+    private static string? CanonicalFlag(string name, string? value)
+    {
+        if (name != "data" || value is null) return value;
+        try { return Canonical(JsonNode.Parse(value))?.ToJsonString(); }
+        catch (JsonException) { return value; } // validation reports shape without echoing content
+    }
+    private static JsonNode? Canonical(JsonNode? value) => value switch
+    {
+        JsonObject obj => new JsonObject(obj.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => KeyValuePair.Create(p.Key, Canonical(p.Value)))),
+        JsonArray array => new JsonArray(array.Select(Canonical).ToArray()), _ => value?.DeepClone(),
+    };
     private void Save(List<Entry> entries)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         string temp = _path + ".new";
-        File.WriteAllText(temp, JsonSerializer.Serialize(entries, Protocol.Json)); File.Move(temp, _path, true);
+        string json = JsonSerializer.Serialize(entries, Protocol.Json);
+        while (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024 && entries.Count > 1)
+        { entries.RemoveAt(0); json = JsonSerializer.Serialize(entries, Protocol.Json); }
+        if (Encoding.UTF8.GetByteCount(json) > 16 * 1024 * 1024) throw new IOException();
+        File.WriteAllText(temp, json); File.Move(temp, _path, true);
     }
 }
 public sealed class MutationRejectedException(string code, int exitCode) : Exception

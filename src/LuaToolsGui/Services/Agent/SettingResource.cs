@@ -45,7 +45,9 @@ public sealed partial class AgentCommandService
             }
             if (failed) return Envelope.Fail("PARTIAL_FAILURE", 1, Resources.Strings.Agent_MutationRejected) with
             { Error = new("PARTIAL_FAILURE", 1, Resources.Strings.Agent_MutationRejected, Details: Protocol.Node(new { results })) };
-            return Envelope.Success(new { results, version = PrepareSettingVersion(targets) });
+            return enabling ? Envelope.Success(new { results, version = PrepareSettingVersion(targets) }, null,
+                new Warning("EXECUTABLE_CONSENT_ENABLED", Resources.Strings.Agent_ConsentTitle, new { keys = targets.Where(ExecutableConsentCoordinator.Keys.Contains).ToArray(), actor = "agent" }))
+                : Envelope.Success(new { results, version = PrepareSettingVersion(targets) });
         }, token));
     }
     private string PrepareSettingVersion(string[] targets)

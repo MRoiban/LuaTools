@@ -52,7 +52,8 @@ public static class Program
             }
             result = Results.Project(result, parsed.Value("fields"));
         }
-        catch (OperationCanceledException) { result = interrupted ? Envelope.Fail("INTERRUPTED", 130, "Interrupted.") : Envelope.Fail("TIMEOUT", 7, "Call deadline exceeded."); }
+        catch (OperationCanceledException) { result = interrupted ? Envelope.Fail("INTERRUPTED", 130, "Interrupted.") : Envelope.Fail("TIMEOUT", 7, "Call deadline exceeded.") with
+        { Error = new("TIMEOUT", 7, "Call deadline exceeded.", Retryable: true, Details: Protocol.Node(new { job_id = parsed.Command?.Key == "job wait" ? parsed.Arguments.FirstOrDefault() : null, outcome_unknown = parsed.Command?.ReadOnly == false })) }; }
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or InvalidDataException) { result = Envelope.Fail("TRANSPORT_FAILURE", 7, "Invalid or unavailable local pipe response."); }
         catch (Exception) { result = Envelope.Fail("CLIENT_FAILURE", 1, "Unexpected client failure."); }
         finally { Console.CancelKeyPress -= handler; }
