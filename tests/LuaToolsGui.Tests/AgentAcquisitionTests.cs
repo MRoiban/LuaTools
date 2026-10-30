@@ -176,21 +176,21 @@ public sealed class AgentAcquisitionTests
     }
 
     [Fact]
-    public async Task ManifestInstallRejectsAnInstallThatWinsTheInstallGate()
+    public async Task ManifestAdmissionIsCheckedInsideTheInstallGate()
     {
         using var f = new Fixture(); f.Live("addappid(730)\n");
         string admitted = f.Diff.Version(730);
-        var job = f.Factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture", admitted: () => f.Diff.Version(730) == admitted);
+        bool insideGate = false;
+        var job = f.Factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture", admitted: () =>
+        {
+            insideGate = Monitor.IsEntered(LuaInstaller.InstallGate);
+            return f.Diff.Version(730) == admitted;
+        });
         var item = f.Queue.Enqueue(job);
         string file = f.CreateFile("730.lua", "addappid(730)\n");
-        Task<JobResult> install;
-        lock (LuaInstaller.InstallGate)
-        {
-            install = Task.Run(() => job.InstallAsync(new(file, "730.lua"), item, default));
-            Thread.Sleep(200); // the job is now queued behind this holder, as behind a local drop
-            f.Live("addappid(730)\n-- installed first\n");
-        }
-        Assert.False((await install.WaitAsync(TimeSpan.FromSeconds(5))).Ok);
+        f.Live("addappid(730)\n-- installed first\n");
+        Assert.False((await job.InstallAsync(new(file, "730.lua"), item, default)).Ok);
+        Assert.True(insideGate);
         Assert.Contains("installed first", File.ReadAllText(Path.Combine(f.Steam.StPlugInDir!, "730.lua")));
         Assert.False(File.Exists(file));
     }
