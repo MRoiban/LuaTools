@@ -55,6 +55,25 @@ public sealed partial class AgentCliTests
         Assert.False(File.Exists(Path.Combine(dir, "570.lua")));
         Assert.Equal("PARTIAL_FAILURE", (await facade.ExecuteAsync(Request(facade, "game delete", flags: new() { ["ids"] = "571,999", ["yes"] = null }), default)).Error!.Code);
     }
+    [Fact]
+    public async Task GuiTileNameAndFilterOptionsRetainCachedDataRules()
+    {
+        Directory.CreateDirectory(_directory);
+        string detailsDir = Path.Combine(_directory, "tile-details"); Directory.CreateDirectory(detailsDir);
+        File.WriteAllText(Path.Combine(detailsDir, "570.json"), "{\"steam_appid\":570,\"name\":\"Resolved\",\"type\":\"game\",\"genres\":[{\"id\":\"1\",\"description\":\"Action\"}],\"release_date\":{\"date\":\"1 Jan, 2020\"}}");
+        var cache = new CacheService(Path.Combine(_directory, "tile-cache.json"));
+        var info = new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance, new LibraryNoNetwork(), detailsDir);
+        var covers = new CoverCache(new LibraryNoNetwork(), Path.Combine(_directory, "tile-covers")); covers.MarkMissing(570);
+        var tile = new LuaTileViewModel(570, "", DateTime.UtcNow, "App 570", true);
+        await tile.EnsureResolvedAsync(info, covers); Assert.Equal("Resolved", tile.Name); Assert.Null(tile.Cover);
+        var options = LibraryCoordinator.FilterOptions([info.GetFilterData(570), null]);
+        Assert.Equal(new[] { "game" }, options.Types); Assert.Equal(new[] { "Action" }, options.Genres); Assert.Equal(new[] { "2020" }, options.Years);
+        string dir = Path.Combine(_directory, "option-steam", "config", "stplug-in"); Directory.CreateDirectory(dir); File.WriteAllText(Path.Combine(dir, "570.lua"), "addappid(570)");
+        var settings = new SettingsService(new AppSettings { SteamPathOverride = Path.Combine(_directory, "option-steam") });
+        var vm = new ManageViewModel(new SteamService(settings), Names(), info, covers, null!, settings, null!);
+        await vm.LoadAsync(); Assert.Contains("game", vm.TypeOptions); Assert.Contains("Action", vm.GenreOptions); Assert.Contains("2020", vm.YearOptions);
+        vm.SelectedGenre = "action"; Assert.Equal(570, Assert.Single(vm.Items).AppId);
+    }
     private sealed class LibraryStore : System.Net.Http.HttpMessageHandler
     {
         protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct) =>

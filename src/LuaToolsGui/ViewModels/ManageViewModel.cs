@@ -87,16 +87,9 @@ public partial class LuaTileViewModel : ObservableObject
         if (Interlocked.Exchange(ref _resolving, 1) == 1) return;
         try
         {
-            string? local = await ResolveCoverFileAsync(AppId, appInfo, covers,
-                name => { if (_nameIsPlaceholder) SetName(name); });
-
-            // If the cover came from the CDN guess (fast path), the name was never resolved.
-            // For a still-placeholder name, fetch appdetails once (throttled, saved to /details).
-            if (_nameIsPlaceholder)
-            {
-                var info = appInfo.GetCached(AppId) ?? await appInfo.ResolveAsync(AppId);
-                if (!string.IsNullOrWhiteSpace(info?.Name)) SetName(info!.Name);
-            }
+            var resolved = await LibraryCoordinator.ResolveTileDataAsync(AppId, appInfo, covers, _nameIsPlaceholder);
+            string? local = resolved.Cover;
+            if (resolved.Name is { } name) SetName(name);
 
             if (local is null) return;
             var image = await Task.Run(() => LoadFrozen(local));
@@ -668,22 +661,10 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
     /// <summary>Build the Type/Genre/Year dropdown options from whatever library details are cached.</summary>
     private void PopulateFilterOptions()
     {
-        var types = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        var genres = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
-        var years = new SortedSet<int>();
-
-        foreach (var t in _all)
-        {
-            var d = _appInfo.GetFilterData(t.AppId);
-            if (d is null) continue;
-            if (!string.IsNullOrWhiteSpace(d.Type)) types.Add(d.Type!);
-            foreach (var g in d.Genres) genres.Add(g);
-            if (d.ReleaseYear is { } y) years.Add(y);
-        }
-
-        RebuildOptionList(TypeOptions, types);
-        RebuildOptionList(GenreOptions, genres);
-        RebuildOptionList(YearOptions, years.OrderByDescending(y => y).Select(y => y.ToString()));
+        var options = LibraryCoordinator.FilterOptions(_all.Select(t => _appInfo.GetFilterData(t.AppId)));
+        RebuildOptionList(TypeOptions, options.Types);
+        RebuildOptionList(GenreOptions, options.Genres);
+        RebuildOptionList(YearOptions, options.Years);
     }
 
     /// <summary>Sync a dropdown's options to <paramref name="values"/> WITHOUT a full Clear(). Clearing

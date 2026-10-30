@@ -7,6 +7,31 @@ public sealed record LibraryEntry(long AppId, string FilePath, DateTime AddedAt,
 public static class LibraryCoordinator
 {
     public static IEnumerable<Cabinet.CabinetGame> CabinetGames(IEnumerable<Cabinet.CabinetGame> games) => games.OrderByDescending(g => g.IsPlaying).ThenByDescending(g => g.LastSynced).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase);
+    public static (string[] Types, string[] Genres, string[] Years) FilterOptions(IEnumerable<AppFilterData?> values)
+    {
+        var types = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var genres = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var years = new SortedSet<int>();
+        foreach (var d in values)
+        {
+            if (d is null) continue;
+            if (!string.IsNullOrWhiteSpace(d.Type)) types.Add(d.Type);
+            foreach (var genre in d.Genres) genres.Add(genre);
+            if (d.ReleaseYear is { } year) years.Add(year);
+        }
+        return (types.ToArray(), genres.ToArray(), years.OrderByDescending(y => y).Select(y => y.ToString()).ToArray());
+    }
+    public static async Task<(string? Cover, string? Name)> ResolveTileDataAsync(long appid, SteamAppInfoCache details, CoverCache covers, bool placeholder)
+    {
+        string? name = null;
+        string? local = await ResolveCoverFileAsync(appid, details, covers, n => { if (placeholder) name = n; });
+        if (placeholder && name is null)
+        {
+            var info = details.GetCached(appid) ?? await details.ResolveAsync(appid);
+            if (!string.IsNullOrWhiteSpace(info?.Name)) name = info.Name;
+        }
+        return (local, name);
+    }
     public static string Version(string path) => File.Exists(path) ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path))) : "missing";
     public static bool TryDelete(string path, out string? error)
     {
