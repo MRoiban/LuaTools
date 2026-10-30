@@ -106,7 +106,7 @@ public sealed partial class AgentCommandService
                 {
                     // source_entry preserves unmodelled Steam fields across reordering.
                     var source = row.TryGetProperty("source_entry", out var sourceIndex) ? previous.ElementAtOrDefault(sourceIndex.GetInt32()) ?? throw new MutationRejectedException("INVALID_ENTRY", 2) : new LaunchOption { OsList = "windows" };
-                    desired.Add(ParseLaunchEntry(row, source));
+                    desired.Add(ParseLaunchEntry(row, source, allowSource: true));
                 }
             }
         }
@@ -131,13 +131,13 @@ public sealed partial class AgentCommandService
             return Envelope.Success(new { id = job, job_id = job, state = "accepted" });
         }, commit));
     }, ct);
-    private static LaunchOption ParseLaunchEntry(JsonElement row, LaunchOption source)
+    private static LaunchOption ParseLaunchEntry(JsonElement row, LaunchOption source, bool allowSource = false)
     {
         if (row.ValueKind != JsonValueKind.Object) throw new MutationRejectedException("INVALID_DATA", 2);
         var option = source.Clone();
         foreach (var field in row.EnumerateObject())
         {
-            if (field.Name == "source_entry") { _ = field.Value.GetInt32(); continue; }
+            if (field.Name == "source_entry" && allowSource) { _ = field.Value.GetInt32(); continue; }
             if (field.Value.ValueKind != JsonValueKind.String) throw new MutationRejectedException("INVALID_DATA", 2);
             string value = field.Value.GetString()!;
             if (value.Length > 8192 || value.Contains('\0')) throw new MutationRejectedException("INVALID_DATA", 2);

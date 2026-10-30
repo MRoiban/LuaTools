@@ -183,7 +183,7 @@ public sealed class AgentFinishTests
     public async Task DepotGamesPagingPlansGetReconcileAndRealQueueIdNeverLeakKeys()
     {
         using var f = new Fixture(); string key = new('a', 64);
-        f.Live($"addappid(570)\naddappid(571,0,\"{key}\")\nsetManifestid(571,\"111\",1)\n");
+        f.Live($"addappid(570)\naddappid(571,0,\"{key}\")\nsetManifestid(571,\"111\",1)\naddappid(572)\nsetManifestid(572,\"222\",50)\n");
         File.WriteAllText(Path.Combine(f.Steam.StPlugInDir!, "572_22.lua"), "addappid(572)\n");
         var first = await f.Call("depot list", flags: new() { ["games"] = null, ["limit"] = "1" });
         Assert.True(first.Ok); Assert.Single(first.Data!.AsArray()); Assert.NotNull(first.Page!.NextCursor);
@@ -191,6 +191,8 @@ public sealed class AgentFinishTests
         Assert.Empty(f.Vault.GetVariants(572));
         var depot = await f.Call("depot get", ["571"], new() { ["appid"] = "570" }); Assert.True(depot.Ok); Assert.DoesNotContain(key, JsonSerializer.Serialize(depot));
         var plan = await f.Call("depot plan", ["570"], new() { ["depot"] = "571", ["read-only"] = null }); Assert.True(plan.Ok, plan.Error?.Code); Assert.Empty(f.Queue.Items);
+        var all = await f.Call("depot plan", ["570"], new() { ["all-depots"] = null }); Assert.True(all.Ok);
+        Assert.Single(all.Data!["plan"]!["targets"]!.AsArray()); Assert.Contains("572", all.Data["plan"]!["impact"]!.ToJsonString());
         string output = Path.Combine(f.Root, "output");
         var flags = new Dictionary<string, string?> { ["depot"] = "571", ["output"] = output, ["yes"] = null };
         Assert.Equal("WORKFLOW_DISABLED", (await f.Call("depot download", ["570"], flags)).Error!.Code); Assert.False(Directory.Exists(output));
@@ -204,6 +206,8 @@ public sealed class AgentFinishTests
         var reconcile = await f.Call("depot reconcile", ["572"], new() { ["refresh"] = null, ["yes"] = null }); Assert.True(reconcile.Ok); Assert.NotEmpty(f.Vault.GetVariants(572)); Assert.NotNull(f.Vault.GetActiveHash(572));
         Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput(f.Steam.EffectivePath!, f.Steam.EffectivePath));
         Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput("relative", f.Steam.EffectivePath));
+        Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput(@"\\?\C:\fixture", f.Steam.EffectivePath));
+        Assert.Throws<ArgumentException>(() => DepotDownloadPlanning.ValidateOutput(@"C:\fixture:stream", f.Steam.EffectivePath));
     }
 
     [Theory]

@@ -118,6 +118,7 @@ public static class DepotDownloadPlanning
     {
         if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("OUTPUT_ABSOLUTE_REQUIRED");
         string full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (full.StartsWith(@"\\", StringComparison.Ordinal) || full.Skip(2).Contains(':')) throw new ArgumentException("OUTPUT_DEVICE_OR_REMOTE_FORBIDDEN");
         if (full == Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full)!)) throw new ArgumentException("OUTPUT_ROOT_FORBIDDEN");
         foreach (string root in new[] { steamRoot, Environment.GetFolderPath(Environment.SpecialFolder.Windows), Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName), Path.Combine(DataPaths.Roaming, AppConfig.DataDirectoryName) }.OfType<string>().Where(r => r.Length > 0))
             if (full.Equals(root, StringComparison.OrdinalIgnoreCase) || full.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("OUTPUT_PROTECTED");

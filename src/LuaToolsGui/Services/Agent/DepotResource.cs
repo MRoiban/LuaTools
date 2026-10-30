@@ -151,7 +151,7 @@ public sealed partial class AgentCommandService
             var requested = (r.Flags.GetValueOrDefault("depot") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
             if (r.Flags.ContainsKey("all-depots") && requested.Length > 0) throw new MutationRejectedException("INVALID_SELECTION", 2);
             if (requested.Any(key => !picks.Any(p => p.DepotId.ToString() == key))) throw new MutationRejectedException("NOT_FOUND", 3);
-            var selected = picks.Where(p => r.Flags.ContainsKey("all-depots") || requested.Length > 0 ? r.Flags.ContainsKey("all-depots") || requested.Contains(p.DepotId.ToString()) : p.IsSelected).ToArray();
+            var selected = picks.Where(p => r.Flags.ContainsKey("all-depots") ? p.CanDownload : requested.Length > 0 ? requested.Contains(p.DepotId.ToString()) : p.IsSelected).ToArray();
             if (selected.Length == 0 || selected.Any(p => !p.CanDownload)) throw new MutationRejectedException("DEPOT_UNAVAILABLE", 6);
             string? output = r.Flags.GetValueOrDefault("output");
             if (output is not null) output = DepotDownloadPlanning.ValidateOutput(output, steam.EffectivePath);
@@ -161,7 +161,7 @@ public sealed partial class AgentCommandService
             string context = await Snapshot(() => PlanContext, token);
             long size = selected.Sum(p => p.Size);
             var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, selected.Select(p => id + ":live:" + p.DepotId + ":" + p.ManifestId).ToArray(),
-                [Resources.Strings.Agent_Finish_DepotImpact, System.Text.Json.JsonSerializer.Serialize(new { output, estimated_bytes = size, disabled_reasons = settings.DepotDownloaderEnabled ? Array.Empty<string>() : new[] { "WORKFLOW_DISABLED" }, depots = selected.Select(p => new { id = p.DepotId, manifest_id = p.ManifestId, size = p.Size, needs_fetch = p.NeedsFetch }) })], true);
+                [Resources.Strings.Agent_Finish_DepotImpact, System.Text.Json.JsonSerializer.Serialize(new { output, estimated_bytes = size, disabled_reasons = settings.DepotDownloaderEnabled ? Array.Empty<string>() : new[] { "WORKFLOW_DISABLED" }, unavailable = picks.Where(p => !p.CanDownload).Select(p => new { id = p.DepotId, reason = p.BlockReason }), depots = selected.Select(p => new { id = p.DepotId, manifest_id = p.ManifestId, size = p.Size, needs_fetch = p.NeedsFetch }) })], true);
             return new PreparedMutation(plan, commit => Snapshot(() =>
             {
                 if (r.Command == "depot plan") return Envelope.Success(new { plan });
