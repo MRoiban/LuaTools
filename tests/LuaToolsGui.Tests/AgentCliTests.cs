@@ -44,6 +44,117 @@ public sealed partial class AgentCliTests : IDisposable
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
 
 
+    [Theory]
+    [InlineData("ids", "603750")]
+    [InlineData("where", "appid=603750")]
+    public async Task LaunchApplyHonorsSelectors(string flag, string selector)
+    {
+        Directory.CreateDirectory(_directory);
+        string path = Path.Combine(_directory, "appinfo.vdf");
+        LaunchOptionsServiceTests.WriteAppInfo(path, [("0", "Original.exe", "windows")], [603750, 603751]);
+        var store = new LuaToolsGui.Services.AppInfo.LaunchModStore(Path.Combine(_directory, "launch.json"));
+        var launch = new LuaToolsGui.Services.AppInfo.LaunchOptionsService(() => path, () => false, () => { }, () => { }, store, Path.Combine(_directory, "backup"));
+        var state = launch.Read(603750)!;
+        launch.Stage(603750, state.ChangeNumber, state.Current, [new() { Executable = "Changed.exe" }]);
+        // A second drifted stored game need not be in this appinfo fixture to be selected incorrectly.
+        launch.Stage(603751, state.ChangeNumber, state.Current, [new() { Executable = "Other.exe" }]);
+        var facade = Facade(launch: launch);
+        var result = await facade.ExecuteAsync(Request(facade, "launch-option apply", flags: new() { ["dry-run"] = null, ["drifted"] = null, [flag] = selector }), default);
+        Assert.True(result.Ok, result.Error?.Code);
+        Assert.Equal(new[] { "603750" }, result.Data!["plan"]!["targets"]!.AsArray().Select(x => x!.ToString()));
+    }
+
+    [Fact]
+    public async Task SecretIdempotencySurvivesCoordinatorRestartWithoutPersistingSecret()
+    {
+        Directory.CreateDirectory(_directory);
+        string path = Path.Combine(_directory, "secret-journal.json");
+        var request = new AgentRequest(1, "", "owner", "request", "auth login", [], new() { ["idempotency-key"] = "login", ["yes"] = null }) { Secret = "123456" };
+        int commits = 0;
+        Task<PreparedMutation> Prepare(CancellationToken _) => Task.FromResult(new PreparedMutation(new("plan", "steam", "v", [], [], false), _ => { commits++; return Task.FromResult(Envelope.Success(new { accepted = true })); }));
+        Assert.True((await new MutationCoordinator(path).ExecuteAsync(request, Prepare, default)).Ok);
+        Assert.True((await new MutationCoordinator(path).ExecuteAsync(request, Prepare, default)).Ok);
+        Assert.Equal(1, commits);
+        Assert.Equal("REQUEST_ID_CONFLICT", (await new MutationCoordinator(path).ExecuteAsync(request with { Secret = "654321" }, Prepare, default)).Error!.Code);
+        Assert.DoesNotContain("123456", File.ReadAllText(path));
+        Assert.DoesNotContain(MutationCoordinator.Hash("123456"), File.ReadAllText(path));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReconciliationFindsSingleBulkAndPartialFixReceipts(bool partial)
+    {
+        var mutations = new MutationCoordinator(Path.Combine(_directory, "receipts.json"));
+        var facade = Facade(mutations: mutations);
+        string a = facade.Jobs.Register("fix.apply", _ => Task.FromResult(Envelope.Success(new { })), default);
+        string b = facade.Jobs.Register("fix.revert", _ => Task.FromResult(Envelope.Success(new { })), default);
+        var data = Protocol.Node(new { results = new[] { new { id = "fix-a", ok = true, job_id = a, state = "queued" }, new { id = "fix-b", ok = true, job_id = b, state = "accepted" } } });
+        var receipt = partial ? Envelope.Fail("PARTIAL_FAILURE", 1, "fixture") with { Error = new("PARTIAL_FAILURE", 1, "fixture", Details: data) } : Envelope.Success(data);
+        var request = Request(facade, "fix apply", flags: new() { ["idempotency-key"] = "fix-receipt" });
+        await mutations.ExecuteAsync(request, _ => Task.FromResult(new PreparedMutation(new("p", "c", "v", [], [], false), _ => Task.FromResult(receipt))), default);
+        var found = await facade.ExecuteAsync(Request(facade, "job list", flags: new() { ["idempotency-key"] = "fix-receipt" }), default);
+        Assert.True(found.Ok, found.Error?.Code);
+        Assert.Equal(new[] { a, b }.Order(), found.Data!.AsArray().Select(x => x!["id"]!.ToString()).Order());
+    }
+
+    [Theory]
+    [InlineData("running")]
+    [InlineData("failed")]
+    [InlineData("cancelled")]
+    [InlineData("completed")]
+    public async Task JobWaitFieldsPreserveControlState(string state)
+    {
+        var facade = Facade();
+        var release = new TaskCompletionSource<Envelope>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string id = facade.Jobs.Register("fixture", _ => release.Task, default);
+        if (state != "running")
+        {
+            release.SetResult(state == "completed" ? Envelope.Success(new { }) : Envelope.Fail(state == "cancelled" ? "CANCELLED" : "FAIL", 1, "fixture"));
+            for (int i = 0; i < 100 && Protocol.Node(facade.Jobs.Get(id))!["state"]!.ToString() == "running"; i++) await Task.Delay(10);
+        }
+        var parsed = CommandParser.Parse(["job", "wait", id, "--fields", "id"]);
+        // Exercise exactly the fields sent by the production client (including its control field).
+        var method = typeof(AgentClient).GetMethod("RequestFlags", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+        var flags = (Dictionary<string, string?>)method!.Invoke(null, [parsed])!;
+        var reply = await facade.ExecuteAsync(Request(facade, "job wait", [id], flags), default);
+        var outcome = AgentClient.WaitOutcome(reply);
+        if (state == "running") Assert.Null(outcome);
+        else Assert.Equal(state == "completed", outcome!.Ok);
+        release.TrySetResult(Envelope.Success(new { }));
+    }
+
+    [Fact]
+    public void RegistryPathTypesAndLengthNeverDestroyData()
+    {
+        using var parent = Microsoft.Win32.Registry.CurrentUser.CreateSubKey("Software\\LuaTools-PathTest-" + Guid.NewGuid().ToString("N"));
+        string keyName = parent.Name[("HKEY_CURRENT_USER\\".Length)..];
+        try
+        {
+            var method = typeof(AgentCliInstallation).GetMethod("RegisterPath", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            Assert.NotNull(method);
+            foreach (var kind in new[] { Microsoft.Win32.RegistryValueKind.MultiString, Microsoft.Win32.RegistryValueKind.DWord, Microsoft.Win32.RegistryValueKind.Binary })
+            {
+                object value = kind == Microsoft.Win32.RegistryValueKind.MultiString ? new[] { "keep", "all" } : kind == Microsoft.Win32.RegistryValueKind.DWord ? 42 : new byte[] { 1, 2 };
+                parent.SetValue("Path", value, kind);
+                Assert.Throws<System.Reflection.TargetInvocationException>(() => method!.Invoke(null, [parent, @"C:\LuaTools"]));
+                Assert.Equal(kind, parent.GetValueKind("Path"));
+                Assert.Equal(value, parent.GetValue("Path"));
+            }
+            foreach (var kind in new[] { Microsoft.Win32.RegistryValueKind.String, Microsoft.Win32.RegistryValueKind.ExpandString })
+            foreach (string value in new[] { "", @"%USERPROFILE%\bin;C:\Keep;", new string('x', 32760) })
+            {
+                parent.SetValue("Path", value, kind);
+                if (value.Length > 32000) Assert.Throws<System.Reflection.TargetInvocationException>(() => method!.Invoke(null, [parent, @"C:\LuaTools"]));
+                else { method!.Invoke(null, [parent, @"C:\LuaTools"]); Assert.Equal(AgentCliInstallation.AddToPath(value, @"C:\LuaTools"), parent.GetValue("Path", null, Microsoft.Win32.RegistryValueOptions.DoNotExpandEnvironmentNames)); }
+                Assert.Equal(kind, parent.GetValueKind("Path"));
+                if (value.Length > 32000) Assert.Equal(value, parent.GetValue("Path"));
+            }
+        }
+        finally { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(keyName); }
+    }
+
     [Fact]
     public async Task LaunchApplyRequiresBothProcessAndMutationConsentWithoutCallingRealSteam()
     {

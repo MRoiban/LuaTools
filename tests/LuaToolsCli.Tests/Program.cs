@@ -187,6 +187,17 @@ Test("bulk input and command deadlines", () =>
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["doctor"]))) == TimeSpan.FromSeconds(30), "doctor budget");
     Assert(RequestDeadlines.For(Request(CommandParser.Parse(["ping", "--timeout", "10ms"]))) == TimeSpan.FromMilliseconds(10), "requested budget");
 });
+await AsyncTest("initial replay detects the first evicted event", async () =>
+{
+    foreach (int count in new[] { 512, 513, 600 })
+    {
+        var hub = new AgentEventHub("early");
+        for (int i = 0; i < count; i++) hub.Publish("download", "progress", i);
+        await using var reader = hub.Watch("early:0", default).GetAsyncEnumerator();
+        Assert(await reader.MoveNextAsync(), "missing replay");
+        Assert(count == 512 ? reader.Current.Ok : reader.Current.Error?.Code == "RESET_REQUIRED", "initial cursor silently lost history at " + count);
+    }
+});
 await AsyncTest("event replay from empty initial cursor", async () =>
 {
     var hub = new AgentEventHub("initial"); string cursor = hub.CurrentCursor;

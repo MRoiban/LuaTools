@@ -29,6 +29,7 @@ public sealed class AgentAcquisitionTests
         internal readonly SettingsService Settings;
         internal readonly SteamService Steam;
         internal readonly LuaInstaller Installer;
+        internal readonly LuaVault Vault;
         internal readonly LuaOverwriteCoordinator Diff;
         internal readonly LocalInstallCoordinator Local;
         internal readonly SteamAppListCache AppList;
@@ -37,6 +38,7 @@ public sealed class AgentAcquisitionTests
         internal readonly DownloadQueue Queue;
         internal readonly AgentCommandService Facade;
         internal readonly AcquisitionCoordinator Sources;
+        internal readonly ManifestJobFactory Factory;
         internal readonly HttpClient Http;
         internal readonly byte[] Capability = RandomNumberGenerator.GetBytes(32);
         internal int Spent;
@@ -78,11 +80,11 @@ public sealed class AgentAcquisitionTests
             var auth = new AuthService(Http, Path.Combine(Root, "auth.dat"));
             var api = new LuaToolsApiClient(auth, AppInfo, covers, Http, steamMl: new SteamMlService(Http), depots: Depots, dexLua: new DexLuaService(Http));
             var hubcap = new HubcapService(Http);
-            Installer = new(Steam, Settings, cache, new LuaVault(() => Steam.StPlugInDir, Path.Combine(Root, "vault")));
+            Installer = new(Steam, Settings, cache, Vault = new LuaVault(() => Steam.StPlugInDir, Path.Combine(Root, "vault")));
             Diff = new(Installer, AppList, AppInfo, Depots);
             Local = new(Installer, Diff);
             Queue = new(cache, NullLogger<DownloadQueue>.Instance);
-            var factory = new ManifestJobFactory(api, hubcap, Settings, Installer, new(Steam), covers, null!, null!, Depots, null!, null!, null!);
+            var factory = Factory = new ManifestJobFactory(api, hubcap, Settings, Installer, new(Steam), covers, null!, null!, Depots, null!, null!, null!);
             Sources = new(api, hubcap, Settings, auth, Queue, factory, Installer);
             var github = new GithubProxy();
             Facade = new(Settings, Steam, auth, Queue, new(Steam, Settings, cache, github), new(Steam, Settings, github, null!), new(),
@@ -110,6 +112,137 @@ public sealed class AgentAcquisitionTests
         internal void Live(string text)
         { Directory.CreateDirectory(Steam.StPlugInDir!); System.IO.File.WriteAllText(Path.Combine(Steam.StPlugInDir!, "730.lua"), text); }
         public void Dispose() { Http.Dispose(); Directory.Delete(Root, true); }
+    }
+
+    [Fact]
+    public async Task RealDispatcherInstallInterleavingAndCancelledOverwriteAlwaysReleaseUi()
+    {
+        var ready = new TaskCompletionSource<System.Windows.Threading.Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+            SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
+            ready.SetResult(app.Dispatcher);
+            System.Windows.Threading.Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        var dispatcher = await ready.Task;
+        try
+        {
+            using var f = new Fixture();
+            // Force exactly: worker owns InstallGate, dispatcher starts loose-manifest drop,
+            // worker publishes its vault notification and synchronously needs the dispatcher.
+            using var held = new ManualResetEventSlim(); using var uiEntered = new ManualResetEventSlim();
+            bool notificationTimedOut = false;
+            f.Vault.VaultChanged += _ =>
+            {
+                try { dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Send, default, TimeSpan.FromSeconds(2)); }
+                catch (TimeoutException) { notificationTimedOut = true; }
+            };
+            string lua = f.CreateFile("730.lua", "addappid(730)\n");
+            string manifest = f.CreateFile("731_123.manifest", "fixture");
+            var worker = Task.Run(() =>
+            {
+                lock (LuaInstaller.InstallGate)
+                {
+                    held.Set(); Assert.True(uiEntered.Wait(TimeSpan.FromSeconds(3)));
+                    return f.Installer.InstallLuaFile(lua, 730);
+                }
+            });
+            Assert.True(held.Wait(TimeSpan.FromSeconds(3)));
+            Task? drop = null;
+            await dispatcher.InvokeAsync(() => { uiEntered.Set(); drop = f.Local.InstallAsync([manifest], (_, _, _) => Task.FromResult(true)); });
+            await worker.WaitAsync(TimeSpan.FromSeconds(5)); await drop!.WaitAsync(TimeSpan.FromSeconds(5));
+
+
+            // The production Builds notification must itself post, even if another UI caller
+            // happens to wait on a worker holding InstallGate.
+            var builds = await dispatcher.InvokeAsync(() => new BuildsViewModel(f.Steam, f.Vault, f.AppList, f.AppInfo, new CoverCache(new Stub(_ => new(HttpStatusCode.NotFound)), Path.Combine(f.Root, "ui-covers")), f.Depots, new ToastService(), f.Settings, null!, f.Queue, f.Factory));
+            bool blocked = false;
+            await dispatcher.InvokeAsync(() =>
+            {
+                var notify = Task.Run(() => typeof(BuildsViewModel).GetMethod("OnUi", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.Invoke(null, [(Action)(() => { })]));
+                blocked = !notify.Wait(TimeSpan.FromSeconds(2));
+            });
+
+
+            f.Live("addappid(730)\naddappid(731)\n");
+            var vm = await dispatcher.InvokeAsync(() => new DownloadViewModel(null!, null!, f.Settings, null!, new ToastService(), f.Installer, f.AppList, f.AppInfo, f.Depots, null!, new(f.Installer, f.AppList, f.AppInfo, f.Depots, f.Local), f.Queue, f.Factory, f.Sources, f.Diff));
+            using var cancel = new CancellationTokenSource();
+            var confirm = (Task<bool>)typeof(DownloadViewModel).GetMethod("ConfirmOverwriteAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(vm, [new DownloadedFile(lua, "730.lua"), "cancel-ui", 730L, "Fixture", cancel.Token])!;
+            for (int i = 0; i < 100 && !vm.IsConfirmingOverwrite; i++) await Task.Delay(10);
+            Assert.True(vm.IsConfirmingOverwrite); cancel.Cancel();
+            try { await confirm.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
+            await dispatcher.InvokeAsync(() => Assert.False(vm.IsConfirmingOverwrite));
+            Assert.False(ConsentCoordinator.HasPending("cancel-ui"));
+            Assert.False(notificationTimedOut, "InstallGate/dispatcher deadlock reproduced (bounded notification timed out)");
+            Assert.False(blocked, "Builds synchronously waits for dispatcher");
+        }
+        finally { dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Send); thread.Join(TimeSpan.FromSeconds(5)); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcquisitionPinsAdmissionBeforeQuotaAndInstallAndSeparatesDedupe(bool dlc)
+    {
+        using var f = new Fixture();
+        var row = new PluginAddService.SourceRow { Name = DexLuaService.SourceName, Status = "available" };
+        var first = f.Sources.Enqueue(730, "fixture", row, dlc ? "700" : null);
+        string other = Path.Combine(f.Root, "other-steam"); Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture");
+        f.Settings.SteamPathOverride = other;
+        await Assert.ThrowsAsync<DownloadAbortedException>(() => first.Job.DownloadAsync(first, new Progress<DownloadProgress>(), default));
+        string file = f.CreateFile("730.lua", "addappid(730)\n");
+        Assert.False(await first.Job.ConfirmAsync!(new(file, "730.lua"), first, default));
+        Assert.False((await first.Job.InstallAsync(new(file, "730.lua"), first, default)).Ok);
+        Assert.Null(f.Installer.ReadInstalledLua(730)); Assert.Equal(0, f.Spent);
+        var second = f.Sources.Enqueue(730, "fixture", row, dlc ? "700" : null);
+        Assert.NotEqual(first.Id, second.Id); Assert.NotEqual(first.Job.DedupeKey, second.Job.DedupeKey);
+    }
+
+    [Fact]
+    public async Task ManifestJobRejectsChangedInstallationEvenWithIdenticalMissingVersion()
+    {
+        using var f = new Fixture();
+        // Admit directly through the factory, the shared GUI and agent manifest path.
+        var field = typeof(AgentCommandService).GetField("acquisition", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        // Use the fixture's factory so the regression also covers GUI factory callers.
+        var factory = f.Factory;
+        var job = factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture");
+        var item = f.Queue.Enqueue(job);
+        string other = Path.Combine(f.Root, "other-steam"); Directory.CreateDirectory(other); File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture");
+        f.Settings.SteamPathOverride = other;
+        await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(item, new Progress<DownloadProgress>(), default));
+        string file = f.CreateFile("730.lua", "addappid(730)\n");
+        Assert.False((await job.InstallAsync(new(file, "730.lua"), item, default)).Ok);
+        Assert.Null(f.Installer.ReadInstalledLua(730));
+    }
+
+    [Fact]
+    public async Task DlcBatchRejectsSelectionChangeBeforeGenerationAndAfterDownload()
+    {
+        foreach (bool during in new[] { false, true })
+        {
+            string selection = "A"; int spent = 0, installs = 0;
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var ports = new DlcBatchService.Ports((id, _) => Task.FromResult<GameDetails?>(new() { AppId = id, Type = "game" }),
+                (_, _) => Task.FromResult<IReadOnlyList<long>>([741]), _ => [], _ => false,
+                (_, _, _) => Task.FromResult<DlcInfo?>(new() { DepotCount = 1, HaveCount = 1 }),
+                async (_, _, _) => { spent++; start.SetResult(); await release.Task; return new("unused", "741.lua"); },
+                (_, _) => { installs++; return new(true, 0, [], null); });
+            // Selection ports are injected without a real Steam installation.
+            var property = typeof(DlcBatchService.Ports).GetProperty("Installation");
+            Assert.NotNull(property); property!.SetValue(ports, (Func<string?>)(() => selection));
+            var service = new DlcBatchService(ports);
+            Assert.True(service.Check(730, [])); var batch = service.GetState(730)!; await batch.Work;
+            if (!during) selection = "B";
+            Assert.True(service.Apply(730, batch.Id));
+            if (during) { await start.Task.WaitAsync(TimeSpan.FromSeconds(3)); selection = "B"; }
+            release.TrySetResult(); await batch.Work.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Equal(during ? 1 : 0, spent); Assert.Equal(0, installs); Assert.Equal("failed", batch.Items[0].State);
+        }
     }
 
     [Fact]

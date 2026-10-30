@@ -81,7 +81,7 @@ public class LaunchOptionsServiceTests : IDisposable
     }
 
     /// <summary>Minimal but structurally real v29 appinfo containing one app.</summary>
-    internal static void WriteAppInfo(string path, (string Index, string Exe, string Os)[] launches)
+    internal static void WriteAppInfo(string path, (string Index, string Exe, string Os)[] launches, int[]? appIds = null)
     {
         string[] keys =
         [
@@ -131,10 +131,13 @@ public class LaunchOptionsServiceTests : IDisposable
         BinaryVdf.WriteUInt32(f, 1);
         long offsetPos = f.Position;
         f.Write(BitConverter.GetBytes(0L));
-        BinaryVdf.WriteInt32(f, AppId);
-        BinaryVdf.WriteInt32(f, meta.Length + body.Length);
-        f.Write(meta);
-        f.Write(body);
+        foreach (int id in appIds ?? [AppId])
+        {
+            BinaryVdf.WriteInt32(f, id);
+            BinaryVdf.WriteInt32(f, meta.Length + body.Length);
+            f.Write(meta);
+            f.Write(body);
+        }
         BinaryVdf.WriteInt32(f, 0);
         long table = f.Position;
         BinaryVdf.WriteInt32(f, keys.Length);
