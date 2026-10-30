@@ -71,4 +71,22 @@
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../LuaTools.Agent/*.cs" Link="Agent/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../LuaTools.Agent/catalogue.json" LogicalName="LuaTools.Agent.catalogue.json" />
+    <ProjectReference Include="../LuaToolsCli/LuaToolsCli.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+  <!-- The client is inside the signed portable archive, using the existing publish entry point. -->
+  <Target Name="PublishAgentCli" AfterTargets="ComputeFilesToPublish">
+    <MSBuild Projects="../LuaToolsCli/LuaToolsCli.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(MSBuildProjectDirectory)/obj/agent-cli-publish/;SelfContained=false"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;PublishSingleFile;PublishTrimmed" />
+    <ItemGroup>
+      <!-- Windows paths are case-insensitive: LuaTools.exe and luatools.exe cannot share
+           a directory. Remove transitive client outputs and stage a private subdirectory. -->
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('luatools'))" />
+      <_AgentCliPublish Include="$(MSBuildProjectDirectory)/obj/agent-cli-publish/luatools*" />
+      <ResolvedFileToPublish Include="@(_AgentCliPublish)" RelativePath="agent-cli/%(_AgentCliPublish.Filename)%(_AgentCliPublish.Extension)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

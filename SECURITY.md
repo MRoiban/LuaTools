@@ -83,6 +83,44 @@ are now source-owned and bundled with the fork. The frontend runs in a CDP isola
 world with a narrow bridge. Local CDP process spoofing and same-user filesystem attacks
 remain limitations; see [implementation record](design/steam-plugin/implementation.md).
 
+## Local agent CLI
+
+The published signed ZIP includes the BCL-only `agent-cli/luatools.exe` client. The subdirectory
+is necessary because Windows cannot distinguish `LuaTools.exe` from `luatools.exe`. Each normal
+GUI startup best-effort copies the client into `%LOCALAPPDATA%\LuaToolsGui-SecurityHardened\bin`,
+records the running GUI path, and appends that folder to **user** PATH (`HKCU\Environment`) only
+when absent, then broadcasts `WM_SETTINGCHANGE`. Machine PATH is never changed. Existing shells
+retain their inherited PATH. Integration failures are logged and never prevent GUI startup.
+The client starts the recorded GUI with `--minimized` when absent unless `--no-start` is supplied.
+Signed-update redirection and minimized update relaunch preserve normal single-owner startup.
+
+An always-on GUI hosted service, independent of Steam-plugin opt-in, serves a random per-lifetime
+named pipe. Both ends use `CurrentUserOnly` (account and elevation); the server rejects remote
+clients before reading a request using the kernel's `ERROR_PIPE_LOCAL` result and independently
+checks the client process session. The normal owner is unelevated. A per-user global owner mutex
+prevents a second Windows session from opening another writer. Cross-session or elevation mismatch
+must not be solved by widening ACLs. Owner-only discovery and launcher records reject reparse
+paths and permissive ACLs. Discovery contains PID/start/session identity and a 256-bit random
+capability wrapped with DPAPI CurrentUser. The client verifies the record, process and kernel pipe
+server PID before decrypting/sending the capability; the host compares it in constant time.
+Capabilities never appear in arguments, environment, stdout or logs. Same-user hostile processes
+are inside this trust boundary; DPAPI does not isolate hostile applications under one account.
+
+Control requests are bounded to 64 KiB, replies to 1 MiB. Eight independent connections each have
+a ten-second deadline and shutdown cancellation; a stalled client cannot block other reads.
+Only typed facade operations are exposed. No arbitrary DI resolution, plugin route forwarding,
+shell execution or generic state-file access exists. Queue snapshots briefly use the dispatcher;
+transport, log reads and installation work run off it. The client never opens business state files.
+List cursors reference bounded host snapshots, expire after five minutes and bind query filters.
+Activity reads use the existing redacted log service and preserve seven-day warning retention.
+
+The foundation exposes only reads plus application start. Other commands remain discoverable and
+return `NOT_IMPLEMENTED` (exit 5), including doctor repair and setting writes. The agent authority
+policy for later write slices explicitly permits agents to enable executable workflows with
+`setting update <executable-key> --value true --yes`; this requires an activity warning naming
+the key and actor note, and a GUI toast. It must retain quarantine, digest, path and live consent
+checks. `--yes` never bypasses them. No such write is enabled by this foundation.
+
 ## Building and reviewing a release
 
 Cabinet runs as an unmodified port of the user's own app (github.com/MRoiban/cabinet),

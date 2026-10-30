@@ -210,12 +210,12 @@ public sealed class UpdateService
         var destination = Path.Combine(_root, "runs", Guid.NewGuid().ToString("N"));
         ExtractVerified(directory, destination, TrustKey, _version);
         var start = new ProcessStartInfo(Path.Combine(destination, "LuaTools.exe")) { UseShellExecute = false, WorkingDirectory = destination };
-        if (!waitForCurrent && Program.StartMinimized) start.ArgumentList.Add("--minimized");
         if (waitForCurrent)
         {
             start.ArgumentList.Add("--fork-update-wait");
             start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
+        if (Program.StartMinimized) start.ArgumentList.Add("--minimized");
         return Process.Start(start) is not null;
     }
 

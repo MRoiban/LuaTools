@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LuaToolsGui\LuaToolsGui.csproj" />
+    <Compile Include="../../src/LuaToolsCli/AgentClient.cs" Link="AgentClient.cs" />
     <EmbeddedResource Include="Fixtures\OnlineFixMe\*.html" />
   </ItemGroup>
 

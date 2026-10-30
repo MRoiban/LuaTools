@@ -14,6 +14,7 @@ win=""; [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || -n "${WINDIR:-}"
 props=(-p:EnableWindowsTargeting=true)
 step restore dotnet restore LuaToolsGui.sln --locked-mode "${props[@]}"
 step build   dotnet build LuaToolsGui.sln -c Release --no-restore "${props[@]}" -warnaserror:CS8600,CS8602,CS8603,CS8604
+step cli dotnet run --project tests/LuaToolsCli.Tests -c Release --no-build --no-restore
 step i18n    python3 -I scripts/check-i18n.py
 step plugin  node --test src/LuaToolsGui/Plugin/steam-plugin.test.cjs
 if [[ -n $win ]]; then

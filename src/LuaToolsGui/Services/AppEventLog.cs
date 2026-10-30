@@ -39,7 +39,7 @@ public sealed class AppEventLog
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private sealed record Line(string t, string l, string c, string m, string? x);
+    private sealed record Line(string t, string l, string c, string m, string? x, string? id = null);
 
     private sealed class Stream(string prefix, string format, TimeSpan period, TimeSpan retention, int maxFiles)
     {
@@ -90,7 +90,7 @@ public sealed class AppEventLog
             string text = JsonSerializer.Serialize(new Line(
                 now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
                 LevelName(level), category, Clip(message, MaxMessageChars),
-                ex is null ? null : Clip(ex.ToString(), MaxExceptionChars)), JsonOpts);
+                ex is null ? null : Clip(ex.ToString(), MaxExceptionChars), Guid.NewGuid().ToString("N")), JsonOpts);
             byte[] line = Encoding.UTF8.GetBytes(text + "\n");
             lock (_gate)
             {
@@ -100,6 +100,42 @@ public sealed class AppEventLog
             }
         }
         catch { /* logging must never throw */ }
+    }
+
+    /// <summary>Host-only diagnostic snapshot. Important events are read once, never deduped by message.</summary>
+    public System.Text.Json.Nodes.JsonArray ReadAgentEvents(Dictionary<string, string?> flags)
+    {
+        var rows = new List<(DateTimeOffset Time, string Id, object Row)>();
+        int Rank(string? level) => level switch { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "critical" => 4, _ => -1 };
+        int minimum = Rank(flags.GetValueOrDefault("severity") ?? "debug");
+        DateTimeOffset now = _clock();
+        var since = DateTimeOffset.TryParse(flags.GetValueOrDefault("since"), out var parsed) ? parsed : now.AddDays(-7);
+        if (!System.IO.Directory.Exists(_directory)) return [];
+        // Important holds every warning/error for seven days. Full events supplies only lower levels
+        // for 24h. This also handles legacy records without IDs without text-based deduplication.
+        foreach (string prefix in minimum >= 2 ? new[] { "important" } : new[] { "events", "important" })
+        foreach (string path in System.IO.Directory.EnumerateFiles(_directory, prefix + "-*.jsonl").OrderBy(x => x, StringComparer.Ordinal).TakeLast(prefix == "events" ? 25 : 8))
+        {
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (file.Length > MaxSegmentBytes) continue;
+            using var reader = new StreamReader(file);
+            string? line; int number = 0;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                number++;
+                if (line.Length > MaxExceptionChars + MaxMessageChars + 2048) continue;
+                Line? entry;
+                try { entry = JsonSerializer.Deserialize<Line>(line); } catch (JsonException) { continue; }
+                if (entry is null || !DateTimeOffset.TryParse(entry.t, out var time) || time < since || time > now || time < now.AddDays(-7)) continue;
+                int rank = Rank(entry.l);
+                if (rank < minimum || prefix == "events" && (rank >= 2 || time < now.AddHours(-24))) continue;
+                if (flags.GetValueOrDefault("category") is { } category && !string.Equals(category, entry.c, StringComparison.OrdinalIgnoreCase)) continue;
+                string id = entry.id ?? Path.GetFileName(path) + ":" + number;
+                string message = Clip(entry.m, 400);
+                rows.Add((time, id, new { id, time = time.ToUniversalTime(), severity = entry.l, category = LogRedactor.Redact(entry.c), message, available_actions = Array.Empty<object>() }));
+            }
+        }
+        return LuaTools.Agent.Protocol.Node(rows.OrderByDescending(x => x.Time).ThenBy(x => x.Id, StringComparer.Ordinal).Select(x => x.Row).ToArray())!.AsArray();
     }
 
     private void Append(Stream stream, DateTimeOffset now, byte[] line)

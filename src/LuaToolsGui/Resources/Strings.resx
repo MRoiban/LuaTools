@@ -804,4 +804,19 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="DexLua_DownloadFailed" xml:space="preserve"><value>DexLua download failed (HTTP {0}).</value></data>
   <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua returned an invalid Lua script.</value></data>
   <data name="DexLua_NoDlcKeys" xml:space="preserve"><value>DexLua has no depot keys for this DLC.</value></data>
+  <data name="Agent_ContextChanged" xml:space="preserve"><value>The application or selected Steam context changed. Read status and retry.</value></data>
+  <data name="Agent_InvalidArguments" xml:space="preserve"><value>Invalid command arguments.</value></data>
+  <data name="Agent_ReadOnly" xml:space="preserve"><value>This command changes state and is refused in read-only mode.</value></data>
+  <data name="Agent_NotImplemented" xml:space="preserve"><value>This action is not implemented in this release.</value></data>
+  <data name="Agent_SettingNotFound" xml:space="preserve"><value>Unknown or private setting.</value></data>
+  <data name="Agent_IdentityDenied" xml:space="preserve"><value>Local pipe identity or capability denied.</value></data>
+  <data name="Agent_DoctorVersion" xml:space="preserve"><value>Application version and CLI protocol.</value></data>
+  <data name="Agent_DoctorSteam" xml:space="preserve"><value>Selected Steam location, validity and process state.</value></data>
+  <data name="Agent_DoctorMode" xml:space="preserve"><value>Selected mode, CloudRedirect add-on and local plugin state.</value></data>
+  <data name="Agent_DoctorLogin" xml:space="preserve"><value>Public sources work as a guest. Discord login unlocks protected lua.tools sources.</value></data>
+  <data name="Agent_DoctorHubcap" xml:space="preserve"><value>Hubcap key presence; no quota or network probe was performed.</value></data>
+  <data name="Agent_DoctorWorkflow" xml:space="preserve"><value>This executable workflow is disabled. Enabling requires explicit consent.</value></data>
+  <data name="Agent_DoctorDownloads" xml:space="preserve"><value>Active queue and failed download history in the running application.</value></data>
+  <data name="Agent_DoctorActivity" xml:space="preserve"><value>Warnings and errors recorded in the last 24 hours.</value></data>
+  <data name="Agent_DoctorUpdate" xml:space="preserve"><value>Available staged signed update; this read does not check or stage updates.</value></data>
 </root>

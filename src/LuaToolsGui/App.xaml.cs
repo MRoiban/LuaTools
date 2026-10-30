@@ -51,6 +51,8 @@ public partial class App : Application
             .ConfigureServices(services =>
             {
                 services.AddSingleton<SettingsService>();
+                services.AddSingleton<Services.Agent.AgentCommandService>();
+                services.AddHostedService<Services.Agent.AgentPipeHostedService>();
                 services.AddSingleton<ICabinetSettings>(sp => sp.GetRequiredService<SettingsService>());
                 services.AddSingleton<CabinetService>();
                 services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetService>());
@@ -216,6 +218,8 @@ public partial class App : Application
             catch { /* Each request and injection also rechecks the disabled setting. */ }
         };
 
+        _ = Task.Run(() => Services.Agent.AgentCliInstallation.Install(
+            _host.Services.GetRequiredService<ILogger<Services.Agent.AgentCommandService>>()));
         await _host.StartAsync();
 
         var main = _host.Services.GetRequiredService<MainViewModel>();

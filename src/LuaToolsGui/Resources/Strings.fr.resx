@@ -769,4 +769,19 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="DexLua_DownloadFailed" xml:space="preserve"><value>Échec du téléchargement DexLua (HTTP {0}).</value></data>
   <data name="DexLua_InvalidScript" xml:space="preserve"><value>DexLua a renvoyé un script Lua non valide.</value></data>
   <data name="DexLua_NoDlcKeys" xml:space="preserve"><value>DexLua ne dispose d’aucune clé de dépôt pour ce DLC.</value></data>
+  <data name="Agent_ContextChanged" xml:space="preserve"><value>Le contexte de l’application ou de Steam a changé. Relisez son état, puis réessayez.</value></data>
+  <data name="Agent_InvalidArguments" xml:space="preserve"><value>Arguments de commande invalides.</value></data>
+  <data name="Agent_ReadOnly" xml:space="preserve"><value>Cette commande modifie l’état et est refusée en mode lecture seule.</value></data>
+  <data name="Agent_NotImplemented" xml:space="preserve"><value>Cette action n’est pas implémentée dans cette version.</value></data>
+  <data name="Agent_SettingNotFound" xml:space="preserve"><value>Paramètre inconnu ou privé.</value></data>
+  <data name="Agent_IdentityDenied" xml:space="preserve"><value>Identité du canal local ou capacité refusée.</value></data>
+  <data name="Agent_DoctorVersion" xml:space="preserve"><value>Version de l’application et protocole de l’interface en ligne de commande.</value></data>
+  <data name="Agent_DoctorSteam" xml:space="preserve"><value>Emplacement, validité et état du processus Steam sélectionné.</value></data>
+  <data name="Agent_DoctorMode" xml:space="preserve"><value>Mode sélectionné, module CloudRedirect et état local du plugin.</value></data>
+  <data name="Agent_DoctorLogin" xml:space="preserve"><value>Les sources publiques sont disponibles en mode invité. La connexion Discord débloque les sources lua.tools protégées.</value></data>
+  <data name="Agent_DoctorHubcap" xml:space="preserve"><value>Présence d’une clé Hubcap ; aucun test réseau ni utilisation de quota.</value></data>
+  <data name="Agent_DoctorWorkflow" xml:space="preserve"><value>Ce flux exécutable est désactivé. Son activation nécessite un consentement explicite.</value></data>
+  <data name="Agent_DoctorDownloads" xml:space="preserve"><value>File active et historique des téléchargements en échec dans l’application.</value></data>
+  <data name="Agent_DoctorActivity" xml:space="preserve"><value>Avertissements et erreurs enregistrés au cours des dernières 24 heures.</value></data>
+  <data name="Agent_DoctorUpdate" xml:space="preserve"><value>Mise à jour signée préparée disponible ; cette lecture ne recherche ni ne prépare de mise à jour.</value></data>
 </root>

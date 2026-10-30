@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>luatools</AssemblyName>
+    <Version>1.4.0</Version>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../LuaTools.Agent/*.cs" Link="Agent/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../LuaTools.Agent/catalogue.json" LogicalName="LuaTools.Agent.catalogue.json" />
+  </ItemGroup>
+</Project>

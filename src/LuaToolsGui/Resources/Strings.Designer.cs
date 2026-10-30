@@ -746,4 +746,19 @@ public static class Strings
     public static string SteamIsolation_DebuggerMissing => Get(nameof(SteamIsolation_DebuggerMissing));
     public static string SteamIsolation_DebuggerChanged => Get(nameof(SteamIsolation_DebuggerChanged));
     public static string SteamIsolation_ContextChanged => Get(nameof(SteamIsolation_ContextChanged));
+    public static string Agent_ContextChanged => Get(nameof(Agent_ContextChanged));
+    public static string Agent_InvalidArguments => Get(nameof(Agent_InvalidArguments));
+    public static string Agent_ReadOnly => Get(nameof(Agent_ReadOnly));
+    public static string Agent_NotImplemented => Get(nameof(Agent_NotImplemented));
+    public static string Agent_SettingNotFound => Get(nameof(Agent_SettingNotFound));
+    public static string Agent_IdentityDenied => Get(nameof(Agent_IdentityDenied));
+    public static string Agent_DoctorVersion => Get(nameof(Agent_DoctorVersion));
+    public static string Agent_DoctorSteam => Get(nameof(Agent_DoctorSteam));
+    public static string Agent_DoctorMode => Get(nameof(Agent_DoctorMode));
+    public static string Agent_DoctorLogin => Get(nameof(Agent_DoctorLogin));
+    public static string Agent_DoctorHubcap => Get(nameof(Agent_DoctorHubcap));
+    public static string Agent_DoctorWorkflow => Get(nameof(Agent_DoctorWorkflow));
+    public static string Agent_DoctorDownloads => Get(nameof(Agent_DoctorDownloads));
+    public static string Agent_DoctorActivity => Get(nameof(Agent_DoctorActivity));
+    public static string Agent_DoctorUpdate => Get(nameof(Agent_DoctorUpdate));
 }

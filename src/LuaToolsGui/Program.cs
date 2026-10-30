@@ -17,7 +17,7 @@ public static class Program
         if (TryRunCabinetHelper(args)) return;
         StartMinimized = args.Contains("--minimized", StringComparer.Ordinal);
         // A signed update restart waits for the old single-instance owner to exit.
-        if (args.Length == 2 && args[0] == "--fork-update-wait" && int.TryParse(args[1], out int parentId))
+        if (args.Length >= 2 && args[0] == "--fork-update-wait" && int.TryParse(args[1], out int parentId))
         {
             try { using var parent = System.Diagnostics.Process.GetProcessById(parentId); if (!parent.WaitForExit(30000)) return; }
             catch (ArgumentException) { /* Parent already exited. */ }
@@ -32,7 +32,7 @@ public static class Program
 
         // Loader flags and external protocol URLs are deliberately not interpreted.
         using var single = new Mutex(initiallyOwned: true,
-            "LuaToolsGui.SecurityHardened.SingleInstance", out bool isFirst);
+            "Global\\LuaToolsGui.SecurityHardened." + System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value, out bool isFirst);
         if (!isFirst)
         {
             if (StartMinimized) return;
