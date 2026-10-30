@@ -574,12 +574,12 @@
     "capability_ids": [
       "C-074"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "queue-or-operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -773,8 +773,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools game add 570 --source auto",
-      "luatools game add 570 --source auto --format text"
+      "luatools game add 570 --source auto --yes",
+      "luatools game add 570 --source auto --format text --yes"
     ],
     "see_also": [
       "luatools describe game",
@@ -804,7 +804,9 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "deduplicated",
+      "source"
     ]
   },
   {

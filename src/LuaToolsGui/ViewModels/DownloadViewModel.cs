@@ -89,6 +89,8 @@ public partial class DownloadViewModel : ObservableObject
     private readonly HardwareAppIdService _hardware;
     private readonly DownloadQueue _queue;
     private readonly ManifestJobFactory _jobs;
+    private readonly AcquisitionCoordinator _acquisition;
+    private readonly LuaOverwriteCoordinator _overwrites;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _detailsCts;
 
@@ -324,7 +326,7 @@ public partial class DownloadViewModel : ObservableObject
         AuthService auth, ToastService toast, LuaInstaller installer,
         SteamAppListCache appList, SteamAppInfoCache appInfo, SteamDepotInfo depotInfo,
         HardwareAppIdService hardware, DropInstallViewModel drop,
-        DownloadQueue queue, ManifestJobFactory jobs)
+        DownloadQueue queue, ManifestJobFactory jobs, AcquisitionCoordinator? acquisition = null, LuaOverwriteCoordinator? overwrites = null)
     {
         _api = api;
         _hubcap = hubcap;
@@ -338,6 +340,8 @@ public partial class DownloadViewModel : ObservableObject
         _hardware = hardware;
         _queue = queue;
         _jobs = jobs;
+        _acquisition = acquisition ?? new(api, hubcap, settings, auth, queue, jobs);
+        _overwrites = overwrites ?? new(installer, appList, appInfo, depotInfo);
         Drop = drop;
         _fastFetch = settings.FastFetch;
     }
@@ -532,23 +536,10 @@ public partial class DownloadViewModel : ObservableObject
             }
             else
             {
-                Dictionary<string, string> statuses;
-                try { statuses = await _api.CheckSourcesAsync(Details.AppId.ToString()); }
-                catch (ApiException ex)
-                {
-                    statuses = [];
-                    Error = ex.Message;
-                }
-
-                // The manifest backend no longer reports the Hubcap/Morrenus source. Synthesize it
-                // ourselves from a direct Hubcap status check (or show it locked if no key is set).
-                await AddHubcapSourceAsync(statuses, Details.AppId.ToString());
-
-                // Premium (key-gated) sources first, like the website
-                foreach (var (name, status) in statuses.OrderByDescending(kv => SourceMeta.Get(kv.Key).RequiresUserKey ? 1 : 0))
-                    Sources.Add(new SourceRowViewModel(this, name, status));
-
-                await ApplyHubcapStateAsync();
+                var checkedSources = await _acquisition.CheckAsync(Details.AppId, FastFetch);
+                foreach (var row in checkedSources.Sources)
+                    Sources.Add(new SourceRowViewModel(this, row.Name, row.Status)
+                    { IsLocked = row.Locked, StatsText = row.Stats, IsSupporter = row.IsSupporter });
 
                 if (FastFetch)
                 {
@@ -582,75 +573,14 @@ public partial class DownloadViewModel : ObservableObject
         }
     }
 
-    /// <summary>The Hubcap source name as the website/source-meta keys it.</summary>
-    private const string HubcapSourceName = "Sadie (Morrenus)";
-
-    /// <summary>
-    /// Inject the Hubcap row into the source-status map. The manifest backend no longer returns it, so
-    /// availability comes from a direct Hubcap status check using the user's own key. With no key we still
-    /// surface the row (as "available") so it shows up locked with the "needs a key" hint.
-    /// </summary>
-    private async Task AddHubcapSourceAsync(Dictionary<string, string> statuses, string appid)
-    {
-        string? key = _settings.HubcapApiKey;
-        if (string.IsNullOrEmpty(key))
-        {
-            // No key → we genuinely can't check (the status endpoint needs the key). Mark it "unknown"
-            // so the row shows up locked with the "needs a key" hint and NO misleading availability badge.
-            statuses[HubcapSourceName] = "unknown";
-            return;
-        }
-
-        var status = await _hubcap.CheckStatusAsync(key, appid);
-        statuses[HubcapSourceName] = status?.ManifestFileExists == true ? "available" : "unavailable";
-    }
-
-    private async Task ApplyHubcapStateAsync()
-    {
-        var keyRows = Sources.Where(s => s.NeedsKey).ToList();
-        if (keyRows.Count == 0) return;
-
-        // No key configured → lock the premium rows (the row shows the "needs Hubcap key" hint).
-        string? key = _settings.HubcapApiKey;
-        if (string.IsNullOrEmpty(key))
-        {
-            foreach (var row in keyRows) row.IsLocked = true;
-            return;
-        }
-
-        var stats = await _hubcap.GetStatsAsync(key);
-        foreach (var row in keyRows)
-        {
-            row.IsLocked = stats?.CanMakeRequests != true;
-            if (stats is not null)
-                row.StatsText = $"{stats.DailyUsage}/{stats.DailyLimit}";
-        }
-    }
-
-    /// <summary>
-    /// Refresh usage for lua.tools sources only. Hubcap has its own quota; SteamML has no usage API.
-    /// </summary>
+    private Task ApplyHubcapStateAsync() => RefreshStandardUsageAsync();
     public async Task RefreshStandardUsageAsync()
     {
-        var standardRows = Sources.Where(s => !s.NeedsKey && s.Name != SteamMlService.SourceName && s.Name != DexLuaService.SourceName).ToList();
-        if (standardRows.Count == 0) return;
-        if (_auth.IsGuest) return;
-
-        var usageTask = _api.GetStandardUsageAsync();
-        var supporterTask = _api.GetSupporterStatusAsync();
-        await Task.WhenAll(usageTask, supporterTask);
-
-        var usage = usageTask.Result;
-        bool isSupporter = supporterTask.Result?.IsSupporter == true;
-
-        foreach (var row in standardRows)
-        {
-            row.IsSupporter = isSupporter;
-            if (usage is null) continue;
-            row.StatsText = isSupporter
-                ? $"{usage.Used} / {Resources.Strings.Add_Unlimited}"
-                : $"{usage.Used}/{usage.Limit}";
-        }
+        var rows = Sources.Select(s => new PluginAddService.SourceRow { Name = s.Name, NeedsKey = s.NeedsKey, Status = s.Status }).ToList();
+        await _acquisition.RefreshUsageAsync(rows);
+        foreach (var row in rows)
+            if (Sources.FirstOrDefault(s => s.Name == row.Name) is { } target)
+            { target.IsLocked = row.Locked; target.StatsText = row.Stats; target.IsSupporter = row.IsSupporter; }
     }
 
     // ── Downloads ───────────────────────────────────────────────────
@@ -684,14 +614,13 @@ public partial class DownloadViewModel : ObservableObject
         string gameName = Details.Name;
         bool needsKey = source.NeedsKey;
 
-        var job = _jobs.CreateManifestJob(
-            appId, gameName, source.Name, needsKey,
-            // Silent/headless installs have no surfaced window to confirm on, so they skip the gate.
-            confirm: _silentInstall ? null : (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
+        var checkedSources = await _acquisition.CheckAsync(appId);
+        var selected = checkedSources.Sources.FirstOrDefault(r => r.Name == source.Name);
+        if (selected is null || !selected.CanDownload) { Error = Resources.Strings.Agent_Add_GateChanged; return null; }
+        var queued = _acquisition.Enqueue(appId, gameName, selected,
+            confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
             onFinished: (item, result) => OnManifestFinished(item, result, needsKey),
             onReveal: () => NavigateToGame?.Invoke(appId));
-
-        var queued = _queue.Enqueue(job);
         source.QueueItem = queued;
         _lastEnqueued = queued;
         return queued;
@@ -708,12 +637,12 @@ public partial class DownloadViewModel : ObservableObject
         InstallStatus = null;
 
         long appId = Details.AppId;
-        var job = _jobs.CreateDlcJob(
-            appId, Details.BaseAppId, Details.Name,
-            onFinished: (item, result) => OnManifestFinished(item, result, needsKey: false),
-            onReveal: () => NavigateToGame?.Invoke(appId));
-
-        DlcQueueItem = _lastEnqueued = _queue.Enqueue(job);
+        var rows = await _acquisition.CheckDlcSourcesAsync(appId.ToString(), Details.BaseAppId, false);
+        var selected = rows.FirstOrDefault(r => r.Name == PluginAddService.DlcSourceName && r.CanDownload);
+        if (selected is null) { Error = Resources.Strings.Agent_Add_GateChanged; return; }
+        DlcQueueItem = _lastEnqueued = _acquisition.Enqueue(appId, Details.Name, selected, Details.BaseAppId,
+            confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, Details.Name, ct),
+            onFinished: (item, result) => OnManifestFinished(item, result, false), onReveal: () => NavigateToGame?.Invoke(appId));
     }
 
     /// <summary>
@@ -773,39 +702,16 @@ public partial class DownloadViewModel : ObservableObject
         await _confirmGate.WaitAsync(ct);
         try
         {
-            var oldLua = LuaFileParser.Parse(existing, appId);
-            var newLua = ExtractLuaFromZip(file.FilePath, appId);
-            if (newLua is null) return true; // can't diff (bare lua / unreadable zip) → just install
-
-            var diff = LuaFileParser.Diff(oldLua, newLua);
+            var diff = await _overwrites.InspectAsync(file.FilePath, appId, ct: ct);
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            await App.Current.Dispatcher.InvokeAsync(async () =>
+            await App.Current.Dispatcher.InvokeAsync(() =>
             {
-                // Names from caches + one steamcmd call (cached per app) → real names, sizes, OS, language.
-                await _appList.EnsureLoadedAsync();
-                _depotsById = await BuildDepotLookupAsync(appId);
-                DiffAdded = diff.Added.Select(ToDiffRow).ToList();
-                DiffRemoved = diff.Removed.Select(ToDiffRow).ToList();
+                DiffAdded = diff.Added.Select(r => new DiffRow(r.Title, r.Meta, r.IsDlc, r.IsShared, r.SteamDbUrl)).ToList();
+                DiffRemoved = diff.Removed.Select(r => new DiffRow(r.Title, r.Meta, r.IsDlc, r.IsShared, r.SteamDbUrl)).ToList();
                 ConfirmTitle = string.Format(Resources.Strings.Add_Confirm_Replace, gameName);
-                ConfirmNoChanges = diff.HasChanges ? null : Resources.Strings.Add_Confirm_NoChanges;
+                ConfirmNoChanges = diff.Readable ? diff.Added.Count + diff.Removed.Count == 0 ? Resources.Strings.Add_Confirm_NoChanges : null : Resources.Strings.Agent_Add_UnreadableDiff;
                 _pendingConfirm = tcs;
                 IsConfirmingOverwrite = true;
-
-                // Lazily resolve any DLC rows still showing a bare id via appdetails, then rebuild.
-                var unnamed = diff.Added.Concat(diff.Removed)
-                    .Where(e => DiffDisplayName(e) is null)
-                    .Select(e => e.Id).Distinct().ToList();
-                if (unnamed.Count > 0)
-                {
-                    await Parallel.ForEachAsync(unnamed, new ParallelOptions { MaxDegreeOfParallelism = 4 },
-                        async (id, _) => await _appInfo.ResolveAsync(id));
-                    if (IsConfirmingOverwrite && ReferenceEquals(_pendingConfirm, tcs))
-                    {
-                        DiffAdded = diff.Added.Select(ToDiffRow).ToList();
-                        DiffRemoved = diff.Removed.Select(ToDiffRow).ToList();
-                    }
-                }
             });
 
             // Cancelling the download while the overlay is open closes it and declines.
@@ -842,97 +748,8 @@ public partial class DownloadViewModel : ObservableObject
         _pendingConfirm?.TrySetResult(false);
     }
 
-    /// <summary>Fetch the app's depots from steamcmd (cached) and index by depot id + dlcappid.</summary>
-    private async Task<IReadOnlyDictionary<long, ContentDepot>> BuildDepotLookupAsync(long appId)
-    {
-        var map = new Dictionary<long, ContentDepot>();
-        var info = await _depotInfo.GetAsync(appId);
-        if (info is null) return map;
-        foreach (var d in info.Depots)
-        {
-            map[d.Id] = d;
-            if (d.DlcAppId is { } dlc) map[dlc] = d;
-        }
-        return map;
-    }
-
-    /// <summary>Real Steam name for a lua entry (DLC name from caches, or lua comment); null if unknown.</summary>
-    private string? DiffDisplayName(LuaEntry e)
-    {
-        var d = _depotsById.GetValueOrDefault(e.Id);
-        if (d?.DlcAppId is { } dlc)
-        {
-            string? steamName = _appList.GetName(dlc) ?? _appInfo.GetCached(dlc)?.Name;
-            if (steamName is not null) return steamName;
-        }
-        return _appList.GetName(e.Id) ?? _appInfo.GetCached(e.Id)?.Name ?? e.Comment;
-    }
-
-    /// <summary>Enriched diff row: real name + "id · size · OS · lang" + DLC/SHARED chip + SteamDB link.</summary>
-    private DiffRow ToDiffRow(LuaEntry e)
-    {
-        var d = _depotsById.GetValueOrDefault(e.Id);
-        bool isDlc = d?.IsDlc ?? false;
-        bool isShared = d?.IsShared ?? false;
-
-        string title = DiffDisplayName(e)
-            ?? (isDlc ? string.Format(Resources.Strings.Manage_DlcName, d!.DlcAppId)
-                : isShared ? Resources.Strings.Manage_SharedDepot
-                : e.HasKey ? Resources.Strings.Manage_Depot
-                : string.Format(Resources.Strings.Manage_DlcName, e.Id));
-
-        var meta = new List<string> { e.Id.ToString() };
-        if (d is { Size: > 0 }) meta.Add(FormatSize(d.Size));
-        if (!string.IsNullOrWhiteSpace(d?.Os)) meta.Add(PrettyOs(d!.Os!));
-        if (!string.IsNullOrWhiteSpace(d?.Language)) meta.Add(d!.Language!);
-
-        string url = d?.DlcAppId is { } dlcId
-            ? $"https://steamdb.info/app/{dlcId}/"
-            : $"https://steamdb.info/depot/{e.Id}/";
-
-        return new DiffRow(title, string.Join("  ·  ", meta), isDlc, isShared, url);
-    }
-
     [RelayCommand]
     private static void OpenSteamDb(DiffRow row) => SteamService.OpenUrl(row.SteamDbUrl);
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "";
-        double gb = bytes / 1024d / 1024d / 1024d;
-        if (gb >= 1) return $"{gb:0.##} GB";
-        return $"{bytes / 1024d / 1024d:0.#} MB";
-    }
-
-    private static string PrettyOs(string os) => os switch
-    {
-        "windows" => "Windows",
-        "macos" or "macosx" => "macOS",
-        "linux" => "Linux",
-        _ => os
-    };
-
-    /// <summary>Extract the .lua from a manifest zip and parse it (without installing). A bare-lua
-    /// download (no zip wrapper) is parsed directly so the overwrite-diff still works for those sources.</summary>
-    private static LuaContents? ExtractLuaFromZip(string zipPath, long appId)
-    {
-        try
-        {
-            // bare .lua → parse as-is. Same byte sniff the install path uses.
-            if (!ManifestJobFactory.IsZip(zipPath)) return LuaFileParser.Parse(zipPath, appId);
-
-            using var archive = System.IO.Compression.ZipFile.OpenRead(zipPath);
-            var luaEntry = archive.Entries.FirstOrDefault(e =>
-                e.Name.EndsWith(".lua", StringComparison.OrdinalIgnoreCase));
-            if (luaEntry is null) return null;
-
-            string tmp = Path.Combine(Path.GetTempPath(), $"luatools_diff_{appId}_{Guid.NewGuid():N}.lua");
-            luaEntry.ExtractToFile(tmp, overwrite: true);
-            try { return LuaFileParser.Parse(tmp, appId); }
-            finally { try { File.Delete(tmp); } catch { /* temp cleanup best-effort */ } }
-        }
-        catch { return null; }
-    }
 
     /// <summary>The install banner's "Reveal" → open this game in the Manage detail view.</summary>
     [RelayCommand]

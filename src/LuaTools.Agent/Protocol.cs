@@ -73,5 +73,9 @@ internal sealed class EnvelopeConverter : JsonConverter<Envelope>
     }
 }
 public sealed record AgentRequest(int Protocol, string Capability, string InstanceId, string RequestId, string Command,
-    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown");
+    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown", SubmittedFile[]? Files = null)
+{
+    [JsonIgnore] public string[] InputPaths { get; set; } = [];
+    [JsonIgnore] public bool RetainInputs { get; set; }
+}
 public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability, bool Elevated = false, string? SteamIdentity = null);

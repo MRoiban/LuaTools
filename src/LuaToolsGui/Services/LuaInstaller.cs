@@ -24,6 +24,8 @@ public record InstallResult(bool LuaInstalled, int ManifestCount, IReadOnlyList<
 /// </summary>
 public partial class LuaInstaller(SteamService steam, SettingsService settings, CacheService cache, LuaVault vault)
 {
+    internal static readonly object InstallGate = new();
+
     private bool AutoUpdate => settings.AutoUpdateApps;
 
     /// <summary>Raised (with the appid) whenever a lua is successfully installed, via any path (plugin,
@@ -141,6 +143,9 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
     /// <paramref name="forceLocked"/> keeps manifest pins (for Denuvo fixes). The build id is read from
     /// <paramref name="luaPath"/>'s own name, so a &lt;appid&gt;_&lt;buildid&gt;.lua is vaulted as that build.</summary>
     public InstallResult InstallLua(string luaPath, long appId, bool forceLocked = false, string? source = null)
+    { lock (InstallGate) return InstallLuaCore(luaPath, appId, forceLocked, source); }
+
+    private InstallResult InstallLuaCore(string luaPath, long appId, bool forceLocked = false, string? source = null)
     {
         string? dir = steam.StPlugInDir;
         if (dir is null) return InstallResult.Fail(Resources.Strings.Err_SteamNotFound);
@@ -243,6 +248,9 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
 
     /// <summary>Copy a loose .manifest into depotcache, keeping its (depot_manifest).manifest name.</summary>
     public InstallResult InstallManifestFile(string manifestPath)
+    { lock (InstallGate) return InstallManifestFileCore(manifestPath); }
+
+    private InstallResult InstallManifestFileCore(string manifestPath)
     {
         string? dir = steam.DepotCacheDir;
         if (dir is null) return InstallResult.Fail(Resources.Strings.Err_SteamNotFound);
@@ -279,6 +287,9 @@ public partial class LuaInstaller(SteamService steam, SettingsService settings, 
     /// <paramref name="forceLocked"/> keeps manifest pins (for Denuvo fixes).
     /// </summary>
     public InstallResult InstallZip(string zipPath, long appId, bool forceLocked = false, string? source = null)
+    { lock (InstallGate) return InstallZipCore(zipPath, appId, forceLocked, source); }
+
+    private InstallResult InstallZipCore(string zipPath, long appId, bool forceLocked = false, string? source = null)
     {
         string? plugDir = steam.StPlugInDir;
         string? depotDir = steam.DepotCacheDir;

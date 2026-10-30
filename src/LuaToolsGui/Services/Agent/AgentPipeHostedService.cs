@@ -79,6 +79,15 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
         {
             LocalDiscovery.VerifyClient(pipe);
             var request = await Protocol.ReadAsync<AgentRequest>(pipe, Protocol.MaxRequest, deadline.Token).ConfigureAwait(false);
+            // Authenticate before accepting any upload bytes or creating scratch files.
+            if (!Authenticate(request))
+            {
+                await Protocol.WriteAsync(pipe, Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied), Protocol.MaxFrame, deadline.Token);
+                return;
+            }
+            using var upload = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
+            upload.CancelAfter(TimeSpan.FromSeconds(30));
+            using var staging = await AgentInputStaging.ReceiveAsync(pipe, request, upload.Token);
             // Framing/identity is bounded separately from authenticated execution and reply writing.
             Envelope reply;
             using (var execution = CancellationTokenSource.CreateLinkedTokenSource(shutdown))
@@ -100,12 +109,16 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
     }
     internal async Task<Envelope> HandleAsync(AgentRequest request, CancellationToken ct)
     {
+        if (!Authenticate(request)) return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied);
+        return await commands.ExecuteAsync(request, ct).ConfigureAwait(false);
+    }
+    private bool Authenticate(AgentRequest request)
+    {
         byte[] supplied;
         try { supplied = Convert.FromBase64String(request.Capability); }
-        catch (FormatException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied); }
+        catch (FormatException) { return false; }
         bool allowed = CryptographicOperations.FixedTimeEquals(supplied, _capability);
         CryptographicOperations.ZeroMemory(supplied);
-        if (!allowed) return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied);
-        return await commands.ExecuteAsync(request, ct).ConfigureAwait(false);
+        return allowed;
     }
 }

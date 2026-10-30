@@ -827,4 +827,9 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>This job is missing or its retention period has expired.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Retry acquisition and installation; quota may be spent again.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet may publish progress and presence, credit playtime, download schemas or link Workshop content while enabled.</value></data>
+  <data name="Agent_Add_GateChanged" xml:space="preserve"><value>Source eligibility changed. Check sources and try again.</value></data>
+  <data name="Agent_Add_UnreadableDiff" xml:space="preserve"><value>The content cannot be compared. Replacing may overwrite existing content.</value></data>
+  <data name="Agent_Add_InstallFailed" xml:space="preserve"><value>One or more files could not be installed.</value></data>
+  <data name="Agent_Add_Impact" xml:space="preserve"><value>Acquire content; quota may be spent before comparison. Install Lua and manifests; existing content may be overwritten without recovery.</value></data>
+  <data name="Agent_Add_Rejected" xml:space="preserve"><value>The acquisition request was rejected.</value></data>
 </root>

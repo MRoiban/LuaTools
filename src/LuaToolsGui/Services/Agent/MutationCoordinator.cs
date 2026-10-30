@@ -28,7 +28,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
         try
         {
             // Fingerprints exclude rendering and consent, but include all operands and actor attribution.
-            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam,
+            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam, request.Files,
                 flags = request.Flags.Where(f => f.Key is not ("yes" or "dry-run" or "plan-id" or "json" or "format" or "no-input" or "timeout" or "no-start" or "verbose" or "quiet" or "no-color" or "expect-instance" or "expect-steam" or "fields" or "idempotency-key")).OrderBy(f => f.Key).ToDictionary(f => f.Key, f => CanonicalFlag(f.Key, f.Value)) }, Protocol.Json));
             string key = Hash(request.Flags.GetValueOrDefault("idempotency-key") ?? request.RequestId);
             List<Entry> journal = [];

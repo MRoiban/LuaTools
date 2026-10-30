@@ -38,7 +38,7 @@ public sealed class DlcBatchService
         Func<string, string, CancellationToken, Task<DownloadedFile>> Generate,
         Func<string, long, InstallResult> Install,
         Func<long, CancellationToken, Task<DexLuaDlcSnapshot>>? DexLua = null,
-        Func<string, long, string, InstallResult>? InstallWithSource = null);
+        Func<string, long, string, InstallResult>? InstallWithSource = null, Func<long, string>? Version = null);
 
     public sealed class Item
     {
@@ -51,11 +51,13 @@ public sealed class DlcBatchService
         public bool Download { get; set; }
         public string Source { get; set; } = "lua.tools DLC";
         internal DexLuaDlcSnapshot? DexLua { get; set; }
+        internal string? AcceptedVersion { get; set; }
         public string? Error { get; set; }
     }
 
     public sealed class Batch
     {
+        public string Id { get; } = Guid.NewGuid().ToString("N");
         public long AppId { get; init; }
         /// <summary>checking, ready, applying, done, failed, cancelled.</summary>
         public string Phase { get; set; } = "checking";
@@ -82,12 +84,20 @@ public sealed class DlcBatchService
             (dlc, b, ct) => api.GenerateDlcAsync(dlc, b, null, null, ct),
             (path, id) => installer.InstallLua(path, id, source: "lua.tools DLC"),
             (id, ct) => api.GetDexLuaDlcSnapshotAsync(id.ToString(), ct),
-            (path, id, source) => installer.InstallLua(path, id, source: source)))
+            (path, id, source) => installer.InstallLua(path, id, source: source),
+            id => installer.ReadInstalledLua(id) is { } path ? LuaVault.HashFile(path) : "missing"))
     { }
 
     internal DlcBatchService(Ports ports) => _ports = ports;
 
     public Batch? GetState(long baseAppId) => _batches.TryGetValue(baseAppId, out var b) ? b : null;
+
+    public Batch? Find(string id) => _batches.Values.FirstOrDefault(b => b.Id == id);
+    public object Describe(Batch batch)
+    {
+        lock (_gate) return new { id = batch.Id, appid = batch.AppId, state = batch.Phase, done = batch.Done,
+            items = batch.Items.Select(i => new { appid = i.AppId, base_appid = i.BaseAppId, state = i.State, source = i.Source, download = i.Download }).ToArray() };
+    }
 
     /// <summary>Resolve + verify every DLC of <paramref name="baseAppId"/>. Writes nothing.</summary>
     public bool Check(long baseAppId, IReadOnlyCollection<long> owned)
@@ -104,12 +114,13 @@ public sealed class DlcBatchService
     }
 
     /// <summary>Install every DLC the last <see cref="Check"/> verified as ready.</summary>
-    public bool Apply(long baseAppId)
+    public bool Apply(long baseAppId, string? expectedBatch = null)
     {
         lock (_gate)
         {
-            if (!_batches.TryGetValue(baseAppId, out var batch) || batch.Phase != "ready"
+            if (!_batches.TryGetValue(baseAppId, out var batch) || expectedBatch is not null && batch.Id != expectedBatch || batch.Phase != "ready"
                 || !batch.Items.Any(i => i.State == "ready")) return false;
+            foreach (var item in batch.Items.Where(i => i.State == "ready")) item.AcceptedVersion = _ports.Version?.Invoke(item.AppId);
             batch.Phase = "applying";
             batch.Done = 0;
             batch.Work = Task.Run(() => ApplyAsync(batch));
@@ -117,11 +128,11 @@ public sealed class DlcBatchService
         }
     }
 
-    public bool Cancel(long baseAppId)
+    public bool Cancel(long baseAppId, string? expectedBatch = null)
     {
         lock (_gate)
         {
-            if (!_batches.TryGetValue(baseAppId, out var batch) || batch.Phase is not ("checking" or "applying" or "ready"))
+            if (!_batches.TryGetValue(baseAppId, out var batch) || expectedBatch is not null && batch.Id != expectedBatch || batch.Phase is not ("checking" or "applying" or "ready"))
                 return false;
             batch.Cts.Cancel();
             if (batch.Phase == "ready") batch.Phase = "cancelled";
@@ -236,6 +247,8 @@ public sealed class DlcBatchService
                 { item.State = "limit"; lock (_gate) batch.Done++; continue; }
                 try
                 {
+                    if (item.AcceptedVersion is not null && item.AcceptedVersion != _ports.Version?.Invoke(item.AppId))
+                    { item.State = "failed"; item.Error = Resources.Strings.Agent_Add_GateChanged; continue; }
                     var result = item.Download ? await GenerateAndInstallAsync(item, ct) : InstallLocal(item);
                     if (result.Error is null && !result.AnyFailed) item.State = "installed";
                     else { item.State = "failed"; item.Error = result.Error; }
@@ -285,8 +298,14 @@ public sealed class DlcBatchService
         finally { Downloads.ManifestJobFactory.DeleteStaged(file.FilePath); }
     }
 
-    private InstallResult Install(string path, Item item) =>
-        _ports.InstallWithSource?.Invoke(path, item.AppId, item.Source) ?? _ports.Install(path, item.AppId);
+    private InstallResult Install(string path, Item item)
+    {
+        lock (LuaInstaller.InstallGate)
+        {
+            if (item.AcceptedVersion is not null && item.AcceptedVersion != _ports.Version?.Invoke(item.AppId)) return InstallResult.Fail(Resources.Strings.Agent_Add_GateChanged);
+            return _ports.InstallWithSource?.Invoke(path, item.AppId, item.Source) ?? _ports.Install(path, item.AppId);
+        }
+    }
 
     private void Fail(Batch batch, string error)
     {

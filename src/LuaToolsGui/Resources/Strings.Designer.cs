@@ -770,4 +770,9 @@ public static class Strings
         public static string Agent_RetryImpact => Get(nameof(Agent_RetryImpact));
 
     public static string Agent_CabinetImpact => Get(nameof(Agent_CabinetImpact));
+    public static string Agent_Add_GateChanged => Get(nameof(Agent_Add_GateChanged));
+    public static string Agent_Add_UnreadableDiff => Get(nameof(Agent_Add_UnreadableDiff));
+    public static string Agent_Add_InstallFailed => Get(nameof(Agent_Add_InstallFailed));
+    public static string Agent_Add_Impact => Get(nameof(Agent_Add_Impact));
+    public static string Agent_Add_Rejected => Get(nameof(Agent_Add_Rejected));
 }
