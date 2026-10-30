@@ -73,7 +73,7 @@ public sealed partial class AgentCliTests : IDisposable
         int commits = 0;
         Task<PreparedMutation> Prepare(CancellationToken _) => Task.FromResult(new PreparedMutation(new("plan", "steam", "v", [], [], false), _ => { commits++; return Task.FromResult(Envelope.Success(new { accepted = true })); }));
         Assert.True((await new MutationCoordinator(path).ExecuteAsync(request, Prepare, default)).Ok);
-        Assert.True((await new MutationCoordinator(path).ExecuteAsync(request, Prepare, default)).Ok);
+        Assert.True((await new MutationCoordinator(path).ExecuteAsync(request with { InstanceId = "restarted-owner", RequestId = "retry" }, Prepare, default)).Ok);
         Assert.Equal(1, commits);
         Assert.Equal("REQUEST_ID_CONFLICT", (await new MutationCoordinator(path).ExecuteAsync(request with { Secret = "654321" }, Prepare, default)).Error!.Code);
         Assert.DoesNotContain("123456", File.ReadAllText(path));
@@ -81,17 +81,21 @@ public sealed partial class AgentCliTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    [InlineData(true, true)]
-    public async Task ReconciliationFindsSingleBulkAndPartialFixReceipts(bool partial, bool legacy)
+    [InlineData(false, false, 1)]
+    [InlineData(true, false, 1)]
+    [InlineData(false, true, 1)]
+    [InlineData(true, true, 1)]
+    [InlineData(false, false, 2)]
+    [InlineData(true, false, 2)]
+    [InlineData(false, true, 2)]
+    [InlineData(true, true, 2)]
+    public async Task ReconciliationFindsSingleBulkAndPartialFixReceipts(bool partial, bool legacy, int count)
     {
         var mutations = new MutationCoordinator(Path.Combine(_directory, "receipts.json"));
         var facade = Facade(mutations: mutations);
         string a = facade.Jobs.Register("fix.apply", _ => Task.FromResult(Envelope.Success(new { })), default);
         string b = facade.Jobs.Register("fix.revert", _ => Task.FromResult(Envelope.Success(new { })), default);
-        var data = Protocol.Node(new { results = new[] { new { id = "fix-a", ok = true, job_id = a, state = "queued" }, new { id = "fix-b", ok = true, job_id = b, state = "accepted" } } });
+        var data = Protocol.Node(new { results = new[] { new { id = "fix-a", ok = true, job_id = a, state = "queued" }, new { id = "fix-b", ok = true, job_id = b, state = "accepted" } }.Take(count) });
         var receipt = partial ? Envelope.Fail("PARTIAL_FAILURE", 1, "fixture") with { Error = new("PARTIAL_FAILURE", 1, "fixture", Details: data) } : Envelope.Success(data);
         var request = Request(facade, "fix apply", flags: new() { ["idempotency-key"] = "fix-receipt" });
         var original = Protocol.Node(receipt)!.DeepClone();
@@ -106,7 +110,7 @@ public sealed partial class AgentCliTests : IDisposable
         }
         var found = await facade.ExecuteAsync(Request(facade, "job list", flags: new() { ["idempotency-key"] = "fix-receipt" }), default);
         Assert.True(found.Ok, found.Error?.Code);
-        Assert.Equal(new[] { a, b }.Order(), found.Data!.AsArray().Select(x => x!["id"]!.ToString()).Order());
+        Assert.Equal(new[] { a, b }.Take(count).Order(), found.Data!.AsArray().Select(x => x!["id"]!.ToString()).Order());
     }
 
     [Theory]

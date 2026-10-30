@@ -227,6 +227,30 @@ public sealed class AgentAcquisitionTests
     }
 
     [Fact]
+    public async Task InstallationRemainsPinnedWhenSelectionChangesInsideInstallDelegate()
+    {
+        using var f = new Fixture();
+        string admittedPlugin = f.Steam.StPlugInDir!;
+        string other = Path.Combine(f.Root, "other-steam"); Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "steam.exe"), "fixture");
+        string source = f.CreateFile("730.lua", "addappid(730)\n");
+        var job = f.Installer.CaptureInstallation().Bind(new DownloadJob(DownloadKind.Manifest, "pin-proof", 730, "fixture", "fixture", null,
+            (_, _, _) => Task.FromResult(new DownloadedFile(source, "730.lua")),
+            (file, _, _) =>
+            {
+                // Simulate Settings changing immediately after the final admission check.
+                f.Settings.SteamPathOverride = other;
+                var result = f.Installer.InstallLuaFile(file.FilePath, 730);
+                return Task.FromResult(new JobResult(!result.AnyFailed, result.Error));
+            }));
+        var item = f.Queue.Enqueue(job);
+        Assert.True((await job.InstallAsync(new(source, "730.lua"), item, default)).Ok);
+        Assert.True(File.Exists(Path.Combine(admittedPlugin, "730.lua")));
+        Assert.Equal(other, f.Steam.EffectivePath);
+        Assert.Null(f.Installer.ReadInstalledLua(730));
+    }
+
+    [Fact]
     public async Task DepotFactoryAlsoRejectsChangedSteamBeforeReadingKeysOrAcquiringTools()
     {
         using var f = new Fixture();
