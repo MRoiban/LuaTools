@@ -770,4 +770,13 @@ public static class Strings
         public static string Agent_RetryImpact => Get(nameof(Agent_RetryImpact));
 
     public static string Agent_CabinetImpact => Get(nameof(Agent_CabinetImpact));
+
+    public static string Agent_Depot_Unavailable => Get(nameof(Agent_Depot_Unavailable));
+    public static string Agent_Depot_ApplyImpact => Get(nameof(Agent_Depot_ApplyImpact));
+    public static string Agent_Depot_DeleteImpact => Get(nameof(Agent_Depot_DeleteImpact));
+    public static string Agent_Depot_RenameImpact => Get(nameof(Agent_Depot_RenameImpact));
+    public static string Agent_Depot_LaunchImpact => Get(nameof(Agent_Depot_LaunchImpact));
+    public static string Agent_Depot_ReconcileImpact => Get(nameof(Agent_Depot_ReconcileImpact));
+    public static string Agent_Depot_LiveEditImpact => Get(nameof(Agent_Depot_LiveEditImpact));
+    public static string Agent_Depot_StoredEditImpact => Get(nameof(Agent_Depot_StoredEditImpact));
 }

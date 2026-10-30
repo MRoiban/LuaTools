@@ -2,17 +2,17 @@
   {
     "resource": "depot",
     "verb": "list",
-    "syntax": "luatools depot list [--games | --appid <appid>] [--section <name>]",
+    "syntax": "luatools depot list --appid <appid> [--section <name>]",
     "variants": [
-      "luatools depot list [--games | --appid <appid>] [--section <name>]"
+      "luatools depot list --appid <appid> [--section <name>]"
     ],
-    "purpose": "List games with live or loose-build Lua and active preset badges.",
+    "purpose": "Read depot sections for an explicit game without reconciling its vault.",
     "capability_ids": [
       "C-021",
       "C-024"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -114,13 +114,6 @@
         "required": false
       },
       {
-        "name": "games",
-        "type": "bool",
-        "default": false,
-        "allowed_values": [],
-        "required": false
-      },
-      {
         "name": "appid",
         "type": "string",
         "default": null,
@@ -176,8 +169,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools depot list",
-      "luatools depot list --format text"
+      "luatools depot list --appid 570",
+      "luatools depot list --appid 570 --json"
     ],
     "see_also": [
       "luatools describe depot",
@@ -199,7 +192,23 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "section",
+      "title",
+      "size",
+      "os",
+      "language",
+      "enabled",
+      "locked",
+      "manifest_id",
+      "commented_manifest_id",
+      "public_manifest_id",
+      "is_dlc",
+      "is_shared",
+      "has_key",
+      "available_actions"
+    ]
   },
   {
     "resource": "depot",
@@ -377,8 +386,8 @@
     "capability_ids": [
       "C-030"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -515,7 +524,23 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "section",
+      "title",
+      "size",
+      "os",
+      "language",
+      "enabled",
+      "locked",
+      "manifest_id",
+      "commented_manifest_id",
+      "public_manifest_id",
+      "is_dlc",
+      "is_shared",
+      "has_key",
+      "available_actions"
+    ]
   },
   {
     "resource": "depot",
@@ -528,8 +553,8 @@
     "capability_ids": [
       "C-025"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -671,25 +696,41 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "section",
+      "title",
+      "size",
+      "os",
+      "language",
+      "enabled",
+      "locked",
+      "manifest_id",
+      "commented_manifest_id",
+      "public_manifest_id",
+      "is_dlc",
+      "is_shared",
+      "has_key",
+      "available_actions"
+    ]
   },
   {
     "resource": "depot",
     "verb": "reconcile",
-    "syntax": "luatools depot reconcile <appid> [--refresh]",
+    "syntax": "luatools depot reconcile <appid>",
     "variants": [
-      "luatools depot reconcile <appid> [--refresh]"
+      "luatools depot reconcile <appid>"
     ],
     "purpose": "Select game and reconcile vault with live or loose-build files.",
     "capability_ids": [
       "C-022",
       "C-023"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -789,13 +830,6 @@
         "required": false
       },
       {
-        "name": "refresh",
-        "type": "bool",
-        "default": false,
-        "allowed_values": [],
-        "required": false
-      },
-      {
         "name": "dry-run",
         "type": "bool",
         "default": false,
@@ -886,7 +920,7 @@
     "identity_values": [],
     "examples": [
       "luatools depot reconcile 570",
-      "luatools depot reconcile 570 --format text"
+      "luatools depot reconcile 570 --json"
     ],
     "see_also": [
       "luatools describe depot",
@@ -933,11 +967,11 @@
       "C-026",
       "C-027"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -1193,7 +1227,22 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "appid",
+      "section",
+      "title",
+      "size",
+      "os",
+      "language",
+      "enabled",
+      "locked",
+      "manifest_id",
+      "commented_manifest_id",
+      "public_manifest_id",
+      "is_dlc",
+      "is_shared",
+      "has_key",
+      "available_actions"
     ]
   },
   {

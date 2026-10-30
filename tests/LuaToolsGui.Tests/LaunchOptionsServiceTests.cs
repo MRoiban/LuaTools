@@ -44,6 +44,36 @@ public class LaunchOptionsServiceTests : IDisposable
             Path.Combine(_tmp, "backup"));
     }
 
+
+    [Fact]
+    public void InspectNeverRebasesOrChangesDiskButExplicitReadStillDoes()
+    {
+        var original = _service.Read(AppId)!;
+        _service.Stage(AppId, original.ChangeNumber - 1, original.Current, [new LaunchOption { Executable = "Edited.exe" }]);
+        string path = Path.Combine(_tmp, "launchmods.json");
+        byte[] before = File.ReadAllBytes(path);
+        Assert.NotNull(_service.Inspect(AppId));
+        Assert.Equal(before, File.ReadAllBytes(path));
+        Assert.Equal(original.ChangeNumber - 1, _store.Get(AppId)!.ChangeNumber);
+        _service.Read(AppId);
+        Assert.Equal(original.ChangeNumber, _store.Get(AppId)!.ChangeNumber);
+        Assert.Equal(0, _stopCalls);
+    }
+    [Fact]
+    public void FailedRestoreRetainsDesiredAndOriginalForRecovery()
+    {
+        var state = _service.Read(AppId)!;
+        _service.Stage(AppId, state.ChangeNumber, state.Current, [new LaunchOption { Executable = "Edited.exe" }]);
+        // Inject process denial after a successful read, with no real Steam process involved.
+        var denied = new LaunchOptionsService(() => _appInfo, () => true, () => throw new IOException("denied"), () => { }, _store, Path.Combine(_tmp, "backup"));
+        var result = new LaunchEditCoordinator(denied).Restore(AppId);
+        Assert.False(result.Ok);
+        Assert.Equal("Edited.exe", Assert.Single(_store.Get(AppId)!.Desired).Executable);
+        Assert.Equal("Game.exe", _store.Get(AppId)!.Original[0].Executable);
+        Assert.True(File.Exists(Path.Combine(_tmp, "launchmods.json")));
+        Assert.True(new LaunchEditCoordinator(_service).Restore(AppId).Ok);
+        Assert.Null(_store.Get(AppId));
+    }
     public void Dispose()
     {
         try { Directory.Delete(_tmp, recursive: true); } catch { /* best effort */ }

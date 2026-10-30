@@ -792,4 +792,14 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>Cette tâche est introuvable ou sa durée de conservation a expiré.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Relancer l’acquisition et l’installation ; le quota peut être consommé de nouveau.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet peut publier la progression et la présence, comptabiliser du temps de jeu, télécharger des schémas ou lier du contenu Workshop lorsqu’il est activé.</value></data>
+
+  <!-- Agent depot messages -->
+  <data name="Agent_Depot_Unavailable" xml:space="preserve"><value>L’opération de dépôt ou de lancement est indisponible ou a échoué.</value></data>
+  <data name="Agent_Depot_ApplyImpact" xml:space="preserve"><value>Cible : Lua actif. Écrase le contenu actif ; SyncDefaultFromLive peut supprimer définitivement l’ancien contenu par défaut.</value></data>
+  <data name="Agent_Depot_DeleteImpact" xml:space="preserve"><value>Cible : préréglage stocké inactif. Supprime définitivement son contenu Lua.</value></data>
+  <data name="Agent_Depot_RenameImpact" xml:space="preserve"><value>Cible : métadonnées du préréglage stocké. Retire les espaces ; un nom vide rétablit le libellé généré.</value></data>
+  <data name="Agent_Depot_LaunchImpact" xml:space="preserve"><value>Cible : appinfo du Steam sélectionné. Sauvegarde et réécrit les options ; arrête et redémarre Steam s’il est lancé. La restauration supprime la modification enregistrée uniquement en cas de réussite.</value></data>
+  <data name="Agent_Depot_ReconcileImpact" xml:space="preserve"><value>Cible : Lua actif et coffre. SyncDefaultFromLive peut supprimer définitivement l’ancien contenu par défaut ; adopte les builds isolés et peut en appliquer un si aucun Lua actif n’existe.</value></data>
+  <data name="Agent_Depot_LiveEditImpact" xml:space="preserve"><value>Cible : Lua actif. Écrit immédiatement ; la synchronisation peut supprimer l’ancien contenu par défaut. Les modifications d’un build ou préréglage actif restent en attente.</value></data>
+  <data name="Agent_Depot_StoredEditImpact" xml:space="preserve"><value>Cible : préréglage stocké inactif. UpdateVariant supprime définitivement l’ancien contenu et peut fusionner avec une entrée identique ; le Lua actif reste inchangé.</value></data>
 </root>

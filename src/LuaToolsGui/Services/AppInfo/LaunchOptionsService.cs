@@ -64,6 +64,9 @@ public class LaunchOptionsService
         _backupDir = backupDir;
     }
 
+    private readonly object _operationGate = new();
+    internal T Serialized<T>(Func<T> action) { lock (_operationGate) return action(); }
+
     public LaunchModStore Store => _store;
 
     /// <summary>Full path to Steam's appinfo cache, or null if Steam isn't located.</summary>
@@ -75,7 +78,12 @@ public class LaunchOptionsService
     /// Read a game's launch entries. Also re-bases a stored snapshot when Steam has updated the app
     /// (see <see cref="LaunchModStore.Rebase"/>). Null when the app isn't in appinfo at all.
     /// </summary>
-    public LaunchState? Read(int appId)
+    public LaunchState? Read(int appId) => Serialized(() => ReadCore(appId, rebase: true));
+
+    /// <summary>Observational read: never persists a rebase.</summary>
+    public LaunchState? Inspect(int appId) => Serialized(() => ReadCore(appId, rebase: false));
+
+    private LaunchState? ReadCore(int appId, bool rebase)
     {
         if (AppInfoPath is not { } path || !File.Exists(path)) return null;
 
@@ -88,7 +96,7 @@ public class LaunchOptionsService
 
         // If Steam updated the app since we snapshotted it, the snapshot describes a version that no
         // longer exists. Refresh it from what's live now.
-        _store.Rebase(appId, changeNumber, current);
+        if (rebase) _store.Rebase(appId, changeNumber, current);
 
         return new LaunchState(appId, changeNumber, current,
             body.GetTable("config")?.GetText("installdir"),
@@ -99,7 +107,7 @@ public class LaunchOptionsService
     /// because it has to close Steam.</summary>
     public void Stage(int appId, uint changeNumber,
                       IReadOnlyList<LaunchOption> current, IReadOnlyList<LaunchOption> desired) =>
-        _store.Save(appId, changeNumber, current, desired);
+        Serialized(() => { _store.Save(appId, changeNumber, current, desired); return true; });
 
     /// <summary>Stage a return to the snapshot taken before we first edited this game.</summary>
     public IReadOnlyList<LaunchOption>? StageRestore(int appId) => _store.Get(appId)?.Original;
@@ -127,7 +135,10 @@ public class LaunchOptionsService
     /// relaunches. <paramref name="restartSteam"/> controls whether it's brought back up.
     /// </para>
     /// </summary>
-    public ApplyResult Apply(IReadOnlyDictionary<int, IReadOnlyList<LaunchOption>> edits, bool restartSteam)
+    public ApplyResult Apply(IReadOnlyDictionary<int, IReadOnlyList<LaunchOption>> edits, bool restartSteam) =>
+        Serialized(() => ApplyCore(edits, restartSteam));
+
+    private ApplyResult ApplyCore(IReadOnlyDictionary<int, IReadOnlyList<LaunchOption>> edits, bool restartSteam)
     {
         if (AppInfoPath is not { } path || !File.Exists(path))
             return new ApplyResult(false, "Steam's appinfo cache wasn't found.");

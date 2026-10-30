@@ -827,4 +827,14 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>This job is missing or its retention period has expired.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Retry acquisition and installation; quota may be spent again.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet may publish progress and presence, credit playtime, download schemas or link Workshop content while enabled.</value></data>
+
+  <!-- Agent depot messages -->
+  <data name="Agent_Depot_Unavailable" xml:space="preserve"><value>The depot or launch operation is unavailable or failed.</value></data>
+  <data name="Agent_Depot_ApplyImpact" xml:space="preserve"><value>Target: live Lua. Overwrites live bytes; SyncDefaultFromLive can permanently discard previous Default bytes.</value></data>
+  <data name="Agent_Depot_DeleteImpact" xml:space="preserve"><value>Target: inactive stored preset. Permanently deletes stored Lua bytes.</value></data>
+  <data name="Agent_Depot_RenameImpact" xml:space="preserve"><value>Target: stored preset metadata. Trims name; blank restores generated label.</value></data>
+  <data name="Agent_Depot_LaunchImpact" xml:space="preserve"><value>Target: selected Steam appinfo. Backs up and rewrites launch entries; stops and restarts Steam if running. Restore removes the staged edit only on success.</value></data>
+  <data name="Agent_Depot_ReconcileImpact" xml:space="preserve"><value>Target: live Lua and vault. SyncDefaultFromLive can permanently discard old Default bytes; adopts loose builds and can auto-apply a build when no live Lua exists.</value></data>
+  <data name="Agent_Depot_LiveEditImpact" xml:space="preserve"><value>Target: live Lua. Writes immediately; Default sync can discard stored Default bytes. Active build/preset divergence remains pending.</value></data>
+  <data name="Agent_Depot_StoredEditImpact" xml:space="preserve"><value>Target: inactive stored preset. UpdateVariant permanently deletes old content bytes and may deduplicate into another entry; live Lua is unchanged.</value></data>
 </root>

@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-083"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -119,7 +119,7 @@
     "identity_values": [],
     "examples": [
       "luatools launch-option get 570",
-      "luatools launch-option get 570 --format text"
+      "luatools launch-option get 570 --json"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -141,7 +141,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "current",
+      "desired",
+      "is_modded",
+      "available_actions",
+      "name",
+      "kind",
+      "build_id",
+      "captured_at",
+      "depot_count",
+      "dlc_count",
+      "active"
+    ]
   },
   {
     "resource": "launch-option",
@@ -154,8 +167,8 @@
     "capability_ids": [
       "C-089"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -306,7 +319,7 @@
     "identity_values": [],
     "examples": [
       "luatools launch-option list",
-      "luatools launch-option list --format text"
+      "luatools launch-option list --drifted --json"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -328,7 +341,20 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "appid",
+      "current",
+      "desired",
+      "is_modded",
+      "available_actions",
+      "name",
+      "kind",
+      "build_id",
+      "captured_at",
+      "depot_count",
+      "dlc_count",
+      "active"
+    ]
   },
   {
     "resource": "launch-option",
@@ -1094,12 +1120,12 @@
     "capability_ids": [
       "C-088"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -1287,7 +1313,7 @@
     "identity_values": [],
     "examples": [
       "luatools launch-option revert 570",
-      "luatools launch-option revert 570 --format text"
+      "luatools launch-option revert 570 --json"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -1331,12 +1357,12 @@
     "capability_ids": [
       "C-090"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "operation",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -1529,7 +1555,7 @@
     "identity_values": [],
     "examples": [
       "luatools launch-option apply --drifted",
-      "luatools launch-option apply --drifted --format text"
+      "luatools launch-option apply --drifted --json"
     ],
     "see_also": [
       "luatools describe launch-option",

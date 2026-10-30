@@ -20,7 +20,7 @@ public sealed class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
-    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null)
+    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null, LuaVault? vault = null)
     {
         Directory.CreateDirectory(_directory);
         settings ??= new SettingsService(new AppSettings());
@@ -29,9 +29,73 @@ public sealed class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")));
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), vault: vault);
     }
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
+
+    [Fact]
+    public async Task PresetReadsAndDryRunsAcrossRealPipeNeverChangeDiskOrExposeKeys()
+    {
+        Directory.CreateDirectory(_directory);
+        string plug = Path.Combine(_directory, "plug"); Directory.CreateDirectory(plug);
+        var vault = new LuaVault(() => plug, Path.Combine(_directory, "vault"));
+        string live = Path.Combine(plug, "570.lua");
+        File.WriteAllText(live, "addappid(570)\naddappid(571,0,\"secret-depot-key\")\n");
+        vault.SyncDefaultFromLive(570);
+        string hash = Assert.Single(vault.GetVariants(570)).Hash;
+        // External divergence and loose builds must remain unadopted by every read and dry-run.
+        File.AppendAllText(live, "-- external change\n");
+        File.WriteAllText(Path.Combine(plug, "570_999.lua"), "addappid(570)\n-- loose\n");
+        var facade = Facade(vault: vault);
+        Dictionary<string, string> Disk() => Directory.GetFiles(_directory, "*", SearchOption.AllDirectories).ToDictionary(p => p, p => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))));
+        var before = Disk();
+        byte[] capability = RandomNumberGenerator.GetBytes(32);
+        using var service = new AgentPipeHostedService(facade, NullLogger<AgentPipeHostedService>.Instance, capability);
+        async Task<Envelope> Call(string command, string[] args, Dictionary<string, string?> flags)
+        {
+            string pipe = "LuaTools-depots-" + Guid.NewGuid().ToString("N");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var server = new NamedPipeServerStream(pipe, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            var host = Task.Run(async () => { await server.WaitForConnectionAsync(timeout.Token); await service.ServeAsync(server, timeout.Token); });
+            var result = await AgentClient.ExchangeAsync(pipe, Request(facade, command, args, flags, Convert.ToBase64String(capability)), timeout.Token);
+            await host; return result;
+        }
+        foreach (string command in new[] { "preset list", "preset get" })
+        {
+            var reply = await Call(command, command.EndsWith("get") ? [hash] : [], new() { ["appid"] = "570" });
+            Assert.True(reply.Ok); Assert.DoesNotContain("secret-depot-key", JsonSerializer.Serialize(reply, Protocol.Json));
+        }
+        var dry = await Call("depot reconcile", ["570"], new() { ["dry-run"] = null });
+        Assert.True(dry.Ok); Assert.Contains("discard", dry.Data!.ToJsonString());
+        Assert.Equal(before.OrderBy(p => p.Key), Disk().OrderBy(p => p.Key));
+        Assert.Single(vault.GetVariants(570));
+        Assert.NotEqual(hash, vault.GetActiveHash(570));
+    }
+    [Fact]
+    public async Task PresetMutationAdmissionVersionsConsentReadOnlyPartialFailureAndRetry()
+    {
+        Directory.CreateDirectory(_directory);
+        string plug = Path.Combine(_directory, "plug"); Directory.CreateDirectory(plug);
+        var vault = new LuaVault(() => plug, Path.Combine(_directory, "vault"));
+        string live = Path.Combine(plug, "570.lua"); File.WriteAllText(live, "addappid(570)\n");
+        vault.SyncDefaultFromLive(570); string hash = Assert.Single(vault.GetVariants(570)).Hash;
+        File.AppendAllText(live, "-- divergence\n");
+        var facade = Facade(vault: vault);
+        Task<Envelope> Call(string verb, Dictionary<string, string?> flags) => facade.ExecuteAsync(Request(facade, "preset " + verb, [hash], flags), default);
+        Assert.Equal("READ_ONLY", (await Call("delete", new() { ["appid"] = "570", ["read-only"] = null })).Error!.Code);
+        Assert.Equal("CONSENT_REQUIRED", (await Call("delete", new() { ["appid"] = "570" })).Error!.Code);
+        var dry = await Call("update", new() { ["appid"] = "570", ["name"] = "First", ["dry-run"] = null });
+        string plan = dry.Data!["plan"]!["id"]!.ToString();
+        vault.Rename(570, hash, "GUI edit");
+        Assert.Equal("PLAN_STALE", (await Call("update", new() { ["appid"] = "570", ["name"] = "First", ["plan-id"] = plan })).Error!.Code);
+        Assert.Equal("VERSION_CONFLICT", (await Call("update", new() { ["appid"] = "570", ["name"] = "First", ["if-version"] = "old" })).Error!.Code);
+        var flags = new Dictionary<string, string?> { ["appid"] = "570", ["name"] = " Trimmed ", ["idempotency-key"] = "rename-once" };
+        Assert.True((await Call("update", flags)).Ok); Assert.Equal("Trimmed", Assert.Single(vault.GetVariants(570)).Label);
+        vault.Rename(570, hash, "Later GUI edit");
+        Assert.True((await Call("update", flags)).Ok); Assert.Equal("Later GUI edit", Assert.Single(vault.GetVariants(570)).Label);
+        var partial = await facade.ExecuteAsync(Request(facade, "preset update", [], new() { ["appid"] = "570", ["name"] = "Bulk", ["ids"] = hash + ",missing" }), default);
+        Assert.Equal("PARTIAL_FAILURE", partial.Error!.Code); Assert.Equal("Bulk", Assert.Single(vault.GetVariants(570)).Label);
+    }
     [Fact]
     public async Task FacadeReadsOnlyAllowlistedSettingsAndRefusesSecretNames()
     {

@@ -12,7 +12,7 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, LuaVault? vault = null, AppInfo.LaunchOptionsService? launch = null, SteamDepotInfo? depotInfo = null, SteamAppListCache? appList = null, SteamAppInfoCache? appInfo = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
@@ -63,7 +63,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     {
         bool reverse = request.Flags.GetValueOrDefault("sort") == "reverse";
         if (reverse) rows = new JsonArray(rows.Reverse().Select(x => x?.DeepClone()).ToArray());
-        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
+        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort" or "appid" or "section" or "query" or "drifted").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
         return _pager.List(key, rows, request.Flags);
     }    private bool? SelectedSteamRunning()
     {
