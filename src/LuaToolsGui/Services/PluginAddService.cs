@@ -44,6 +44,7 @@ public class PluginAddService(
 
     public class AddState
     {
+        public string Generation { get; } = Guid.NewGuid().ToString("N");
         public long AppId;
         public string? GameName;
         public bool Checking;

@@ -60,7 +60,8 @@ public sealed partial class AgentCommandService
             // Register the expensive cache rewrite with owner lifetime; never run it on the dispatcher.
             string job = Jobs.Register(r.Command, async lifetime => await Task.Run(() =>
             {
-                if (LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (PlanContext != context || LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                using var selected = steam.PinSelectedInstallation();
                 bool nowRunning = LaunchRunning();
                 if (nowRunning && (!r.Flags.ContainsKey("restart-steam") || !r.Flags.ContainsKey("yes"))) throw new MutationRejectedException("STEAM_RUNNING", 6);
                 var coordinator = new LaunchEditCoordinator(launch);

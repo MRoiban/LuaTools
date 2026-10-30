@@ -19,7 +19,7 @@ public sealed partial class AgentCommandService
             AddNoData(r);
             if (r.Command == "lua get")
             {
-                long id = AddAppId(r.Arguments[0]);
+                long id = AddAppId(r.Arguments.FirstOrDefault());
                 if (r.Flags.ContainsKey("diff-file"))
                 {
                     ValidateAddInputs(r);
@@ -81,7 +81,7 @@ public sealed partial class AgentCommandService
         ValidateScalarInput(r);
         ValidateAddInputs(r);
         if (r.Files!.Length != 1) throw new MutationRejectedException("INVALID_USAGE", 2);
-        long id = AddAppId(r.Arguments[0]);
+        long id = AddAppId(r.Arguments.FirstOrDefault());
         string text = await File.ReadAllTextAsync(r.InputPaths[0], token);
         try { ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), id); }
         catch { throw new MutationRejectedException("INVALID_LUA", 2); }

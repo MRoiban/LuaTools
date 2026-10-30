@@ -8,7 +8,7 @@ public sealed partial class AgentCommandService
     {
         if (r.Command == "game install") return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
-            AddNoData(r); long id = AddAppId(r.Arguments[0]);
+            AddNoData(r); long id = AddAppId(r.Arguments.FirstOrDefault());
             var handler = new SteamInstallHandoff(steam);
             if (!handler.CanHandoff()) throw new MutationRejectedException("STEAM_PROTOCOL_ISOLATION_UNPROVEN", 5);
             if (libraryCache is null || !libraryCache.GetLoadedAppIds().Contains(id)) throw new MutationRejectedException("NOT_PENDING_ADDED", 6);
@@ -37,7 +37,7 @@ public sealed partial class AgentCommandService
             if (entry is null && info is null && !r.Flags.ContainsKey("installed")) return Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Library_Unavailable);
             var row = Protocol.Node(GameData(entry ?? new(id.Value, "", default, info?.Name ?? string.Format(Resources.Strings.Common_AppFallback, id), false)))!.AsObject();
             var state = pluginAdd?.GetState(id.Value);
-            row["add_status"] = Protocol.Node(new { checking = state?.Checking ?? false, busy = state?.Busy ?? false, sources_loaded = state?.SourcesLoaded ?? false,
+            row["add_status"] = Protocol.Node(new { generation = state?.Generation, checking = state?.Checking ?? false, busy = state?.Busy ?? false, sources_loaded = state?.SourcesLoaded ?? false,
                 install_status = state?.InstallStatus is { } status ? LogRedactor.Redact(status) : null, install_failed = state?.InstallFailed ?? false,
                 error = state?.Error is { } error ? LogRedactor.Redact(error) : null, cancelled = state?.Cancelled ?? false,
                 sources = state?.Sources.Select(s => new { name = s.Name, status = s.Status, disabled_reasons = s.DisabledReasons }) });

@@ -42,6 +42,7 @@ public static class CommandParser
             if (!flags.TryAdd(name, value))
             {
                 if (name is "file" or "owned" && value is not null) flags[name] += "\n" + value;
+                else if (name == "depot" && value is not null) flags[name] += "," + value;
                 else problems.Add(new(name, "Flag repeated."));
             }
         }

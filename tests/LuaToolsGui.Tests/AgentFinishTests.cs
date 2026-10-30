@@ -12,6 +12,7 @@ using LuaToolsGui.Services.Agent;
 using LuaToolsGui.Services.AppInfo;
 using LuaToolsGui.Services.Cabinet;
 using LuaToolsGui.Services.Downloads;
+using LuaToolsGui.ViewModels;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 namespace LuaToolsGui.Tests;
@@ -58,6 +59,7 @@ public sealed class AgentFinishTests
         internal readonly Network Net = new();
         internal readonly Modes Mode;
         internal readonly Cabinet Cab = new();
+        internal readonly BuildsViewModel Builds;
         internal int Stops;
         internal bool Running;
         private readonly byte[] _capability = RandomNumberGenerator.GetBytes(32);
@@ -90,6 +92,7 @@ public sealed class AgentFinishTests
             var hubcap = new HubcapService(_http);
             var tool = new DepotDownloaderService(github, Steam, auth, cache, NullLogger<DepotDownloaderService>.Instance, Settings);
             var factory = new ManifestJobFactory(api, hubcap, Settings, installer, new(Steam), covers, null!, tool, depots, null!, null!, null!);
+            Builds = new(Steam, Vault, names, details, covers, depots, new ToastService(), Settings, tool, Queue, factory);
             string appinfo = Path.Combine(Root, "steam", "appcache", "appinfo.vdf");
             LaunchOptionsServiceTests.WriteAppInfo(appinfo, [("0", "Original.exe", "windows")]);
             Launch = new(() => appinfo, () => Running, () => Stops++, () => { }, new LaunchModStore(Path.Combine(Root, "launchmods.json")), Path.Combine(Root, "backups"));
@@ -226,6 +229,63 @@ public sealed class AgentFinishTests
         Assert.Equal("CONSENT_REQUIRED", (await f.Call("cloud-save update", flags: new() { ["enabled"] = "true" })).Error!.Code);
         var done = await f.Result(await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["yes"] = null })); Assert.Equal("completed", done.Data!["state"]!.ToString()); Assert.True(f.Settings.CloudRedirectEnabled); Assert.Equal(1, f.Mode.Enables);
         var install = await f.Call("game install", ["570"], new() { ["yes"] = null }); Assert.Equal("STEAM_PROTOCOL_ISOLATION_UNPROVEN", install.Error!.Code);
+    }
+
+    [Fact]
+    public async Task LaunchStalePlanVersionsReadOnlyAndRetryDoNotStageTwice()
+    {
+        using var f = new Fixture(); string json = "{\"executable\":\"New.exe\"}";
+        var dry = await f.Call("launch-option create", ["603750"], new() { ["dry-run"] = null }, json); Assert.True(dry.Ok); Assert.True(f.Launch.Store.IsEmpty);
+        Assert.Equal("READ_ONLY", (await f.Call("launch-option create", ["603750"], new() { ["read-only"] = null }, json)).Error!.Code);
+        Assert.Equal("VERSION_CONFLICT", (await f.Call("launch-option create", ["603750"], new() { ["if-version"] = "old" }, json)).Error!.Code);
+        var state = f.Launch.Inspect(603750)!; f.Launch.Stage(603750, state.ChangeNumber, state.Current, state.Current);
+        Assert.Equal("PLAN_STALE", (await f.Call("launch-option create", ["603750"], new() { ["plan-id"] = dry.Data!["plan"]!["id"]!.ToString() }, json)).Error!.Code);
+        var flags = new Dictionary<string, string?> { ["idempotency-key"] = "create-once" };
+        var first = await f.Call("launch-option create", ["603750"], flags, json); await f.Result(first);
+        var retry = await f.Call("launch-option create", ["603750"], flags, json); Assert.Equal(first.Data!["job_id"]!.ToString(), retry.Data!["job_id"]!.ToString()); Assert.Equal(2, f.Launch.Store.Get(603750)!.Desired.Count);
+    }
+
+    [Fact]
+    public async Task GuiBuildsEditorAndLaunchAdapterRetainOriginLabelOrderAndOriginalBytes()
+    {
+        using var f = new Fixture(); f.Live("addappid(570)\n"); f.Vault.SyncDefaultFromLive(570);
+        var preset = f.Vault.SaveText(570, "addappid(570)\n-- origin\n", "Keep label")!; Assert.True(f.Vault.Apply(570, preset));
+        await f.Builds.SelectAppAsync(570); f.Builds.EditCommand.Execute(null); f.Builds.EditorText = "addappid(570)\n-- GUI editor\n"; f.Builds.SaveEditCommand.Execute(null);
+        Assert.False(f.Builds.IsEditing); Assert.Equal("Keep label", f.Vault.GetActiveVariant(570)!.Label); Assert.Null(f.Vault.GetEditBase(570));
+        var vm = new LaunchOptionsViewModel(f.Launch, new ToastService()); await vm.LoadAsync(603750, "Fixture");
+        vm.AddEntryCommand.Execute(null); vm.Selected!.Executable = " Added.exe "; vm.MoveUpCommand.Execute(null);
+        new LaunchEditCoordinator(f.Launch).Stage(603750, vm.Entries.Select(e => e.ToOption()).ToArray());
+        Assert.Equal("Added.exe", f.Launch.Store.Get(603750)!.Desired[0].Executable); Assert.Equal("Original.exe", f.Launch.Store.Get(603750)!.Original[0].Executable);
+    }
+
+    [Fact]
+    public async Task SharedGuiPresetSaveFallsBackWhenOriginVanishesAndDeduplicates()
+    {
+        using var f = new Fixture(); f.Live("addappid(570)\n");
+        var coordinator = new DepotPresetCoordinator(f.Vault);
+        var origin = coordinator.Create(570, "addappid(570)\n-- origin\n", "Origin")!; f.Vault.SetEditBase(570, origin.Hash); f.Live("addappid(570)\n-- divergence\n");
+        Assert.True(f.Vault.Delete(570, origin.Hash));
+        var fallback = coordinator.SaveLive(570, origin.Hash); Assert.NotNull(fallback); Assert.Null(f.Vault.GetEditBase(570));
+        var dedup = coordinator.Create(570, f.Vault.ReadLiveText(570)); Assert.Equal(fallback!.Hash, dedup!.Hash);
+    }
+
+    [Fact]
+    public async Task CloudAdmissionAndDepotDownloadPlansAreStableAndRejectChangedContext()
+    {
+        using var f = new Fixture();
+        var dry = await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["dry-run"] = null }); Assert.True(dry.Ok);
+        Assert.Equal("READ_ONLY", (await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["read-only"] = null })).Error!.Code);
+        Assert.Equal("VERSION_CONFLICT", (await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["yes"] = null, ["if-version"] = "old" })).Error!.Code);
+        f.Cab.Status = f.Cab.Status with { Cloud = f.Cab.Status.Cloud with { ServerHost = "changed.test" } };
+        Assert.Equal("PLAN_STALE", (await f.Call("cloud-save update", flags: new() { ["enabled"] = "true", ["yes"] = null, ["plan-id"] = dry.Data!["plan"]!["id"]!.ToString() })).Error!.Code);
+        f.Live("addappid(570)\naddappid(571,0,\"" + new string('a',64) + "\")\nsetManifestid(571,\"111\",1)\n"); f.Settings.DepotDownloaderEnabled = true;
+        var flags = new Dictionary<string, string?> { ["depot"] = "571", ["output"] = Path.Combine(f.Root,"output"), ["dry-run"] = null };
+        var plan = await f.Call("depot download", ["570"], flags); Assert.True(plan.Ok); Assert.Empty(f.Queue.Items);
+        flags.Remove("dry-run"); flags["yes"] = null; flags["plan-id"] = plan.Data!["plan"]!["id"]!.ToString();
+        var accepted = await f.Call("depot download", ["570"], flags); Assert.True(accepted.Ok, accepted.Error?.Code);
+        f.Settings.DepotDownloaderEnabled = false;
+        var item = Assert.Single(f.Queue.Items);
+        var revoked = await Assert.ThrowsAsync<MutationRejectedException>(() => item.Job.DownloadAsync(item, new Progress<DownloadProgress>(), default)); Assert.Equal("WORKFLOW_DISABLED", revoked.Code);
     }
 
     [Theory]

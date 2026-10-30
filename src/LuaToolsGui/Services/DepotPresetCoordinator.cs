@@ -3,6 +3,17 @@ namespace LuaToolsGui.Services;
 /// <summary>Vault operations shared by the Depots GUI and the agent owner. No read reconciles.</summary>
 public sealed class DepotPresetCoordinator(LuaVault vault)
 {
+    public IReadOnlyList<LibraryEntry> Games(string? directory, SteamAppListCache? names, SteamAppInfoCache? details)
+    {
+        var installed = directory is null ? new Dictionary<long, string>() : LuaInstaller.EnumerateInstalled(directory).ToDictionary(f => f.AppId, f => f.Path);
+        return installed.Keys.Concat(vault.EnumerateLooseBuildLuas().Select(v => v.AppId)).Distinct().Select(id =>
+        {
+            string path = installed.GetValueOrDefault(id) ?? (directory is null ? "" : System.IO.Path.Combine(directory, $"{id}.lua"));
+            string? name = names?.GetName(id) ?? details?.GetCached(id)?.Name;
+            return new LibraryEntry(id, path, System.IO.File.Exists(path) ? System.IO.File.GetLastWriteTime(path) : DateTime.MinValue,
+                name ?? string.Format(Resources.Strings.Common_AppFallback, id), name is null);
+        }).OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
     public void Reconcile(long appId)
     {
         vault.SyncDefaultFromLive(appId);

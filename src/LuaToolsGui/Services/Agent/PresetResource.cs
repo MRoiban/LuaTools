@@ -93,11 +93,11 @@ public sealed partial class AgentCommandService
         else { ValidateAddInputs(r); if (r.Files!.Length != 1) throw new MutationRejectedException("INVALID_USAGE", 2); text = await System.IO.File.ReadAllTextAsync(r.InputPaths[0], token); }
         try { ManifestContentPolicy.ValidateLua(System.Text.Encoding.UTF8.GetBytes(text), id); }
         catch { throw new MutationRejectedException("INVALID_LUA", 2); }
-        string? origin = create ? null : r.Arguments[0];
+        string? origin = create ? null : r.Arguments.FirstOrDefault() ?? throw new MutationRejectedException("INVALID_SELECTION", 2);
         if (!create && vault!.GetEditBase(id) != origin) throw new MutationRejectedException("EDIT_ORIGIN_CHANGED", 6);
         string version = VaultVersion(id), context = await Snapshot(() => PlanContext, token);
         string? name = r.Flags.GetValueOrDefault("name") ?? data["name"]?.GetValue<string>();
-        return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, [id + (create ? ":new-preset" : ":inactive-preset:" + origin) + (fromLive ? ":from-live" : ":from-file")],
+        return new PreparedMutation(new(Guid.NewGuid().ToString("N"), context, version, [id + (create ? ":stored-new-preset" : ":stored-origin:" + origin) + (fromLive ? ":from-live" : ":from-file")],
             [create ? Resources.Strings.Agent_Finish_PresetImpact : Resources.Strings.Agent_Finish_OriginImpact], !create), commit => Snapshot(() =>
         {
             if (PlanContext != context || VaultVersion(id) != version) throw new MutationRejectedException("PLAN_STALE", 6);

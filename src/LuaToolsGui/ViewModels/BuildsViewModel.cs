@@ -323,21 +323,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
                 //
                 // Nothing is deleted to achieve this: the variants stay on disk untouched and the game
                 // reappears with them intact once its lua is added back. Hidden, not discarded.
-                var installed = LuaInstaller.EnumerateInstalled(dir).ToDictionary(f => f.AppId, f => f.Path);
-                var appIds = new HashSet<long>(installed.Keys);
-                foreach (var (appId, _, _) in _vault.EnumerateLooseBuildLuas()) appIds.Add(appId);
-
-                return appIds
-                    .Select(appId =>
-                    {
-                        string path = installed.TryGetValue(appId, out var p) ? p : Path.Combine(dir, $"{appId}.lua");
-                        string? name = _appList.GetName(appId) ?? _appInfo.GetCached(appId)?.Name;
-                        var added = File.Exists(path) ? File.GetLastWriteTime(path) : DateTime.MinValue;
-                        return new LuaTileViewModel(appId, path, added,
-                            name ?? string.Format(Resources.Strings.Common_AppFallback, appId), name is null);
-                    })
-                    .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                return new DepotPresetCoordinator(_vault).Games(dir, _appList, _appInfo)
+                    .Select(e => new LuaTileViewModel(e.AppId, e.FilePath, e.AddedAt, e.Name, e.NameIsPlaceholder)).ToList();
             });
 
             _allGames = games;
