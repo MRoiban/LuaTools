@@ -79,7 +79,7 @@ public sealed partial class AgentCommandService
         if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);
         string[] ids = LibrarySelect(r, Protocol.Node(entries.Select(e => new { id = e.AppId.ToString(), name = e.Name }))!.AsArray(), "id", ["id", "name"]);
         var targets = ids.Select(id => entries.FirstOrDefault(e => e.AppId.ToString() == id)).ToArray();
-        string Version() => MutationCoordinator.Hash(string.Join(':', targets.Select(e => e is null ? "missing" : LibraryCoordinator.Version(e.FilePath))));
+        string Version() => targets.Length == 1 ? targets[0] is { } one ? LibraryCoordinator.Version(one.FilePath) : "missing" : MutationCoordinator.Hash(string.Join(':', targets.Select(e => e is null ? "missing" : LibraryCoordinator.Version(e.FilePath))));
         string version = Version(), context = PlanContext;
         bool drm = r.Command == "game remove-drm";
         if (drm && targets.Length != 1) throw new MutationRejectedException("INVALID_SELECTION", 2);

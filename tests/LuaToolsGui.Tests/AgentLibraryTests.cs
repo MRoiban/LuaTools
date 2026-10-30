@@ -48,7 +48,8 @@ public sealed partial class AgentCliTests
         Assert.Equal("VERSION_CONFLICT", (await facade.ExecuteAsync(Request(facade, "game delete", ["570"], new() { ["yes"] = null, ["if-version"] = "old" }), default)).Error!.Code);
         File.AppendAllText(Path.Combine(dir, "570.lua"), "\n-- changed");
         Assert.Equal("PLAN_STALE", (await facade.ExecuteAsync(Request(facade, "game delete", ["570"], new() { ["yes"] = null, ["plan-id"] = plan.Data!["plan"]!["id"]!.ToString() }), default)).Error!.Code);
-        var flagsDelete = new Dictionary<string, string?> { ["yes"] = null, ["idempotency-key"] = "library-delete" };
+        string currentVersion = (await facade.ExecuteAsync(Request(facade, "game get", ["570"], new() { ["fields"] = "id,version" }), default)).Data!["version"]!.ToString();
+        var flagsDelete = new Dictionary<string, string?> { ["yes"] = null, ["idempotency-key"] = "library-delete", ["if-version"] = currentVersion };
         Assert.True((await facade.ExecuteAsync(Request(facade, "game delete", ["570"], flagsDelete), default)).Ok);
         Assert.True((await facade.ExecuteAsync(Request(facade, "game delete", ["570"], flagsDelete), default)).Ok);
         Assert.False(File.Exists(Path.Combine(dir, "570.lua")));
