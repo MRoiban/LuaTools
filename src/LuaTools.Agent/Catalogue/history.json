@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-077"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -184,7 +184,16 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "id",
+      "appid",
+      "title",
+      "subtitle",
+      "state",
+      "bytes",
+      "completed_at",
+      "available_actions"
+    ]
   },
   {
     "resource": "history",
@@ -198,11 +207,11 @@
       "C-078",
       "C-079"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -419,12 +428,14 @@
       "B"
     ],
     "output_fields": [
-      "plan",
-      "results",
-      "version",
       "id",
+      "appid",
+      "title",
+      "subtitle",
       "state",
-      "job_id"
+      "bytes",
+      "completed_at",
+      "available_actions"
     ]
   }
 ]

@@ -113,29 +113,8 @@ public partial class LuaTileViewModel : ObservableObject
     /// so the visible page can decode instantly. Order: disk → CDN guess → appdetails header_image.
     /// Only flags "no cover" when Steam definitively has none, never on a transient rate-limit.
     /// </summary>
-    public static async Task<string?> ResolveCoverFileAsync(
-        long appId, SteamAppInfoCache appInfo, CoverCache covers, Action<string>? onName = null)
-    {
-        string? local = covers.GetLocalPath(appId);
-        if (local is not null) return local;
-        if (covers.IsKnownMissing(appId)) return null;
-
-        // Fast path: predictable CDN URL. The grey "Header Capsule" placeholder it can serve for newer
-        // apps is fingerprinted + rejected by CoverCache, so this falls through to header_image below.
-        local = await covers.EnsureAsync(appId, SteamAppInfoCache.GuessHeaderImageUrl(appId));
-        if (local is not null) return local;
-
-        // Slow path: appdetails header_image (throttled) + optional name backfill.
-        var info = appInfo.GetCached(appId) ?? await appInfo.ResolveAsync(appId);
-        if (onName is not null && !string.IsNullOrWhiteSpace(info?.Name)) onName(info!.Name);
-        if (!string.IsNullOrWhiteSpace(info?.HeaderImage))
-            local = await covers.EnsureAsync(appId, info!.HeaderImage!);
-
-        // info != null means appdetails answered (so an empty header = genuinely no cover).
-        // info == null means we couldn't reach it (rate-limited/offline). Don't give up, retry later.
-        if (local is null && info is not null) covers.MarkMissing(appId);
-        return local;
-    }
+    public static Task<string?> ResolveCoverFileAsync(long appId, SteamAppInfoCache appInfo, CoverCache covers, Action<string>? onName = null) =>
+        LibraryCoordinator.ResolveCoverFileAsync(appId, appInfo, covers, onName);
 
     /// <summary>Decode a local image file into a frozen, thumbnail-sized bitmap (off-UI, lock-free).</summary>
     private static ImageSource? LoadFrozen(string path) => SafeImageLoader.LoadLocal(path, 248);
@@ -389,7 +368,7 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
 
         try
         {
-            var result = await _steamless.PatchGameAsync(tile.AppId, prog);
+            var result = await LibraryCoordinator.RemoveDrmAsync(_steamless, tile.AppId, prog);
             if (result.Failed)
             {
                 string msg = result.Error switch
@@ -493,18 +472,11 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
     /// <summary>Delete one lua file; returns false (and warns, unless silent) on failure.</summary>
     private static bool TryDeleteFile(string path, string name, bool silent = false)
     {
-        try
-        {
-            if (File.Exists(path)) File.Delete(path);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            if (!silent)
-                MessageBox.Show(string.Format(Resources.Strings.Manage_RemoveFailed_Named, name, ex.Message), Resources.Strings.Manage_RemoveFailed_Title,
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            return false;
-        }
+        bool ok = LibraryCoordinator.TryDelete(path, out var error);
+        if (!ok && !silent)
+            MessageBox.Show(string.Format(Resources.Strings.Manage_RemoveFailed_Named, name, error), Resources.Strings.Manage_RemoveFailed_Title,
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        return ok;
     }
 
     /// <summary>Remove a tile from the lists after its file is gone; update empty/detail state.</summary>
@@ -544,19 +516,8 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
             // Bulk game-name list (downloaded once, cached). Gives every game a name with no rate limit.
             await _appList.EnsureLoadedAsync();
 
-            var tiles = await Task.Run(() =>
-                LuaInstaller.EnumerateInstalled(dir) // shared scan rule (skips Steamtools.lua etc.)
-                    .Select(f =>
-                    {
-                        var info = new FileInfo(f.Path);
-                        string? name = _appList.GetName(f.AppId) ?? ParseLuaName(f.Path) ?? _appInfo.GetCached(f.AppId)?.Name;
-                        bool placeholder = name is null;
-                        // Base = when added to the folder; if edited since (LastWrite later), use that. Newer is more relevant.
-                        var added = info.LastWriteTime > info.CreationTime ? info.LastWriteTime : info.CreationTime;
-                        return new LuaTileViewModel(f.AppId, f.Path, added, name ?? string.Format(Resources.Strings.Common_AppFallback, f.AppId), placeholder);
-                    })
-                    .OrderByDescending(t => t.AddedAt)
-                    .ToList());
+            var entries = await LibraryCoordinator.ScanAsync(dir, _appList, _appInfo);
+            var tiles = entries.Select(t => new LuaTileViewModel(t.AppId, t.FilePath, t.AddedAt, t.Name, t.NameIsPlaceholder)).ToList();
 
             foreach (var t in tiles) t.SelectionChanged = RecountSelection;
             _all = tiles;
@@ -682,40 +643,11 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
         SetFiltered(list, resetPage);
     }
 
-    private bool MatchesFilters(AppFilterData d)
-    {
-        if (SelectedType != AnyOption &&
-            !string.Equals(d.Type, SelectedType, StringComparison.OrdinalIgnoreCase)) return false;
+    private bool MatchesFilters(AppFilterData d) => LibraryCoordinator.MatchesFilters(d,
+        SelectedType, SelectedGenre, SelectedYear, SelectedPrice, SelectedContent);
 
-        if (SelectedGenre != AnyOption &&
-            !d.Genres.Any(g => string.Equals(g, SelectedGenre, StringComparison.OrdinalIgnoreCase))) return false;
-
-        if (SelectedYear != AnyOption &&
-            (d.ReleaseYear is null || d.ReleaseYear.Value.ToString() != SelectedYear)) return false;
-
-        if (SelectedPrice != AnyOption)
-        {
-            if (SelectedPrice == "Free" && !d.IsFree) return false;
-            if (SelectedPrice == "Paid" && d.IsFree) return false;
-        }
-
-        if (SelectedContent == "Hide adult" && d.IsAdult) return false;
-        if (SelectedContent == "Adult only" && !d.IsAdult) return false;
-
-        return true;
-    }
-
-    private List<LuaTileViewModel> SortTiles(List<LuaTileViewModel> tiles) => SelectedSort switch
-    {
-        "Name (A–Z)" => tiles.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList(),
-        "Release date (newest)" => tiles
-            .OrderByDescending(t => _appInfo.GetFilterData(t.AppId)?.ReleaseDate ?? DateTime.MinValue).ToList(),
-        "Metacritic" => tiles
-            .OrderByDescending(t => _appInfo.GetFilterData(t.AppId)?.Metacritic ?? int.MinValue).ToList(),
-        "Most reviewed" => tiles
-            .OrderByDescending(t => _appInfo.GetFilterData(t.AppId)?.Reviews ?? long.MinValue).ToList(),
-        _ => tiles.OrderByDescending(t => t.AddedAt).ToList(), // "Recently added" (default)
-    };
+    private List<LuaTileViewModel> SortTiles(List<LuaTileViewModel> tiles) =>
+        LibraryCoordinator.Sort(tiles, SelectedSort, t => t.Name, t => t.AddedAt, t => _appInfo.GetFilterData(t.AppId));
 
     /// <summary>Reset every filter (keeps the search text and sort).</summary>
     [RelayCommand]
@@ -774,22 +706,5 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
     }
 
     /// <summary>Best-effort name from the lua header comment (Morrenus/Hubcap). Fallback when the app list misses.</summary>
-    private static string? ParseLuaName(string path)
-    {
-        try
-        {
-            using var reader = new StreamReader(path);
-            string? line0 = reader.ReadLine();
-            string? line1 = reader.ReadLine();
-            if (line0 is not null && line1 is not null &&
-                line0.Contains("Created by", StringComparison.OrdinalIgnoreCase) &&
-                line1.StartsWith("--"))
-            {
-                string name = line1.TrimStart('-', ' ').Trim();
-                return string.IsNullOrWhiteSpace(name) ? null : name;
-            }
-        }
-        catch { /* unreadable. Fall back to appid */ }
-        return null;
-    }
+    private static string? ParseLuaName(string path) => LibraryCoordinator.ParseLuaName(path);
 }

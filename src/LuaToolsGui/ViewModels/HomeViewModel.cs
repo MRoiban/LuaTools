@@ -180,23 +180,8 @@ public partial class HomeViewModel : ObservableObject
             return;
         }
 
-        await _appList.EnsureLoadedAsync();
-
-        var tiles = await Task.Run(() =>
-            Directory.EnumerateFiles(dir, "*.lua")
-                .Select(path => (path, name: Path.GetFileNameWithoutExtension(path)))
-                .Where(f => long.TryParse(f.name, out _))
-                .Select(f =>
-                {
-                    long appid = long.Parse(f.name);
-                    var info = new FileInfo(f.path);
-                    string? name = _appList.GetName(appid) ?? _appInfo.GetCached(appid)?.Name;
-                    // Base = when added to the folder; if edited since (LastWrite later), use that. Newer is more relevant.
-                    var added = info.LastWriteTime > info.CreationTime ? info.LastWriteTime : info.CreationTime;
-                    return new LuaTileViewModel(appid, f.path, added, name ?? string.Format(Resources.Strings.Common_AppFallback, appid), name is null);
-                })
-                .OrderByDescending(t => t.AddedAt)
-                .ToList());
+        var entries = await LibraryCoordinator.ScanAsync(dir, _appList, _appInfo, home: true);
+        var tiles = entries.Select(t => new LuaTileViewModel(t.AppId, t.FilePath, t.AddedAt, t.Name, t.NameIsPlaceholder)).ToList();
 
         GameCount = tiles.Count;
 

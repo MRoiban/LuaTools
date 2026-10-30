@@ -12,7 +12,7 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, SteamAppListCache? libraryNames = null, SteamAppInfoCache? libraryDetails = null, CacheService? libraryCache = null, SteamlessService? librarySteamless = null, LuaToolsApiClient? libraryApi = null, HardwareAppIdService? libraryHardware = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;

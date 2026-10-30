@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-091"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -144,8 +144,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools link get --kind steamdb",
-      "luatools link get --kind steamdb --format text"
+      "luatools link get --kind website",
+      "luatools link get --kind steamdb --appid 570 --format text"
     ],
     "see_also": [
       "luatools describe link",
@@ -167,6 +167,8 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "url"
+    ]
   }
 ]

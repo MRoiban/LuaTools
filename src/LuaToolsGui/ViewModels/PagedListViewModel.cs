@@ -66,7 +66,7 @@ public abstract partial class PagedListViewModel<T> : ObservableObject
     [NotifyPropertyChangedFor(nameof(PageLabel))]
     private int _currentPage = 1;
 
-    public int TotalPages => PageSize == 0 ? 1 : Math.Max(1, (int)Math.Ceiling(_filteredCount / (double)PageSize));
+    public int TotalPages => Services.LibraryPaging.TotalPages(_filteredCount, PageSize);
 
     /// <summary>Page-number buttons for the pager. Windowed (1 … n-1 n n+1 … last) when there are many
     /// pages; 0 is a sentinel for an ellipsis gap.</summary>
@@ -149,9 +149,7 @@ public abstract partial class PagedListViewModel<T> : ObservableObject
     /// to call on page changes.</summary>
     private void ApplyPageSlice()
     {
-        var slice = PageSize == 0
-            ? _filtered
-            : _filtered.Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToList();
+        var slice = Services.LibraryPaging.Slice(_filtered, CurrentPage, PageSize);
 
         Items = new ObservableCollection<T>(slice);
         RebuildPageNumbers();

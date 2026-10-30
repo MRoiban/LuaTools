@@ -16,7 +16,7 @@ using Xunit;
 
 namespace LuaToolsGui.Tests;
 
-public sealed class AgentCliTests : IDisposable
+public sealed partial class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
@@ -29,7 +29,17 @@ public sealed class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")));
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), libraryNames: Names(), libraryDetails: new SteamAppInfoCache(cache, NullLogger<SteamAppInfoCache>.Instance), libraryCache: cache);
+    }
+    private SteamAppListCache Names()
+    {
+        string file = Path.Combine(_directory, "names.json");
+        File.WriteAllText(file, "{\"570\":\"Alpha\",\"571\":\"Beta\"}");
+        return new SteamAppListCache(new LibraryNoNetwork(), file);
+    }
+    private sealed class LibraryNoNetwork : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
     }
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
     [Fact]
@@ -235,7 +245,13 @@ public sealed class AgentCliTests : IDisposable
                         Assert.Equal("CONSENT_REQUIRED", (await Call("job confirm", [decision.Id], new() { ["decision"] = "replace" })).Error!.Code);
                         Assert.True((await Call("job confirm", [decision.Id], new() { ["decision"] = "replace", ["yes"] = null })).Ok);
                         await decision.Completion.WaitAsync(TimeSpan.FromSeconds(5)); Assert.Equal(DownloadStatus.Completed, decision.Status);
-                        queue.Remove(decision);
+                        Assert.True((await Call("download delete", [decision.Id], new() { ["dry-run"] = null })).Ok);
+                        Assert.True((await Call("download delete", [decision.Id])).Ok);
+                        Assert.True((await Call("history list")).Ok);
+                        Assert.Equal("CONSENT_REQUIRED", (await Call("history delete", ["all"])).Error!.Code);
+                        Assert.True((await Call("history delete", ["all"], new() { ["yes"] = null })).Ok);
+                        Assert.True((await Call("link get", flags: new() { ["kind"] = "steamdb", ["appid"] = "570" })).Ok);
+                        Assert.True((await Call("game list")).Ok);
                         Assert.True((await Call("job get", [decision.Id])).Ok);
                         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         var holding = coordinator.ExecuteAsync(Request(facade, "setting update", ["FastFetch"], new() { ["value"] = "false", ["dry-run"] = null }), async ct =>

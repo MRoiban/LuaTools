@@ -23,8 +23,8 @@
       "C-073",
       "C-102"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -215,10 +215,13 @@
       {
         "name": "sort",
         "type": "enum",
-        "default": "default",
+        "default": "recently-added",
         "allowed_values": [
-          "default",
-          "reverse"
+          "recently-added",
+          "name",
+          "release-date",
+          "metacritic",
+          "most-reviewed"
         ],
         "required": false
       }
@@ -226,8 +229,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools game list",
-      "luatools game list --format text"
+      "luatools game list --json",
+      "luatools game list --sort name --limit 12"
     ],
     "see_also": [
       "luatools describe game",
@@ -249,7 +252,22 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "id",
+      "appid",
+      "name",
+      "added_at",
+      "installed",
+      "paths",
+      "paths.lua",
+      "urls",
+      "urls.store",
+      "urls.library",
+      "urls.steamdb",
+      "details",
+      "version",
+      "available_actions"
+    ]
   },
   {
     "resource": "game",
@@ -266,8 +284,8 @@
       "C-060",
       "C-061"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -404,7 +422,22 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "id",
+      "appid",
+      "name",
+      "added_at",
+      "installed",
+      "paths",
+      "paths.lua",
+      "urls",
+      "urls.store",
+      "urls.library",
+      "urls.steamdb",
+      "details",
+      "version",
+      "available_actions"
+    ]
   },
   {
     "resource": "game",
@@ -418,8 +451,8 @@
       "C-055",
       "C-056"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -538,8 +571,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools game search --query Portal",
-      "luatools game search --installed --query Half-Life"
+      "luatools game search --installed --query Portal",
+      "luatools game search --installed --query 570 --json"
     ],
     "see_also": [
       "luatools describe game",
@@ -561,7 +594,22 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "id",
+      "appid",
+      "name",
+      "added_at",
+      "installed",
+      "paths",
+      "paths.lua",
+      "urls",
+      "urls.store",
+      "urls.library",
+      "urls.steamdb",
+      "details",
+      "version",
+      "available_actions"
+    ]
   },
   {
     "resource": "game",
@@ -818,11 +866,11 @@
     "capability_ids": [
       "C-075"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -1036,12 +1084,20 @@
       "No Steam-closed gate; OST/BST watch directory live; No Steam restart or close requirement; B; no login or executable-fix gate"
     ],
     "output_fields": [
-      "plan",
-      "results",
-      "version",
       "id",
-      "state",
-      "job_id"
+      "appid",
+      "name",
+      "added_at",
+      "installed",
+      "paths",
+      "paths.lua",
+      "urls",
+      "urls.store",
+      "urls.library",
+      "urls.steamdb",
+      "details",
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -1055,11 +1111,11 @@
     "capability_ids": [
       "C-076"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -1273,12 +1329,20 @@
       "IsExecutableWorkflowEnabled(\"Steamless\"); DependencyQuarantine and UserAuthorizedDependencies digest/receipt checks; explicit action; approved network. No login/Hubcap/Steam-closed gate"
     ],
     "output_fields": [
-      "plan",
-      "results",
-      "version",
       "id",
-      "state",
-      "job_id"
+      "appid",
+      "name",
+      "added_at",
+      "installed",
+      "paths",
+      "paths.lua",
+      "urls",
+      "urls.store",
+      "urls.library",
+      "urls.steamdb",
+      "details",
+      "version",
+      "available_actions"
     ]
   },
   {

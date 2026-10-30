@@ -189,7 +189,7 @@ public partial class DownloadsViewModel : ObservableObject
             MessageBoxImage.Warning,
             MessageBoxResult.No); // Enter must not wipe the list
 
-        if (choice == MessageBoxResult.Yes) _queue.ClearHistory();
+        if (choice == MessageBoxResult.Yes) DownloadHistoryCoordinator.Clear(_queue);
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public partial class DownloadsViewModel : ObservableObject
     /// row would be tedious. The bulk Clear history above does confirm, because it cannot be undone.
     /// </summary>
     [RelayCommand]
-    private void RemoveHistoryEntry(DownloadHistoryEntry entry) => _queue.RemoveHistory(entry);
+    private void RemoveHistoryEntry(DownloadHistoryEntry entry) => DownloadHistoryCoordinator.Remove(_queue, entry);
 
     /// <summary>Jump to the page that can resolve this item (e.g. the pending overwrite confirmation).</summary>
     [RelayCommand]

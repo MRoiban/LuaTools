@@ -96,7 +96,7 @@ public sealed partial class CabinetViewModel : ObservableObject, IDisposable
         if (cloudChanged) RefreshCloudSaves();
         var previous = Games.ToDictionary(g => g.Game.AppId, g => g.Cover);
         Games.Clear();
-        foreach (var game in status.Games.OrderByDescending(g => g.IsPlaying).ThenByDescending(g => g.LastSynced).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
+        foreach (var game in LibraryCoordinator.CabinetGames(status.Games))
         {
             var row = new CabinetGameViewModel(game);
             if (previous.TryGetValue(game.AppId, out var cover)) row.Cover = cover;

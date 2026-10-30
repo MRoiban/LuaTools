@@ -204,11 +204,11 @@
     "capability_ids": [
       "C-042"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -432,12 +432,7 @@
       "None"
     ],
     "output_fields": [
-      "plan",
-      "results",
-      "version",
-      "id",
-      "state",
-      "job_id"
+      "results"
     ]
   },
   {
@@ -451,11 +446,11 @@
     "capability_ids": [
       "C-043"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -669,12 +664,7 @@
       "None"
     ],
     "output_fields": [
-      "plan",
-      "results",
-      "version",
-      "id",
-      "state",
-      "job_id"
+      "results"
     ]
   },
   {
