@@ -254,4 +254,25 @@ public sealed class AgentAcquisitionTests
         Assert.Equal(0, f.Spent); Assert.Empty(f.Queue.Items);
     }
 
+    [Fact]
+    public async Task ChangedTargetAfterAcquisitionRequiresSharedDecisionAndSkipPreservesLiveBytes()
+    {
+        using var f = new Fixture();
+        Assert.True((await f.Pipe(f.Request(flags: new() { ["source"] = AcquisitionCoordinator.HubcapSource, ["yes"] = null })))!.Ok);
+        var item = Assert.Single(f.Queue.Items);
+        var file = await item.Job.DownloadAsync(item, new Progress<DownloadProgress>(), default);
+        try
+        {
+            f.Live("addappid(730)\naddappid(731)\n");
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var decision = item.Job.ConfirmAsync!(file, item, timeout.Token);
+            for (int i = 0; i < 100 && !ConsentCoordinator.HasPending(item.Id); i++) await Task.Delay(10);
+            Assert.True(ConsentCoordinator.HasPending(item.Id)); Assert.NotNull(ConsentCoordinator.Details(item.Id));
+            Assert.True(ConsentCoordinator.Decide(item.Id, false)); Assert.False(await decision);
+            Assert.Contains("731", System.IO.File.ReadAllText(f.Installer.ReadInstalledLua(730)!));
+            Assert.Equal(1, f.Spent);
+        }
+        finally { ManifestJobFactory.DeleteStaged(file.FilePath); }
+    }
+
 }

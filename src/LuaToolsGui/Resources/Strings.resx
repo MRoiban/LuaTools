@@ -832,4 +832,6 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_Add_InstallFailed" xml:space="preserve"><value>One or more files could not be installed.</value></data>
   <data name="Agent_Add_Impact" xml:space="preserve"><value>Acquire content; quota may be spent before comparison. Install Lua and manifests; existing content may be overwritten without recovery.</value></data>
   <data name="Agent_Add_Rejected" xml:space="preserve"><value>The acquisition request was rejected.</value></data>
+  <data name="Agent_Add_CancelImpact" xml:space="preserve"><value>Cancel the batch; completed installs and spent quota remain.</value></data>
+  <data name="Agent_Add_LocalImpact" xml:space="preserve"><value>Install submitted data in order; preserve input files; existing content may be overwritten without recovery.</value></data>
 </root>

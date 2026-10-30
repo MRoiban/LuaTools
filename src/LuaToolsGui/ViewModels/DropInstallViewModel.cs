@@ -108,7 +108,15 @@ public partial class DropInstallViewModel : ObservableObject
         var parts = new List<string>();
         if (luas > 0) parts.Add(string.Format(Resources.Strings.Drop_Count_Luas, luas));
         if (manifests > 0) parts.Add(string.Format(Resources.Strings.Drop_Count_Manifests, manifests));
-        ResultText = ResultFailed ? Resources.Strings.Agent_Add_InstallFailed : parts.Count > 0 ? string.Format(Resources.Strings.Drop_Result_Installed, string.Join(" + ", parts)) : Resources.Strings.Drop_NothingInstalled;
+        int failed = results.Sum(r => r.FailedCount);
+        string? error = results.FirstOrDefault(r => r.Error is not null)?.Error;
+        if (parts.Count == 0 && !ResultFailed) ResultText = results.Any(r => r.Skipped) ? Resources.Strings.Drop_NothingInstalled : null;
+        else
+        {
+            string ok = parts.Count > 0 ? string.Format(Resources.Strings.Drop_Result_Installed, string.Join(" + ", parts)) : "";
+            string bad = failed > 0 ? string.Format(Resources.Strings.Drop_Result_Failed, failed) : "";
+            ResultText = $"{ok}{bad}{(error is null ? ResultFailed && failed == 0 ? Resources.Strings.Agent_Add_InstallFailed : "" : " " + error)}".Trim();
+        }
         if (luas + manifests > 0) Installed?.Invoke();
     }
 

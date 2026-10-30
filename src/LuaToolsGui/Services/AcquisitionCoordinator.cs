@@ -109,18 +109,27 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         if (!source.CanDownload) throw new MutationRejectedException(source.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", 6);
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
             : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal);
-        if (baseAppId is not null && confirm is not null) job = job with { ConfirmAsync = confirm };
-        if (installVersion is not null)
+        string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
+        string acceptedVersion = CurrentVersion();
+        job = job with { ConfirmAsync = async (file, item, ct) =>
+        {
+            if (confirm is null) return CurrentVersion() == acceptedVersion;
+            // A GUI decision describes the target visible when its diff opens. Remote agents supply
+            // their own version binding and can request a new decision after acquisition.
+            string before = CurrentVersion();
+            if (!await confirm(file, item, ct)) return false;
+            if (installVersion is null && CurrentVersion() != before) return false;
+            acceptedVersion = CurrentVersion();
+            return true;
+        }};
+        if (_readInstalled is not null || installVersion is not null)
         {
             var install = job.InstallAsync;
             job = job with { InstallAsync = (file, item, ct) =>
             {
                 lock (LuaInstaller.InstallGate)
                 {
-                    // Compare under the same lock all data installers use, immediately before writes.
-                    string? path = _readInstalled?.Invoke(appId);
-                    string current = path is null ? "missing" : LuaVault.HashFile(path);
-                    if (current != installVersion()) return Task.FromResult(new JobResult(false, Resources.Strings.Agent_Add_GateChanged));
+                    if (CurrentVersion() != (installVersion?.Invoke() ?? acceptedVersion)) return Task.FromResult(new JobResult(false, Resources.Strings.Agent_Add_GateChanged));
                     return install(file, item, ct);
                 }
             }};

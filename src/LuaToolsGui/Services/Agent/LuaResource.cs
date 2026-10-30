@@ -50,7 +50,7 @@ public sealed partial class AgentCommandService
                 string version = MutationCoordinator.Hash(JsonSerializer.Serialize(diffs));
                 string context = await Snapshot(() => PlanContext, token);
                 var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, r.Files!.Select(f => f.Name).ToArray(),
-                    ["Install submitted data in order; preserve input files; existing bytes may be overwritten without recovery.", JsonSerializer.Serialize(diffs, Protocol.Json)], true);
+                    [Resources.Strings.Agent_Add_LocalImpact, JsonSerializer.Serialize(diffs, Protocol.Json)], true);
                 return new PreparedMutation(plan, commitToken => Snapshot(() =>
                 {
                     AddSteamGate();

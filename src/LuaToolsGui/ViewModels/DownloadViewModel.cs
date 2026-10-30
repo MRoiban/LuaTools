@@ -172,8 +172,7 @@ public partial class DownloadViewModel : ObservableObject
     /// <summary>Drag-and-drop installer shown on the Add page.</summary>
     public DropInstallViewModel Drop { get; }
 
-    // Set while a luatools://install/silent/<id> install runs so the download path skips the interactive
-    // overwrite-confirm overlay (there's no surfaced window for the user to confirm it on).
+    // Retained protocol presentation state; acquisition never bypasses overwrite decisions.
     private bool _silentInstall;
 
     /// <summary>
@@ -340,7 +339,7 @@ public partial class DownloadViewModel : ObservableObject
         _hardware = hardware;
         _queue = queue;
         _jobs = jobs;
-        _acquisition = acquisition ?? new(api, hubcap, settings, auth, queue, jobs);
+        _acquisition = acquisition ?? new(api, hubcap, settings, auth, queue, jobs, installer);
         _overwrites = overwrites ?? new(installer, appList, appInfo, depotInfo);
         Drop = drop;
         _fastFetch = settings.FastFetch;

@@ -775,4 +775,6 @@ public static class Strings
     public static string Agent_Add_InstallFailed => Get(nameof(Agent_Add_InstallFailed));
     public static string Agent_Add_Impact => Get(nameof(Agent_Add_Impact));
     public static string Agent_Add_Rejected => Get(nameof(Agent_Add_Rejected));
+    public static string Agent_Add_CancelImpact => Get(nameof(Agent_Add_CancelImpact));
+    public static string Agent_Add_LocalImpact => Get(nameof(Agent_Add_LocalImpact));
 }

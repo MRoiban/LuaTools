@@ -1,7 +1,8 @@
 using System.IO;
+using System.Text.Json.Serialization;
 namespace LuaToolsGui.Services;
 
-public sealed record LocalInstallOutcome(string Name, bool Ok, bool Skipped, bool LuaInstalled, int ManifestCount);
+public sealed record LocalInstallOutcome(string Name, bool Ok, bool Skipped, bool LuaInstalled, int ManifestCount, int FailedCount = 0, [property: JsonIgnore] string? Error = null);
 /// <summary>Per-batch state and serialization shared by Home, Add and agent submissions.</summary>
 public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwriteCoordinator overwrites)
 {
@@ -36,7 +37,7 @@ public sealed class LocalInstallCoordinator(LuaInstaller installer, LuaOverwrite
                     { results.Add(new(name, false, false, false, 0)); continue; }
                     result = ext == ".manifest" ? installer.InstallManifestFile(path) : ext == ".zip" ? installer.InstallZip(path, id!.Value) : installer.InstallLuaFile(path, id!.Value);
                 }
-                results.Add(new(name, !result.AnyFailed, false, result.LuaInstalled, result.ManifestCount));
+                results.Add(new(name, !result.AnyFailed, false, result.LuaInstalled, result.ManifestCount, result.Failed.Count, result.Error));
             }
             return results;
         }

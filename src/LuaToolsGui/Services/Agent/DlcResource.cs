@@ -46,7 +46,7 @@ public sealed partial class AgentCommandService
                 string context = PlanContext;
                 var targetVersions = batch.Items.Where(i => i.State == "ready").ToDictionary(i => i.AppId, i => AddVersion(i.AppId));
                 var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, targetVersions.Keys.Select(i => i.ToString()).ToArray(),
-                    [r.Command == "dlc add" ? Resources.Strings.Agent_Add_Impact : "Cancel batch; completed installs and quota remain.", MutationCoordinator.Hash(string.Join(':', targetVersions.Values))], r.Command == "dlc add");
+                    [r.Command == "dlc add" ? Resources.Strings.Agent_Add_Impact : Resources.Strings.Agent_Add_CancelImpact, MutationCoordinator.Hash(string.Join(':', targetVersions.Values))], r.Command == "dlc add");
                 return new PreparedMutation(plan, commitToken => Snapshot(() =>
                 {
                     if (PlanContext != context || version != MutationCoordinator.Hash(System.Text.Json.JsonSerializer.Serialize(service.Describe(batch))) || targetVersions.Any(p => AddVersion(p.Key) != p.Value)) throw new MutationRejectedException("PLAN_STALE", 6);
