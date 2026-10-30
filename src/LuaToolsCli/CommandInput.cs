@@ -36,6 +36,15 @@ public static class CommandInput
             string flag = flags.ContainsKey("file") ? "file" : "diff-file";
             flags[flag] = string.Join(",", files.Select(f => f.Sha256));
         }
-        return parsed with { Flags = flags, Files = files.ToArray(), FileBytes = contents.ToArray() };
+        string? secret = parsed.Secret;
+        if (secret is null && (parsed.Has("secret-stdin") || parsed.Has("code-stdin")))
+        {
+            char[] buffer = new char[4097];
+            int count = await Console.In.ReadBlockAsync(buffer.AsMemory(), ct);
+            if (count > 4096) throw new InvalidDataException("Secret exceeds input limit.");
+            secret = new string(buffer, 0, count).Trim();
+            Array.Clear(buffer);
+        }
+        return parsed with { Flags = flags, Files = files.ToArray(), FileBytes = contents.ToArray(), Secret = secret };
     }
 }

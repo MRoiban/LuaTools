@@ -805,4 +805,5 @@ public static class Strings
     public static string Agent_Depot_ReconcileImpact => Get(nameof(Agent_Depot_ReconcileImpact));
     public static string Agent_Depot_LiveEditImpact => Get(nameof(Agent_Depot_LiveEditImpact));
     public static string Agent_Depot_StoredEditImpact => Get(nameof(Agent_Depot_StoredEditImpact));
+    public static string Agent_Account_Unavailable => Get(nameof(Agent_Account_Unavailable));
 }

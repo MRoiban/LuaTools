@@ -79,11 +79,18 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
         {
             LocalDiscovery.VerifyClient(pipe);
             var request = await Protocol.ReadAsync<AgentRequest>(pipe, Protocol.MaxRequest, deadline.Token).ConfigureAwait(false);
-            // Authenticate before accepting any upload bytes or creating scratch files.
+            // Authenticate before accepting any secret, upload bytes or scratch files.
             if (!Authenticate(request))
             {
                 await Protocol.WriteAsync(pipe, Envelope.Fail("PIPE_IDENTITY_DENIED", 5, Resources.Strings.Agent_IdentityDenied), Protocol.MaxFrame, deadline.Token);
                 return;
+            }
+            if (request.Flags.ContainsKey("secret-stdin") || request.Flags.ContainsKey("code-stdin"))
+            {
+                // Dedicated secret input is never part of request flags or receipts.
+                var secret = await Protocol.ReadAsync<SecretFrame>(pipe, 8192, deadline.Token).ConfigureAwait(false);
+                if (secret.Value.Length > 4096) return;
+                request = request with { Secret = secret.Value };
             }
             using var upload = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
             upload.CancelAfter(TimeSpan.FromSeconds(30));
@@ -101,11 +108,33 @@ public sealed class AgentPipeHostedService(AgentCommandService commands, ILogger
             write.CancelAfter(TimeSpan.FromSeconds(5));
             try { await Protocol.WriteAsync(pipe, reply, Protocol.MaxFrame, write.Token).ConfigureAwait(false); }
             finally { commands.AfterReply(request); }
+            if (reply.Ok && request.Command is "activity-log watch" or "download watch")
+            {
+                using var watch = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
+                watch.CancelAfter(CommandParser.Duration(request.Flags.GetValueOrDefault("timeout") ?? "24h") ?? TimeSpan.FromHours(24));
+                string category = request.Command.Split(' ')[0];
+                await foreach (var frame in commands.Events.Watch(request.Flags.GetValueOrDefault("cursor"), watch.Token))
+                {
+                    string? kind = frame.Data?["event"]?["kind"]?.ToString();
+                    if (frame.Ok && kind is not ("GAP" or "heartbeat") && frame.Data?["event"]?["category"]?.ToString() != category) continue;
+                    using var frameWrite = CancellationTokenSource.CreateLinkedTokenSource(watch.Token);
+                    frameWrite.CancelAfter(TimeSpan.FromSeconds(5));
+                    await Protocol.WriteAsync(pipe, frame, Protocol.MaxFrame, frameWrite.Token).ConfigureAwait(false);
+                    if (!frame.Ok || kind == "GAP") break;
+                }
+            }
 
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or JsonException or ArgumentException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         { /* Unauthenticated/malformed clients receive no information. Deadlines release the slot. */ }
         catch (Exception ex) { log.LogWarning("Agent request failed ({Type})", ex.GetType().Name); }
+    }
+    private bool Authenticate(AgentRequest request)
+    {
+        byte[] supplied;
+        try { supplied = Convert.FromBase64String(request.Capability); } catch (FormatException) { return false; }
+        try { return CryptographicOperations.FixedTimeEquals(supplied, _capability); }
+        finally { CryptographicOperations.ZeroMemory(supplied); }
     }
     internal async Task<Envelope> HandleAsync(AgentRequest request, CancellationToken ct)
     {

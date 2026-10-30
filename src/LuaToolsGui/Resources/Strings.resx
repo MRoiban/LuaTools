@@ -863,4 +863,5 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_Depot_ReconcileImpact" xml:space="preserve"><value>Target: live Lua and vault. SyncDefaultFromLive can permanently discard old Default bytes; adopts loose builds and can auto-apply a build when no live Lua exists.</value></data>
   <data name="Agent_Depot_LiveEditImpact" xml:space="preserve"><value>Target: live Lua. Writes immediately; Default sync can discard stored Default bytes. Active build/preset divergence remains pending.</value></data>
   <data name="Agent_Depot_StoredEditImpact" xml:space="preserve"><value>Target: inactive stored preset. UpdateVariant permanently deletes old content bytes and may deduplicate into another entry; live Lua is unchanged.</value></data>
+  <data name="Agent_Account_Unavailable" xml:space="preserve"><value>This account or Cabinet operation is unavailable in the current state.</value></data>
 </root>

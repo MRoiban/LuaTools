@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-162"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -144,7 +144,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Authenticated same-user GUI owner",
+      "Sequential bounded JSONL frames: {type:command,id,args}; dedicated {type:secret,id,value} immediately before its command. Watches stream correlated envelopes until completion; recursive sessions unsupported. Session read-only is immutable."
     ],
     "output_fields": []
   }

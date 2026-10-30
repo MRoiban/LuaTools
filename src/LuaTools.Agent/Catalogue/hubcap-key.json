@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-082"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -146,7 +146,11 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "configured",
+      "stats",
+      "available_actions"
+    ]
   },
   {
     "resource": "hubcap-key",
@@ -159,11 +163,11 @@
     "capability_ids": [
       "C-080"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -401,11 +405,11 @@
     "capability_ids": [
       "C-081"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,

@@ -14,6 +14,7 @@ public sealed record PreparedMutation(MutationPlan Plan, Func<CancellationToken,
 /// <summary>One admission boundary for all resources. Work returned by Commit must be short or return a job.</summary>
 public sealed class MutationCoordinator(string? journalPath = null)
 {
+    private readonly byte[] _secretDigestKey = RandomNumberGenerator.GetBytes(32);
     private readonly SemaphoreSlim _admission = new(1);
     private readonly Dictionary<string, (DateTimeOffset Time, MutationPlan Plan, string Digest)> _plans = [];
     private readonly string _path = journalPath ?? Path.Combine(DataPaths.Local, AppConfig.DataDirectoryName, "agent-journal.json");
@@ -28,7 +29,7 @@ public sealed class MutationCoordinator(string? journalPath = null)
         try
         {
             // Fingerprints exclude rendering and consent, but include all operands and actor attribution.
-            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam, request.Files,
+            string digest = Hash(JsonSerializer.Serialize(new { request.Command, request.Arguments, request.ExpectedSteam, request.Files, secret_digest = request.Secret is null ? null : Convert.ToHexString(HMACSHA256.HashData(_secretDigestKey, Encoding.UTF8.GetBytes(request.Secret))),
                 flags = request.Flags.Where(f => f.Key is not ("yes" or "dry-run" or "plan-id" or "json" or "format" or "no-input" or "timeout" or "no-start" or "verbose" or "quiet" or "no-color" or "expect-instance" or "expect-steam" or "fields" or "idempotency-key")).OrderBy(f => f.Key).ToDictionary(f => f.Key, f => CanonicalFlag(f.Key, f.Value)) }, Protocol.Json));
             string key = Hash(request.Flags.GetValueOrDefault("idempotency-key") ?? request.RequestId);
             List<Entry> journal = [];

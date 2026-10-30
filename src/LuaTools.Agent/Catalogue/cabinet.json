@@ -10,8 +10,8 @@
     "capability_ids": [
       "C-010"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
@@ -139,7 +139,11 @@
     "preconditions": [
       "Authenticated same-user GUI owner"
     ],
-    "output_fields": []
+    "output_fields": [
+      "status",
+      "version",
+      "available_actions"
+    ]
   },
   {
     "resource": "cabinet",
@@ -152,11 +156,11 @@
     "capability_ids": [
       "C-009"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,

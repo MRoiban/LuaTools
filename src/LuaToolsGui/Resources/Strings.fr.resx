@@ -828,4 +828,5 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_Depot_ReconcileImpact" xml:space="preserve"><value>Cible : Lua actif et coffre. SyncDefaultFromLive peut supprimer définitivement l’ancien contenu par défaut ; adopte les builds isolés et peut en appliquer un si aucun Lua actif n’existe.</value></data>
   <data name="Agent_Depot_LiveEditImpact" xml:space="preserve"><value>Cible : Lua actif. Écrit immédiatement ; la synchronisation peut supprimer l’ancien contenu par défaut. Les modifications d’un build ou préréglage actif restent en attente.</value></data>
   <data name="Agent_Depot_StoredEditImpact" xml:space="preserve"><value>Cible : préréglage stocké inactif. UpdateVariant supprime définitivement l’ancien contenu et peut fusionner avec une entrée identique ; le Lua actif reste inchangé.</value></data>
+  <data name="Agent_Account_Unavailable" xml:space="preserve"><value>Cette opération de compte ou de Cabinet est indisponible dans l’état actuel.</value></data>
 </root>

@@ -6,7 +6,7 @@ public sealed record LibraryEntry(long AppId, string FilePath, DateTime AddedAt,
 /// <summary>GUI-owned library data operations, independent of WPF rendering and selection.</summary>
 public static class LibraryCoordinator
 {
-    public static IEnumerable<Cabinet.CabinetGame> CabinetGames(IEnumerable<Cabinet.CabinetGame> games) => games.OrderByDescending(g => g.IsPlaying).ThenByDescending(g => g.LastSynced).ThenBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase);
+    public static IEnumerable<Cabinet.CabinetGame> CabinetGames(IEnumerable<Cabinet.CabinetGame> games) => CabinetProjection.OrderGames(games);
     public static (string[] Types, string[] Genres, string[] Years) FilterOptions(IEnumerable<AppFilterData?> values)
     {
         var types = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);

@@ -129,6 +129,18 @@ public sealed partial class AgentCliTests : IDisposable
         Assert.Equal("PARTIAL_FAILURE", partial.Error!.Code); Assert.Equal("Bulk", Assert.Single(vault.GetVariants(570)).Label);
     }
     [Fact]
+    public async Task SecretInputNeverEntersJournalOutputOrActivityLog()
+    {
+        const string secret = "six-character-code-and-pairing-secret-test";
+        var facade = Facade();
+        var request = Request(facade, "account logout") with { Secret = secret };
+        var receipt = await facade.ExecuteAsync(request, default);
+        Assert.True(receipt.Ok);
+        Assert.DoesNotContain(secret, JsonSerializer.Serialize(receipt, Protocol.Json));
+        Assert.DoesNotContain(secret, File.ReadAllText(Path.Combine(_directory, "journal.json")));
+        Assert.DoesNotContain(secret, AppEventLog.Shared.ReadAgentEvents(new()).ToJsonString());
+    }
+    [Fact]
     public async Task FacadeReadsOnlyAllowlistedSettingsAndRefusesSecretNames()
     {
         const string secret = "smm_secret-never-serialize";
@@ -353,7 +365,7 @@ public sealed partial class AgentCliTests : IDisposable
                         string cursor = facade.Events.CurrentCursor;
                         facade.Events.Publish("download", "test", new { id = decision.Id });
                         Assert.Equal("test", (await Call("download watch", flags: new() { ["cursor"] = cursor })).Data!["event"]!["kind"]!.ToString());
-                        Assert.Equal("CURSOR_EXPIRED", (await Call("download watch", flags: new() { ["cursor"] = "expired" })).Error!.Code);
+                        Assert.Equal("RESET_REQUIRED", (await Call("download watch", flags: new() { ["cursor"] = "expired" })).Error!.Code);
                         Assert.True((await Call("job get", [decision.Id])).Ok);
                         var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         var holding = coordinator.ExecuteAsync(Request(facade, "setting update", ["FastFetch"], new() { ["value"] = "false", ["dry-run"] = null }), async ct =>

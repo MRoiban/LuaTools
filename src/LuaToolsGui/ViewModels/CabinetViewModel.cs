@@ -96,7 +96,7 @@ public sealed partial class CabinetViewModel : ObservableObject, IDisposable
         if (cloudChanged) RefreshCloudSaves();
         var previous = Games.ToDictionary(g => g.Game.AppId, g => g.Cover);
         Games.Clear();
-        foreach (var game in LibraryCoordinator.CabinetGames(status.Games))
+        foreach (var game in CabinetProjection.OrderGames(status.Games))
         {
             var row = new CabinetGameViewModel(game);
             if (previous.TryGetValue(game.AppId, out var cover)) row.Cover = cover;
@@ -120,7 +120,7 @@ public sealed partial class CabinetViewModel : ObservableObject, IDisposable
     private async Task SyncNowAsync()
     {
         ManualSync = true; Error = null;
-        try { await _service.SyncNowAsync(); }
+        try { await AccountCabinetOperations.SyncAsync(_service); }
         catch (Exception) { Error = Strings.Cabinet_SyncFailed; }
         finally { ManualSync = false; }
     }
@@ -147,16 +147,7 @@ public sealed partial class CabinetGameViewModel(CabinetGame game) : ObservableO
     public bool HasPendingBadge => Game.PendingPlaytimeMinutes > 0;
     public string PendingBadge => string.Format(Strings.Cabinet_Pending, Game.PendingPlaytimeMinutes);
     public bool HasSchemaBadge => !Game.HasAchievementList;
-    internal static string FormatLastSync(DateTimeOffset? last, DateTimeOffset now)
-    {
-        if (last is null) return Strings.Cabinet_Never;
-        var elapsed = now - last.Value;
-        if (elapsed.TotalMinutes < 1) return Strings.Cabinet_JustNow;
-        if (elapsed.TotalHours < 1) return string.Format(Strings.Cabinet_MinutesAgo, (int)elapsed.TotalMinutes);
-        var local = last.Value.LocalDateTime;
-        if (local.Date == now.LocalDateTime.Date.AddDays(-1)) return string.Format(Strings.Cabinet_Yesterday, local.ToString("HH:mm", CultureInfo.CurrentCulture));
-        return local.ToString("d MMM HH:mm", CultureInfo.CurrentCulture);
-    }
+    internal static string FormatLastSync(DateTimeOffset? last, DateTimeOffset now) => CabinetProjection.FormatLastSync(last, now);
     [RelayCommand]
     private void OpenGame()
     {
