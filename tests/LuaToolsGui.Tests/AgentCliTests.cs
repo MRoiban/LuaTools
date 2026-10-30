@@ -33,6 +33,18 @@ public sealed class AgentCliTests : IDisposable
     }
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
     [Fact]
+    public async Task SecretInputNeverEntersJournalOutputOrActivityLog()
+    {
+        const string secret = "six-character-code-and-pairing-secret-test";
+        var facade = Facade();
+        var request = Request(facade, "account logout") with { Secret = secret };
+        var receipt = await facade.ExecuteAsync(request, default);
+        Assert.True(receipt.Ok);
+        Assert.DoesNotContain(secret, JsonSerializer.Serialize(receipt, Protocol.Json));
+        Assert.DoesNotContain(secret, File.ReadAllText(Path.Combine(_directory, "journal.json")));
+        Assert.DoesNotContain(secret, AppEventLog.Shared.ReadAgentEvents(new()).ToJsonString());
+    }
+    [Fact]
     public async Task FacadeReadsOnlyAllowlistedSettingsAndRefusesSecretNames()
     {
         const string secret = "smm_secret-never-serialize";

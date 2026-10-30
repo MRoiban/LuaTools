@@ -688,12 +688,12 @@
     "capability_ids": [
       "C-157"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": true,
     "dry_run": false,
-    "job_behavior": "none",
+    "job_behavior": "stream",
     "destructive": false,
     "reversible": null,
     "side_effects": [
@@ -822,8 +822,11 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Authenticated same-user GUI owner",
+      "512-event bounded buffer; GAP requires resnapshot; RESET_REQUIRED requires a fresh cursor; heartbeat every 15 seconds."
     ],
-    "output_fields": []
+    "output_fields": [
+      "event"
+    ]
   }
 ]

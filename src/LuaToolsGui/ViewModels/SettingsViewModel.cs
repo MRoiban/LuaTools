@@ -113,7 +113,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_cloud is null || !CabinetEnabled || CloudBusy) return;
         CloudBusy = true; CloudError = null; bool connected = false;
-        try { await _cloud.ConnectAsync(CloudPairingCode.Trim(), CloudServer); CloudPairingCode = ""; connected = true; }
+        try { await AccountCabinetOperations.ConnectAsync(_cabinet, _cloud, CloudPairingCode, CloudServer); CloudPairingCode = ""; connected = true; }
         catch (CabinetConnectException ex) { CloudError = ex.Message; }
         catch (FormatException) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; }
         catch { CloudError = Resources.Strings.CabinetCloud_ConnectError; }
@@ -443,7 +443,7 @@ public partial class SettingsViewModel : ObservableObject
         CodeError = null;
         try
         {
-            await _auth.SignInWithCodeAsync(code);
+            await AccountCabinetOperations.RedeemCodeAsync(_auth, code);
             CodeInput = "";
         }
         catch (Exception ex)
@@ -571,7 +571,7 @@ public partial class SettingsViewModel : ObservableObject
         IsValidatingHubcapKey = true;
         try
         {
-            var stats = await _hubcap.GetStatsAsync(key);
+            var stats = await AccountCabinetOperations.ValidateHubcapAsync(_hubcap, key);
             if (stats is null)
             {
                 // Could be a bad/expired key (401), or a network problem. Both surface as null.

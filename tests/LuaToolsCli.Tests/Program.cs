@@ -176,7 +176,7 @@ await AsyncTest("event retention rejects expired cursor", async () =>
 {
     var hub = new AgentEventHub("test"); for (int i = 0; i < 1001; i++) hub.Publish("test", "state", new { value = i });
     await using var stream = hub.Watch("test:1", default).GetAsyncEnumerator();
-    Assert(await stream.MoveNextAsync() && stream.Current.Error?.Code == "CURSOR_EXPIRED", "retention");
+    Assert(await stream.MoveNextAsync() && stream.Current.Error?.Code == "RESET_REQUIRED", "retention");
 });
 Test("bulk selection bounds and JSON schema", () =>
 {
@@ -186,4 +186,53 @@ Test("bulk selection bounds and JSON schema", () =>
     bool rejected = false; try { BulkSelection.Data(request with { Flags = new() { ["data"] = "{\"secret\":true}" } }, "value"); } catch (JsonException) { rejected = true; }
     Assert(rejected, "unknown data field");
 });
+
+await AsyncTest("slow event consumer gets GAP without blocking publisher", async () =>
+{
+    using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    var hub = new AgentEventHub("overflow");
+    await using var events = hub.Watch(null, ct.Token).GetAsyncEnumerator();
+    var first = events.MoveNextAsync().AsTask();
+    hub.Publish("download", "state", new { id = "one" });
+    Assert(await first, "subscribed");
+    var watch = Stopwatch.StartNew();
+    for (int i = 0; i < 513; i++) hub.Publish("download", "state", new { id = i });
+    Assert(watch.Elapsed < TimeSpan.FromSeconds(1), "publisher blocked");
+    Assert(await events.MoveNextAsync() && events.Current.Data?["event"]?["kind"]?.ToString() == "GAP", "gap");
+});
+await AsyncTest("session read-only is inherited and cannot be cleared", async () =>
+{
+    int mutations = 0;
+    using var input = new StringReader("{\"type\":\"command\",\"id\":\"a\",\"args\":[\"setting\",\"update\",\"FastFetch\",\"--value\",\"true\"]}\n{\"type\":\"command\",\"id\":\"b\",\"args\":[\"setting\",\"update\",\"FastFetch\",\"--value\",\"true\",\"--read-only=false\"]}\n");
+    using var output = new StringWriter();
+    await StdioSession.RunAsync(CommandParser.Parse(["session", "--stdio", "--read-only"]), input, output, (p,c) => { mutations++; return Task.FromResult(Envelope.Success(null)); }, default);
+    Assert(mutations == 0 && output.ToString().Contains("READ_ONLY") && output.ToString().Contains("INVALID_USAGE"), "session authority");
+});
+await AsyncTest("dedicated session secret is one use and never echoed", async () =>
+{
+    const string secret = "smm_fake_secret_not_an_account";
+    using var input = new StringReader(JsonSerializer.Serialize(new { type = "secret", id = "s", value = secret }) + "\n" + JsonSerializer.Serialize(new { type = "command", id = "s", args = new[] { "hubcap-key", "update", "--yes" } }) + "\n" + JsonSerializer.Serialize(new { type = "command", id = "bad", args = new[] { "hubcap-key", "update", "--secret-stdin" } }) + "\n");
+    using var output = new StringWriter(); int calls = 0;
+    await StdioSession.RunAsync(CommandParser.Parse(["session", "--stdio"]), input, output, (p,c) => { Assert(p.Secret == secret && !p.Flags.Values.Contains(secret), "secret channel"); calls++; return Task.FromResult(Envelope.Success(new { accepted = true })); }, default);
+    Assert(calls == 1 && !output.ToString().Contains(secret) && output.ToString().Contains("INVALID_USAGE"), "no echo or stdin");
+});
+await AsyncTest("real pipe secret is absent from request and reply", async () =>
+{
+    using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    const string secret = "smm_fake_pipe_secret";
+    string name = "lt-s-" + Guid.NewGuid().ToString("N");
+    await using var server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+    var host = Task.Run(async () =>
+    {
+        await server.WaitForConnectionAsync(ct.Token);
+        var request = await Protocol.ReadAsync<AgentRequest>(server, Protocol.MaxRequest, ct.Token);
+        Assert(request.Secret is null && !JsonSerializer.Serialize(request, Protocol.Json).Contains(secret), "request is secret-free");
+        Assert((await Protocol.ReadAsync<SecretFrame>(server, 8192, ct.Token)).Value == secret, "dedicated frame");
+        await Protocol.WriteAsync(server, Envelope.Success(new { accepted = true }), Protocol.MaxFrame, ct.Token);
+    });
+    var result = await AgentClient.ExchangeAsync(name, Request() with { Secret = secret }, ct.Token);
+    await host;
+    Assert(result.Ok && !JsonSerializer.Serialize(result, Protocol.Json).Contains(secret), "receipt redacted");
+});
+
 Console.WriteLine($"CLI TEST PASS: {passed}"); return 0;

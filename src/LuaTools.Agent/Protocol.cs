@@ -73,5 +73,9 @@ internal sealed class EnvelopeConverter : JsonConverter<Envelope>
     }
 }
 public sealed record AgentRequest(int Protocol, string Capability, string InstanceId, string RequestId, string Command,
-    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown");
+    string[] Arguments, Dictionary<string, string?> Flags, string? ExpectedSteam = null, string ClientVersion = "unknown")
+{
+    [JsonIgnore] public string? Secret { get; init; }
+}
+public sealed record SecretFrame(string Value);
 public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability, bool Elevated = false, string? SteamIdentity = null);

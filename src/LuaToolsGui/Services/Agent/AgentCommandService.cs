@@ -12,7 +12,7 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, HubcapService? hubcap = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
@@ -54,6 +54,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (!parsed.Command.ReadOnly && request.ExpectedSteam is null) return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
         if (parsed.Command.Status != "enabled" || request.Flags.ContainsKey("fix")) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
         if (request.Flags.ContainsKey("dry-run") && !parsed.Command.DryRun) return Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, Resources.Strings.Agent_MutationRejected);
+        if (request.Command is "activity-log watch" or "download watch") return Envelope.Success(new { watching = true });
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);
         Envelope result = handler is null ? Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented)
             : await handler(request, ct);

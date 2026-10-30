@@ -4,6 +4,7 @@ namespace LuaTools.Agent;
 
 public sealed record Parsed(Command? Command, string[] Arguments, Dictionary<string, string?> Flags, Problem[] Problems)
 {
+    [System.Text.Json.Serialization.JsonIgnore] public string? Secret { get; init; }
     public bool Has(string flag) => Flags.ContainsKey(flag);
     public string? Value(string flag) => Flags.GetValueOrDefault(flag);
     public TimeSpan Timeout => CommandParser.Duration(Value("timeout") ?? (Command?.Key == "job wait" ? "5m" : "30s")) ?? TimeSpan.FromSeconds(30);
@@ -51,6 +52,7 @@ public static class CommandParser
         {
             if (command.Key == "help" && identities.Length > 0 && !Catalogue.Commands.Any(c => c.Resource == identities[0])) problems.Add(new("resource", "Unknown resource. Closest matches: " + string.Join(", ", Catalogue.Suggest(identities[0]))));
             if (!flags.ContainsKey("help") && !(!command.ReadOnly && (flags.ContainsKey("ids") || flags.ContainsKey("ids-from") || flags.ContainsKey("where") || flags.ContainsKey("data"))) && identities.Length < command.Identities.Length) problems.Add(new("identity", "Required: " + string.Join(", ", command.Identities)));
+            if (command.Key == "account login" && flags.ContainsKey("browser") == flags.ContainsKey("code-stdin")) problems.Add(new("login", "Select exactly one of --browser and --code-stdin."));
             int max = command.Key == "help" ? 2 : command.Key == "setting update" ? 1 : command.Identities.Length;
             if (identities.Length > max && !(command.Syntax.Contains(">...", StringComparison.Ordinal) && command.Identities.Length > 0)) problems.Add(new("identity", "Too many arguments."));
             if (command.IdentityValues.Length > 0 && identities.Length > 0 && !command.IdentityValues.Contains(identities[0])) problems.Add(new("identity", "Invalid value.", command.IdentityValues));

@@ -792,4 +792,5 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>Cette tâche est introuvable ou sa durée de conservation a expiré.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Relancer l’acquisition et l’installation ; le quota peut être consommé de nouveau.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet peut publier la progression et la présence, comptabiliser du temps de jeu, télécharger des schémas ou lier du contenu Workshop lorsqu’il est activé.</value></data>
+  <data name="Agent_Account_Unavailable" xml:space="preserve"><value>Cette opération de compte ou de Cabinet est indisponible dans l’état actuel.</value></data>
 </root>

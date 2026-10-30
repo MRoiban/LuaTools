@@ -8,7 +8,7 @@ namespace LuaToolsCli;
 
 public sealed class AgentClient
 {
-    public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct)
+    public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct, Action<Envelope>? onEvent = null)
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
         if (parsed.Command?.Key == "application exit" && parsed.Has("drain") && !parsed.Has("dry-run"))
@@ -49,9 +49,19 @@ public sealed class AgentClient
                         if (expectedSteam is null) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The owner did not advertise mutation context.");
                         continue;
                     }
-                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown");
+                    var request = new AgentRequest(Protocol.Version, Convert.ToBase64String(capability), expectedInstance ?? record.InstanceId, Guid.NewGuid().ToString("N"), parsed.Command!.Key, parsed.Arguments, parsed.Flags, expectedSteam, typeof(AgentClient).Assembly.GetName().Version?.ToString() ?? "unknown") { Secret = parsed.Secret };
                     await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct).ConfigureAwait(false);
+                    if (request.Secret is { } secret) await Protocol.WriteAsync(pipe, new SecretFrame(secret), 8192, ct).ConfigureAwait(false);
                     var reply = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
+                    if (reply.Ok && parsed.Command.Key is "activity-log watch" or "download watch")
+                    {
+                        while (true)
+                        {
+                            reply = await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct).ConfigureAwait(false);
+                            if (!reply.Ok || reply.Data?["event"]?["kind"]?.ToString() == "GAP") return reply;
+                            onEvent?.Invoke(reply);
+                        }
+                    }
                     if (parsed.Command.Key == "job wait" && reply.Ok && reply.Data?["state"]?.ToString() is { } state)
                     {
                         if (state == "awaiting_confirmation") return Envelope.Fail("CONSENT_REQUIRED", 8, "The job needs a decision.");
@@ -109,6 +119,7 @@ public sealed class AgentClient
         await using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         await pipe.ConnectAsync(250, ct);
         await Protocol.WriteAsync(pipe, request, Protocol.MaxRequest, ct);
+        if (request.Secret is { } secret) await Protocol.WriteAsync(pipe, new SecretFrame(secret), 8192, ct);
         return await Protocol.ReadAsync<Envelope>(pipe, Protocol.MaxFrame, ct);
     }
 }
