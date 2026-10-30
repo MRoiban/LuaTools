@@ -146,14 +146,8 @@
       "current",
       "desired",
       "is_modded",
-      "available_actions",
-      "name",
-      "kind",
-      "build_id",
-      "captured_at",
-      "depot_count",
-      "dlc_count",
-      "active"
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -346,14 +340,8 @@
       "current",
       "desired",
       "is_modded",
-      "available_actions",
-      "name",
-      "kind",
-      "build_id",
-      "captured_at",
-      "depot_count",
-      "dlc_count",
-      "active"
+      "version",
+      "available_actions"
     ]
   },
   {
@@ -567,8 +555,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option create 570 --file C:\\Lua\\570.lua",
-      "luatools launch-option create 570 --file C:\\Lua\\570.lua --format text"
+      "luatools launch-option create 570 --file C:\\Lua\\570.lua --dry-run",
+      "luatools launch-option create 570 --file C:\\Lua\\570.lua --yes"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -608,7 +596,7 @@
     "variants": [
       "luatools launch-option update <appid> [--entry <index>] --file <path> [--apply <bool>]"
     ],
-    "purpose": "Reorder or update entry fields.",
+    "purpose": "Update or reorder staged launch entries from JSON, optionally applying them to Steam.",
     "capability_ids": [
       "C-086",
       "C-087"
@@ -622,7 +610,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Reorder buffered entries; Save compacts keys 0,1,2\u2026 so Steam uses list order; Required nonblank on Save; free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Used as play-menu label and list title, otherwise executable fallback. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options windows / macos / linux / blank; arbitrary free text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options default / none / option1 / option2 / vr; arbitrary text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable free branch name; suggestions blank, beta, default, development, test, legacy, steam_legacy, experimental. Blank means every branch; tooltip explains. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text App ID; no numeric validation here. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences",
+      "Reorder buffered entries; Save compacts keys 0,1,2… so Steam uses list order; Required nonblank on Save; free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Used as play-menu label and list title, otherwise executable fallback. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options windows / macos / linux / blank; arbitrary free text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options default / none / option1 / option2 / vr; arbitrary text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable free branch name; suggestions blank, beta, default, development, test, legacy, steam_legacy, experimental. Blank means every branch; tooltip explains. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text App ID; no numeric validation here. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences",
       "Persist desired list in launchmods.json (first original preserved, .bak, temp swap). OK applies to appinfo: stop selected Steam if running, best-effort 1 backup beside cache if room, temp-write/swap, restart only if previously running. Cancel at apply prompt keeps staged edit and shows Saved toast; dialog closes either way. Apply success/failure toast",
       "Plans disclose affected live/stored target; explicit consent applies to overwrite, executable enablement and process restart."
     ],
@@ -831,8 +819,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option update 570 --file C:\\Lua\\570.lua",
-      "luatools launch-option update 570 --format text --file C:\\Lua\\570.lua"
+      "luatools launch-option update 570 --file C:\\Lua\\570.lua --dry-run",
+      "luatools launch-option update 570 --file C:\\Lua\\570.lua --yes"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -1076,8 +1064,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option delete 570 --entry 0",
-      "luatools launch-option delete 570 --entry 0 --format text"
+      "luatools launch-option delete 570 --entry 0 --dry-run",
+      "luatools launch-option delete 570 --entry 0 --yes"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -1313,8 +1301,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option revert 570",
-      "luatools launch-option revert 570 --json"
+      "luatools launch-option revert 570 --dry-run --restart-steam",
+      "luatools launch-option revert 570 --yes --restart-steam"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -1555,8 +1543,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools launch-option apply --drifted",
-      "luatools launch-option apply --drifted --json"
+      "luatools launch-option apply --drifted --dry-run --restart-steam",
+      "luatools launch-option apply --drifted --yes --restart-steam"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -1578,7 +1566,8 @@
     ],
     "preconditions": [
       "Only offered after drift found; stale IDs removed from store skipped; Explicit OK; stored edits and drifted IDs; valid appinfo path",
-      "Explicit confirmation, selected Steam control; no login/key/opt-in gate; Steam must be closed for writing; service closes/restarts it after confirmation"
+      "Explicit confirmation, selected Steam control; no login/key/opt-in gate; Steam must be closed for writing; service closes/restarts it after confirmation",
+      "Scope --drifted with --ids 730 or --where appid=730 to apply only the selected game; selectors intersect the drifted set."
     ],
     "output_fields": [
       "plan",

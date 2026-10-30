@@ -6,7 +6,7 @@
     "variants": [
       "luatools mode get [--refresh]"
     ],
-    "purpose": "Read selected and available mode status.",
+    "purpose": "Read selected and detected unlocker modes and CloudRedirect availability.",
     "capability_ids": [
       "C-098",
       "C-099"
@@ -151,17 +151,9 @@
       "selected_mode",
       "detected_mode",
       "modes",
-      "selected",
-      "status",
-      "latest_version",
-      "available_actions",
-      "id",
+      "cloudredirect",
       "version",
-      "plan",
-      "results",
-      "state",
-      "job_id",
-      "cloudredirect"
+      "available_actions"
     ]
   },
   {
@@ -343,19 +335,13 @@
       "Authenticated same-user GUI owner"
     ],
     "output_fields": [
-      "selected_mode",
-      "detected_mode",
-      "modes",
+      "id",
       "selected",
       "status",
       "latest_version",
       "available_actions",
-      "id",
-      "version",
-      "plan",
-      "results",
-      "state",
-      "job_id"
+      "detected_mode",
+      "version"
     ]
   },
   {
@@ -566,8 +552,8 @@
       "custom"
     ],
     "examples": [
-      "luatools mode update ost --yes",
-      "luatools mode update ost --format text --yes"
+      "luatools mode update ost --dry-run --restart-steam",
+      "luatools mode update ost --yes --restart-steam"
     ],
     "see_also": [
       "luatools describe mode",
@@ -597,14 +583,7 @@
       "version",
       "id",
       "state",
-      "job_id",
-      "selected_mode",
-      "detected_mode",
-      "modes",
-      "selected",
-      "status",
-      "latest_version",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

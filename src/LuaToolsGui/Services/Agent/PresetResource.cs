@@ -14,7 +14,7 @@ public sealed partial class AgentCommandService
     private string? PresetActive(long id) => ViewModels.BuildsViewModel.ResolveActiveHash(vault!.GetActiveHash(id), vault.GetVariants(id), vault.GetEditBase(id));
     private object PresetRow(long id, LuaVariant v) => new
     {
-        id = v.Hash, appid = id, name = v.DisplayLabel, kind = v.Kind, build_id = v.BuildId,
+        id = v.Hash, hash = v.Hash, appid = id, name = v.DisplayLabel, kind = v.Kind, build_id = v.BuildId,
         captured_at = v.CapturedAt, depot_count = v.DepotCount, dlc_count = v.DlcCount,
         active = v.Hash == PresetActive(id),
         version = VaultVersion(id), available_actions = AvailableActions.For("preset", c =>

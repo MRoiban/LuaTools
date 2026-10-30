@@ -6,7 +6,7 @@
     "variants": [
       "luatools depot list [--games | --appid <appid>] [--section <name>]"
     ],
-    "purpose": "Read depot sections for an explicit game without reconciling its vault.",
+    "purpose": "List depot sections for a game, or added games with --games, without reconciling the vault.",
     "capability_ids": [
       "C-021",
       "C-024"
@@ -225,7 +225,7 @@
   {
     "resource": "depot",
     "verb": "plan",
-    "syntax": "luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]",
+    "syntax": "luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>] [--language <name>] [--os <platform>]",
     "variants": [
       "luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]"
     ],
@@ -355,6 +355,24 @@
         "default": null,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "os",
+        "type": "string",
+        "default": null,
+        "allowed_values": [
+          "windows",
+          "linux",
+          "macos"
+        ],
+        "required": false
       }
     ],
     "identities": [
@@ -383,7 +401,8 @@
       9
     ],
     "preconditions": [
-      "Authenticated same-user GUI owner"
+      "Authenticated same-user GUI owner",
+      "Run depot plan with the same selection first. Defaults use the GUI Windows, English plus Steam-language selection and no-language-match fallback; neutral content is included."
     ],
     "output_fields": [
       "plan"
@@ -396,7 +415,7 @@
     "variants": [
       "luatools depot get <depotid> --appid <appid>"
     ],
-    "purpose": "Get SteamDB URL for depot or DLC diff row.",
+    "purpose": "Read a depot row including platform, language, manifest pins and availability.",
     "capability_ids": [
       "C-030"
     ],
@@ -739,7 +758,7 @@
     "variants": [
       "luatools depot reconcile <appid>"
     ],
-    "purpose": "Select game and reconcile vault with live or loose-build files.",
+    "purpose": "Reconcile live and loose-build Lua files into saved presets, optionally refreshing metadata.",
     "capability_ids": [
       "C-022",
       "C-023"
@@ -753,7 +772,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Navigate Depots, clear conflicting search and jump to correct game page; game-selection side effects in R31; Select game; cancels editor/rename and clears depot search. Sync can overwrite/delete old Default, adopt loose Lua and auto-apply newest build if no live Lua. Read game title/ID/latest Steam build, presets newest-captured first, Default / Build {0} / Saved \u00b7 {date}, custom names, depot/DLC counts, Pinned / Auto-updating, source, ACTIVE, unsaved",
+      "Navigate Depots, clear conflicting search and jump to correct game page; game-selection side effects in R31; Select game; cancels editor/rename and clears depot search. Sync can overwrite/delete old Default, adopt loose Lua and auto-apply newest build if no live Lua. Read game title/ID/latest Steam build, presets newest-captured first, Default / Build {0} / Saved · {date}, custom names, depot/DLC counts, Pinned / Auto-updating, source, ACTIVE, unsaved",
       "Invalidate active game depot memory cache, rescan, recompute badges and reselect existing game; repeats selection sync/adoption effects. Keeps text search"
     ],
     "flags": [
@@ -944,8 +963,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools depot reconcile 570",
-      "luatools depot reconcile 570 --json"
+      "luatools depot reconcile 570 --dry-run",
+      "luatools depot reconcile 570 --yes"
     ],
     "see_also": [
       "luatools describe depot",
@@ -987,7 +1006,7 @@
     "variants": [
       "luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]"
     ],
-    "purpose": "Lock or unlock existing manifest pins.",
+    "purpose": "Enable or disable declared depots and lock or unlock existing manifest pins.",
     "capability_ids": [
       "C-026",
       "C-027"
@@ -1219,8 +1238,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools depot update 571 --appid 570",
-      "luatools depot update 571 --appid 570 --format text"
+      "luatools depot update 571 --appid 570 --dry-run",
+      "luatools depot update 571 --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe depot",
@@ -1273,7 +1292,7 @@
   {
     "resource": "depot",
     "verb": "download",
-    "syntax": "luatools depot download <appid> --depot <id>... --output <path>",
+    "syntax": "luatools depot download <appid> --depot <id>... --output <path> [--language <name>] [--os <platform>]",
     "variants": [
       "luatools depot download <appid> --depot <id>... --output <path>"
     ],
@@ -1488,6 +1507,24 @@
         "default": false,
         "allowed_values": [],
         "required": false
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "os",
+        "type": "string",
+        "default": null,
+        "allowed_values": [
+          "windows",
+          "linux",
+          "macos"
+        ],
+        "required": false
       }
     ],
     "identities": [
@@ -1495,8 +1532,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua",
-      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --format text"
+      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --dry-run",
+      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --yes"
     ],
     "see_also": [
       "luatools describe depot",
@@ -1518,7 +1555,8 @@
     ],
     "preconditions": [
       "Disabled if no selected row; selections filtered CanDownload. Rechecks space globally/per depot and key format/decryption",
-      "DepotDownloader executable opt-in and quarantine/receipt checks; selected Steam/key resolution and disk space; missing manifest via authenticated API or guest SteamML; no Steam-account password, Hubcap or Steam-closed gate."
+      "DepotDownloader executable opt-in and quarantine/receipt checks; selected Steam/key resolution and disk space; missing manifest via authenticated API or guest SteamML; no Steam-account password, Hubcap or Steam-closed gate.",
+      "Run depot plan with the same selection first. Defaults use the GUI Windows, English plus Steam-language selection and no-language-match fallback; neutral content is included."
     ],
     "output_fields": [
       "plan",

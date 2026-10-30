@@ -282,6 +282,10 @@ public sealed class AgentFinishTests
         Assert.False(picks.Single(p => p.DepotId == 572).IsSelected); Assert.False(picks.Single(p => p.DepotId == 574).CanDownload);
         picks = DepotDownloadPlanning.Build([Row(571,null),Row(573,"japanese")], f.Tool, 570,"french");
         Assert.True(picks[0].IsSelected); Assert.False(picks[1].IsSelected);
+        picks = DepotDownloadPlanning.Build([Row(571, "english"), Row(572, "german", "linux"), Row(573, null, "linux")], f.Tool, 570, "german", "linux");
+        Assert.False(picks[0].IsSelected); Assert.True(picks[1].IsSelected); Assert.True(picks[2].IsSelected);
+        picks = DepotDownloadPlanning.Build([Row(571, "english"), Row(572, "german"), Row(573, null)], f.Tool, 570, "english", "windows");
+        Assert.True(picks[0].IsSelected); Assert.False(picks[1].IsSelected); Assert.True(picks[2].IsSelected);
     }
 
     [Fact]

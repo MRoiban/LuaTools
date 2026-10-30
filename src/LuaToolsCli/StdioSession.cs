@@ -50,8 +50,8 @@ public static class StdioSession
                 else if (parsed.Has("read-only") && !parsed.Command!.ReadOnly) result = Envelope.Fail("READ_ONLY", 5, "This command changes state.");
                 else if (parsed.Command!.Status != "enabled" || parsed.Command.Key == "session") result = Envelope.Fail("NOT_IMPLEMENTED", 5, "This command is unavailable in a sequential session.");
                 else if (parsed.Has("dry-run") && !parsed.Command.DryRun) result = Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, "Planning is unavailable.");
-                else if (parsed.Command.Key == "commands") result = Envelope.Success(new { version = Protocol.Version, commands = Catalogue.Commands });
-                else if (parsed.Command.Key == "describe") result = Envelope.Success(new { commands = Catalogue.Commands.Where(c => c.Resource == parsed.Arguments[0]).ToArray() });
+                else if (parsed.Command.Key == "commands") result = Envelope.Success(CatalogueDocument.Create(Catalogue.Commands, parsed.Has("brief")));
+                else if (parsed.Command.Key == "describe") result = Envelope.Success(CatalogueDocument.Create(Catalogue.Commands.Where(c => c.Resource == parsed.Arguments[0])));
                 else if (parsed.Command.Key == "help") result = Envelope.Success(new { help = Rendering.Help(resource: parsed.Arguments.FirstOrDefault()) });
                 else if (parsed.Command.Key == "version") result = Envelope.Success(new { version = typeof(Program).Assembly.GetName().Version?.ToString(), protocol = Protocol.Version });
                 else

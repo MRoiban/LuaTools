@@ -8,7 +8,7 @@ public sealed record Command(string Resource, string Verb, string Syntax, string
     string JobBehavior, bool Destructive, bool? Reversible, string[] SideEffects, Flag[] Flags, string[] Identities,
     string[] IdentityValues, string[] Examples, string[] SeeAlso, int[] ExitCodes, string[] Preconditions, string[] OutputFields)
 {
-    public string DefaultSort => Resource switch { "activity-log" => "time descending, id ascending", "download" or "queue" => "GUI scheduling order", "setting" => "schema order", _ => "default" };
+    public string DefaultSort => Resource switch { "activity-log" => "time descending, id ascending", "history" => "completed_at descending, id ascending", "download" or "queue" => "GUI scheduling order", "setting" => "schema order", _ => "default" };
     public object InputSchema => new { identities = Identities, allowed_identity_values = IdentityValues, flags = Flags };
     public object OutputSchema => new { fields = OutputFields, envelope = "v1", paging = Verb == "list" ? "snapshot; expires after 5m; default 50; maximum 200" : null };
     public string[] SecretChannels => Flags.Where(f => f.Name is "secret-stdin" or "code-stdin").Select(f => "--" + f.Name).ToArray();

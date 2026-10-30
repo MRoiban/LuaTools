@@ -54,6 +54,89 @@ foreach (var c in Catalogue.Commands)
         foreach (string example in c.Examples) Assert(CommandParser.Parse(example.Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Example invalid: " + example);
     });
 }
+Test("catalogue byte budgets", () =>
+{
+    int Bytes(object value) => System.Text.Encoding.UTF8.GetByteCount(Rendering.Render(Envelope.Success(value, null, new Warning("RUNTIME_NOT_QUERIED", "Compiled schema; runtime_available:false.")), "json")) + Environment.NewLine.Length;
+    Assert(Bytes(CatalogueDocument.Create(Catalogue.Commands)) < 80000, "commands must stay under 80 KB");
+    Assert(Bytes(new { resource = "game", catalogue = CatalogueDocument.Create(Catalogue.Commands.Where(c => c.Resource == "game")), settings = (object?)null }) < 8000, "describe game must stay under 8 KB");
+});
+Test("compact catalogue retains descriptor information", () =>
+{
+    var document = Protocol.Node(CatalogueDocument.Create(Catalogue.Commands))!;
+    JsonNode? Expand(JsonNode? value)
+    {
+        if (value is JsonObject obj && obj["$ref"] is { } reference) return Expand(document["definitions"]![reference.ToString()]);
+        if (value is JsonObject map) return new JsonObject(map.Select(p => KeyValuePair.Create(p.Key, Expand(p.Value))));
+        if (value is JsonArray array) return new JsonArray(array.Select(Expand).ToArray());
+        return value?.DeepClone();
+    }
+    foreach (var entry in document["commands"]!.AsArray())
+    {
+        var merged = Expand(document["command_defaults"])!.AsObject();
+        foreach (var pair in Expand(entry)!.AsObject()) merged[pair.Key] = pair.Value?.DeepClone();
+        foreach (var name in document["property_names"]!.AsObject())
+            if (merged.Remove(name.Key, out var value)) merged[name.Value!.ToString()] = value;
+        var c = Catalogue.Find(merged["key"]!.ToString())!;
+        var original = Protocol.Node(c)!.AsObject();
+        foreach (string property in new[] { "purpose", "syntax", "capability_ids", "read_only", "dry_run", "destructive", "side_effects", "preconditions", "output_fields", "examples", "identities" })
+            Assert(JsonNode.DeepEquals(original[property], merged[property]), c.Key + " lost " + property);
+        var globalNames = merged["global_flags"]!.AsArray().Select(n => n!.ToString()).ToHashSet();
+        Assert(globalNames.SetEquals(c.Flags.Where(f => Rendering.GlobalFlags.Contains(f.Name)).Select(f => f.Name)), c.Key);
+    }
+});
+Test("destructive examples plan before consent", () =>
+{
+    foreach (var c in Catalogue.Commands.Where(c => c.Destructive))
+    {
+        Assert(c.Examples[0].Contains("--dry-run") && !c.Examples[0].Contains("--yes"), c.Key);
+        Assert(c.Examples[1].Contains("--yes") && !c.Examples[1].Contains("--dry-run"), c.Key);
+        if (c.Key is "mode update" or "plugin update" or "plugin delete" or "launch-option apply" or "launch-option revert")
+            Assert(c.Examples.Take(2).All(e => e.Contains("--restart-steam")), c.Key);
+    }
+});
+Test("identifiers have discoverable producers", () =>
+{
+    var producers = Catalogue.Commands.Where(c => c.ReadOnly && c.Verb is "list" or "get").SelectMany(c => c.OutputFields).ToHashSet();
+    foreach (var c in Catalogue.Commands)
+    foreach (string identity in c.Identities)
+    {
+        if (identity.Contains('|')) continue;
+        if (identity.StartsWith("appid")) { Assert(producers.Contains("appid"), c.Key); continue; }
+        string field = identity switch { "id-or-all-or-pending-added" => "id", "fixid" => "id", "jobid" => "id", "depotid" => "id", "entryid" => "id", "appid" => "appid", "hash" => "hash", _ => identity };
+        if (identity is "ost-or-bst-or-custom" or "tool" or "resource" or "shell" or "mode" or "kind" or "target" or "entry" or "index" or "installation" or "name") continue;
+        Assert(producers.Contains(field), c.Key + " requires undiscoverable " + identity);
+    }
+});
+Test("relative activity boundary parses", () =>
+{
+    foreach (string value in new[] { "3h", "30m", "2026-10-30T00:00:00Z" })
+        Assert(CommandParser.Parse(["activity-log", "list", "--since", value, "--severity", "warn"]).Problems.Length == 0, value);
+});
+await AsyncTest("file validation precedes transport", async () =>
+{
+    foreach (string[] arguments in new[] { new[] { "lua", "add", "--file", "missing-570.lua", "--dry-run", "--json" }, ["launch-option", "update", "730", "--file", "missing-opts.json", "--dry-run", "--json"] })
+    {
+        var old = Console.Out; var capture = new StringWriter(); Console.SetOut(capture);
+        int exit;
+        try { exit = await Cli.RunAsync(arguments, (_, _) => throw new Exception("transport must not run")); }
+        finally { Console.SetOut(old); }
+        Assert(exit == 2 && capture.ToString().Contains(arguments[Array.IndexOf(arguments, "--file") + 1]), capture.ToString());
+    }
+});
+await AsyncTest("valid local input preserves absent-owner exit", async () =>
+{
+    var directory = Directory.CreateTempSubdirectory("luatools-input-");
+    try
+    {
+        string file = Path.Combine(directory.FullName, "570.lua"); await File.WriteAllTextAsync(file, "addappid(570)\n");
+        var old = Console.Out; var capture = new StringWriter(); Console.SetOut(capture);
+        int exit;
+        try { exit = await Cli.RunAsync(["lua", "add", "--file", file, "--dry-run", "--no-start", "--json"], (parsed, ct) => new AgentClient().InvokeAsync(parsed, ct)); }
+        finally { Console.SetOut(old); }
+        Assert(exit == 9, capture.ToString());
+    }
+    finally { directory.Delete(true); }
+});
 Test("parser aggregates", () => Assert(CommandParser.Parse(["activity-log", "list", "--limit", "0", "--severity", "bad", "--quiet", "--verbose", "--since", "yesterday"]).Problems.Length == 4, "all problems"));
 Test("unknown suggestions", () => Assert(CommandParser.Parse(["statuz"]).Problems.Any(p => p.Message.Contains("status")), "suggestion"));
 Test("enum allowed values", () => Assert(CommandParser.Parse(["completion", "bad"]).Problems.Single().AllowedValues!.Contains("bash"), "values"));
@@ -143,6 +226,7 @@ await AsyncTest("entrypoint " + string.Join(' ', arguments), async () =>
     Assert(envelope["ok"]!.GetValue<bool>() == (expected == 0), output);
     if (arguments[0] == "commands")
     {
+        Assert(System.Text.Encoding.UTF8.GetByteCount(output) < 80000, "commands output exceeds 80 KB");
         var keys = envelope["data"]!["commands"]!.AsArray().Select(c => c!["key"]!.GetValue<string>()).ToHashSet();
         foreach (string line in File.ReadLines(Path.Combine(root, "docs/cli/capability-map.md")).Where(l => l.StartsWith("| C-", StringComparison.Ordinal)))
         foreach (Match m in Regex.Matches(line.Split(" | ")[^2], @"luatools ([a-z-]+)(?: ([a-z][a-z-]*))?"))

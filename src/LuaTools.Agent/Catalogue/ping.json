@@ -142,7 +142,10 @@
     "output_fields": [
       "protocol",
       "instance_id",
-      "ready"
+      "ready",
+      "steam_identity",
+      "minimized",
+      "elevated"
     ]
   }
 ]

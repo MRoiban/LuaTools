@@ -7,7 +7,7 @@ namespace LuaToolsGui.Services;
 /// <summary>Same local-only selection, language fallback and size policy as the GUI picker.</summary>
 public static class DepotDownloadPlanning
 {
-    public static List<DepotPickRow> Build(IReadOnlyList<DepotRow> rows, DepotDownloaderService tool, long appId, string? steamLanguage)
+    public static List<DepotPickRow> Build(IReadOnlyList<DepotRow> rows, DepotDownloaderService tool, long appId, string? steamLanguage, string os = "windows")
     {
         var keys = tool.ResolveKeys(appId);
         var picks = rows
@@ -71,15 +71,18 @@ public static class DepotDownloadPlanning
                     FromAppId = r.FromAppId,
                     BlockReason = blocked,
                 };
-                pick.IsSelected = pick.CanDownload && !pick.IsOtherPlatform && !pick.IsShared
+                pick.IsSelected = pick.CanDownload && WantedOs(pick.Os, os) && !pick.IsShared
                                   && WantedLanguage(pick.Language, steamLanguage);
                 return pick;
             })
             .ToList();
 
-        ApplyNoLanguageMatchFallback(picks);
+        ApplyNoLanguageMatchFallback(picks, os);
         return picks;
     }
+    public static bool WantedOs(string? depotOs, string os) =>
+        string.IsNullOrEmpty(depotOs) || depotOs.Contains(os, StringComparison.OrdinalIgnoreCase);
+
     private static bool WantedLanguage(string? depotLanguage, string? steamLanguage) =>
         depotLanguage is null
         || depotLanguage.Equals("english", StringComparison.OrdinalIgnoreCase)
@@ -100,7 +103,7 @@ public static class DepotDownloadPlanning
     /// Chinese-only release on a machine whose Steam language it doesn't offer. Taking everything there
     /// errs toward a working install; the user can untick.
     /// </remarks>
-    private static void ApplyNoLanguageMatchFallback(IReadOnlyList<DepotPickRow> picks)
+    private static void ApplyNoLanguageMatchFallback(IReadOnlyList<DepotPickRow> picks, string os)
     {
         // DLC is excluded from the test on purpose: it declares no language, so it is always selected,
         // and counting it here would mean a game that ships one DLC depot never gets the fallback.
@@ -110,7 +113,7 @@ public static class DepotDownloadPlanning
         if (languageDepots.Count == 0) return;      // nothing language-specific to fall back to
 
         foreach (var p in languageDepots)
-            p.IsSelected = p.CanDownload && !p.IsOtherPlatform && !p.IsShared;
+            p.IsSelected = p.CanDownload && WantedOs(p.Os, os) && !p.IsShared;
     }
 
 

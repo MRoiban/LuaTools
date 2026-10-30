@@ -209,8 +209,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools manifest add example-fix --appid 570 --yes",
-      "luatools manifest add example-fix --appid 570 --format text --yes"
+      "luatools manifest add example-fix --appid 570 --dry-run",
+      "luatools manifest add example-fix --appid 570 --yes"
     ],
     "see_also": [
       "luatools describe manifest",

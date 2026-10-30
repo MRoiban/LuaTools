@@ -200,8 +200,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools application start",
-      "luatools application start --format text"
+      "luatools application start --dry-run",
+      "luatools application start --yes"
     ],
     "see_also": [
       "luatools describe application",
@@ -438,8 +438,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools application restart --yes",
-      "luatools application restart --format text --yes"
+      "luatools application restart --dry-run",
+      "luatools application restart --yes"
     ],
     "see_also": [
       "luatools describe application",
@@ -673,8 +673,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools application exit --yes",
-      "luatools application exit --format text --yes"
+      "luatools application exit --dry-run",
+      "luatools application exit --yes"
     ],
     "see_also": [
       "luatools describe application",

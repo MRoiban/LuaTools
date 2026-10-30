@@ -7,10 +7,11 @@ namespace LuaToolsCli;
 
 public static class Rendering
 {
+    private static readonly JsonSerializerOptions DisplayJson = new(Protocol.Json) { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     public static bool UseColor(bool tty, Parsed parsed, string? noColor) => tty && !parsed.Has("no-color") && noColor is null && parsed.Format(tty) is "table" or "text";
     public static string Render(Envelope result, string format)
     {
-        if (format is "json" or "jsonl" || !result.Ok) return JsonSerializer.Serialize(result, Protocol.Json);
+        if (format is "json" or "jsonl" || !result.Ok) return JsonSerializer.Serialize(result, DisplayJson);
         var rows = result.Data is JsonArray array ? array.ToArray() : new[] { result.Data };
         if (format == "csv")
         {

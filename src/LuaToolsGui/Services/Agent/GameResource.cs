@@ -90,7 +90,7 @@ public sealed partial class AgentCommandService
         try { return BulkSelection.Select(request, rows, identity, fields); }
         catch (ArgumentException) { throw new MutationRejectedException("INVALID_SELECTION", 2); }
     }
-    private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, installed = e.FilePath.Length > 0,
+    private object GameData(LibraryEntry e) => new { id = e.AppId, appid = e.AppId, name = e.Name, added_at = e.AddedAt, added = e.FilePath.Length > 0, installed = libraryInstalls?.GetInstallDir(e.AppId) is { } install && Directory.Exists(install),
         paths = new { lua = e.FilePath, install = libraryInstalls?.GetInstallDir(e.AppId) }, urls = new { store = $"steam://store/{e.AppId}", library = $"steam://nav/games/details/{e.AppId}", steamdb = $"https://steamdb.info/app/{e.AppId}/" },
         details = libraryDetails!.GetFilterData(e.AppId), overview = libraryDetails.GetOverview(e.AppId), version = LibraryCoordinator.Version(e.FilePath), available_actions = AvailableActions.ForReasons("game", c => GameReasons(c, e)) };
     private string[] GameReasons(Command command, LibraryEntry entry)
@@ -105,7 +105,17 @@ public sealed partial class AgentCommandService
         }
         return reasons.ToArray();
     }
-    private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data) => _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
+    private Envelope GamePage(AgentRequest r, System.Text.Json.Nodes.JsonArray data)
+    {
+        foreach (var row in data.OfType<System.Text.Json.Nodes.JsonObject>())
+        {
+            if (!long.TryParse(row["appid"]?.ToString() ?? row["id"]?.ToString(), out long id)) continue;
+            row["appid"] ??= id;
+            row["added"] ??= steam.StPlugInDir is { } plug && File.Exists(Path.Combine(plug, id + ".lua"));
+            row["installed"] ??= libraryInstalls?.GetInstallDir(id) is { } install && Directory.Exists(install);
+        }
+        return _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
+    }
     private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
     {
         if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);

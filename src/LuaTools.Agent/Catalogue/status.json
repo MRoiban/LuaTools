@@ -154,7 +154,8 @@
       "steam.running",
       "queue.active",
       "queue.total",
-      "queue.failed"
+      "queue.failed",
+      "queue.operations"
     ]
   }
 ]

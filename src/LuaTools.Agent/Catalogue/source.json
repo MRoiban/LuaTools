@@ -7,7 +7,7 @@
       "luatools source list --appid <appid>",
       "luatools source list --legacy-index"
     ],
-    "purpose": "Check source availability, quota, supporter and key requirements.",
+    "purpose": "Check source availability, quota, supporter status and saved-key requirements.",
     "capability_ids": [
       "C-134",
       "C-135"

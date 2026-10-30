@@ -6,7 +6,7 @@
     "variants": [
       "luatools dlc get <appid> [--batch <id>]"
     ],
-    "purpose": "Read DLC depot coverage.",
+    "purpose": "Read DLC depot coverage or inspect an existing DLC batch.",
     "capability_ids": [
       "C-031",
       "C-034"
@@ -341,7 +341,7 @@
     "variants": [
       "luatools dlc add <appid> [--batch <id>]"
     ],
-    "purpose": "Generate and install DLC Lua.",
+    "purpose": "Generate and install DLC Lua for a game or apply a checked DLC batch.",
     "capability_ids": [
       "C-032",
       "C-035"
@@ -546,8 +546,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools dlc add 570 --yes",
-      "luatools dlc add 570 --format text --yes"
+      "luatools dlc add 570 --dry-run",
+      "luatools dlc add 570 --yes"
     ],
     "see_also": [
       "luatools describe dlc",
@@ -796,8 +796,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools dlc cancel 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe dlc",

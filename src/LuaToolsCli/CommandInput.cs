@@ -6,6 +6,15 @@ public static class CommandInput
 {
     public static async Task<Parsed> LoadAsync(Parsed parsed, CancellationToken ct)
     {
+        try { return await LoadCoreAsync(parsed, ct); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            string paths = string.Join(", ", new[] { "file", "diff-file", "ids-from" }.Select(parsed.Value).Append(parsed.Value("data") is { } data && data.StartsWith('@') ? data[1..] : null).Where(v => v is not null));
+            return parsed with { Problems = [new("input", "Cannot read or submit input: " + paths + ". Check that the file exists, is readable and within the documented size limits.")] };
+        }
+    }
+    private static async Task<Parsed> LoadCoreAsync(Parsed parsed, CancellationToken ct)
+    {
         var flags = new Dictionary<string, string?>(parsed.Flags);
         async Task<string> Read(string path)
         {

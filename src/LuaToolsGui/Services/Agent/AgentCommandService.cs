@@ -68,7 +68,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     {
         bool reverse = request.Flags.GetValueOrDefault("sort") == "reverse";
         if (reverse) rows = new JsonArray(rows.Reverse().Select(x => x?.DeepClone()).ToArray());
-        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort" or "appid" or "section" or "query" or "drifted" or "games").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
+        string key = request.Command + ":" + string.Join(';', request.Flags.Where(p => p.Key is "severity" or "since" or "category" or "sort" or "appid" or "section" or "query" or "drifted" or "games" or "status" or "kind").OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
         return _pager.List(key, rows, request.Flags);
     }    private bool? SelectedSteamRunning()
     {

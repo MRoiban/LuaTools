@@ -6,7 +6,7 @@
     "variants": [
       "luatools download list"
     ],
-    "purpose": "Read queue and progress, including retained legacy status.",
+    "purpose": "List queued downloads and progress, including retained legacy status.",
     "capability_ids": [
       "C-037",
       "C-156"
@@ -406,8 +406,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools download update 8e6cf92a8e524b72a7dab492c406eef0 --move up",
-      "luatools download update 8e6cf92a8e524b72a7dab492c406eef0 --move up --format text"
+      "luatools download update 8e6cf92a8e524b72a7dab492c406eef0 --move up --dry-run",
+      "luatools download update 8e6cf92a8e524b72a7dab492c406eef0 --move up --yes"
     ],
     "see_also": [
       "luatools describe download",
@@ -432,7 +432,12 @@
       "None"
     ],
     "output_fields": [
-      "results"
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
     ]
   },
   {
@@ -638,8 +643,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools download delete 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools download delete 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools download delete 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools download delete 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe download",
@@ -664,7 +669,12 @@
       "None"
     ],
     "output_fields": [
-      "results"
+      "plan",
+      "results",
+      "version",
+      "id",
+      "state",
+      "job_id"
     ]
   },
   {

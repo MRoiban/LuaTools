@@ -360,8 +360,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools hubcap-key update --secret-stdin",
-      "luatools hubcap-key update --secret-stdin --format text"
+      "luatools hubcap-key update --secret-stdin --dry-run",
+      "luatools hubcap-key update --secret-stdin --yes"
     ],
     "see_also": [
       "luatools describe hubcap-key",
@@ -595,8 +595,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools hubcap-key delete",
-      "luatools hubcap-key delete --format text"
+      "luatools hubcap-key delete --dry-run",
+      "luatools hubcap-key delete --yes"
     ],
     "see_also": [
       "luatools describe hubcap-key",

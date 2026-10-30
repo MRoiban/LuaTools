@@ -165,7 +165,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Forces fingerprint sync of achievements/stats, playtime tick and cloud scheduling; writes Steam and engine state; toast/balloon Already in sync or changes. ManualSync / Syncing\u2026 status; errors shown"
+      "Forces fingerprint sync of achievements/stats, playtime tick and cloud scheduling; writes Steam and engine state; toast/balloon Already in sync or changes. ManualSync / Syncing… status; errors shown"
     ],
     "flags": [
       {
@@ -346,8 +346,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools cabinet sync",
-      "luatools cabinet sync --format text"
+      "luatools cabinet sync --dry-run",
+      "luatools cabinet sync --yes"
     ],
     "see_also": [
       "luatools describe cabinet",

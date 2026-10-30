@@ -238,7 +238,8 @@
       "details",
       "available_actions",
       "findings",
-      "repairs"
+      "repairs",
+      "safe"
     ]
   }
 ]

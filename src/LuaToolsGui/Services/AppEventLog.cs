@@ -114,7 +114,8 @@ public sealed class AppEventLog
         int Rank(string? level) => level switch { "debug" => 0, "info" => 1, "warn" => 2, "error" => 3, "critical" => 4, _ => -1 };
         int minimum = Rank(flags.GetValueOrDefault("severity") ?? "debug");
         DateTimeOffset now = _clock();
-        var since = DateTimeOffset.TryParse(flags.GetValueOrDefault("since"), out var parsed) ? parsed : now.AddDays(-7);
+        var since = LuaTools.Agent.CommandParser.Duration(flags.GetValueOrDefault("since") ?? "") is { } duration ? now - duration
+            : DateTimeOffset.TryParse(flags.GetValueOrDefault("since"), out var parsed) ? parsed : now.AddDays(-7);
         if (!System.IO.Directory.Exists(_directory)) return [];
         // Important holds every warning/error for seven days. Full events supplies only lower levels
         // for 24h. This also handles legacy records without IDs without text-based deduplication.

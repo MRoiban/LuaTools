@@ -2,7 +2,7 @@
 LuaTools is a Windows desktop app that manages game Lua scripts, Steam unlocker modes, plugins and game fixes.
 Games have Steam App IDs; sources supply scripts, depots describe builds, presets save variants, and jobs track work in the download queue.
 
-Start with `luatools doctor --json`, then `luatools commands --json` and `luatools describe game --json`.
+Start with `luatools doctor --json`, then `luatools commands --brief --json` and `luatools describe game --json`.
 The client starts the installed app minimized when needed; use --no-start to prevent that.
 Commands use `luatools resource verb identity --flag value`; discover exact schemas with describe and examples with --help.
 JSON output is one envelope: ok, data, page, warnings and error; errors also go to stderr.
@@ -21,8 +21,9 @@ luatools game add 570 --source auto --yes --json
 Diagnose a failed download; doctor includes redacted failure text:
 ```sh
 luatools doctor --json
+luatools history list --kind download --status failed --limit 1 --json
 luatools download list --json
-luatools activity-log list --severity warn --limit 20 --json
+luatools activity-log list --since 3h --severity warn --limit 20 --json
 ```
 Repair a broken setup; inspect skipped repairs and follow their explicit commands:
 ```sh
@@ -67,9 +68,44 @@ Quota is spent before overwrite is known: inspect sources and plans before accep
 A timeout after acceptance does not cancel work; inspect the returned job ID before retrying.
 Use --idempotency-key for mutation retries; exit 6 means state or context changed and needs a fresh plan.
 
+## Added games and Steam installations
+A game is added when it has a live Lua. Steam installation is separate: game list/get report added and installed independently.
+`game list` lists added games, including uninstalled ones. `game search --installed --query harvest` searches this added library (the flag name is historical); search without --installed searches the remote catalogue.
+Activity severity is a minimum threshold: warn includes warning, error and critical. --since accepts UTC RFC3339 or positive relative durations up to 24h.
+History is newest first; `history list --status failed --limit 1` returns the last failure's `message`, not merely its state.
+
+## Multi-step recipes
+Find a game by name, then list provider-specific fixes. Take `appid` from the search result; Elden Ring is App ID 1245620:
+```sh
+luatools fix search --query Elden --json
+luatools fix list --appid 1245620 --json
+```
+Take `id` and `provider` from fix list for fix apply; never use the display title as an ID.
+Save the current Lua, then restore it later. Take `hash` from create or list; replace HASH below with that exact returned value. The preset must be inactive before apply:
+```sh
+luatools preset create --appid 730 --from-live --name before-patch --dry-run --json
+luatools preset create --appid 730 --from-live --name before-patch --yes --json
+luatools preset list --appid 730 --json
+luatools preset apply HASH --appid 730 --dry-run --json
+luatools preset apply HASH --appid 730 --yes --json
+```
+Plan first, inspect selected depots, then download with the same language/OS options. Neutral content and the GUI language fallback are included:
+```sh
+luatools depot plan 730 --language english --os windows --json
+luatools depot download 730 --language english --os windows --output D:\Depots --dry-run --json
+luatools depot download 730 --language english --os windows --output D:\Depots --yes --json
+```
+Repair drift only for game 730. --ids and --where intersect the drifted selection:
+```sh
+luatools launch-option list --drifted --json
+luatools launch-option apply --drifted --ids 730 --restart-steam --dry-run --json
+luatools launch-option apply --drifted --ids 730 --restart-steam --yes --json
+```
+Local --file, --diff-file, --data @path and --ids-from inputs are checked before contacting LuaTools. Missing/unreadable inputs exit 2; correct the named path and retry. With valid input, an absent app exits 9 if it cannot be started.
+
 ## Command reference (generated from catalogue)
 - account: luatools account get; luatools account login --browser; luatools account logout
-- activity-log: luatools activity-log list [--since <UTC>] [--severity <level>] [--category <name>]; luatools activity-log watch [--cursor <opaque>]
+- activity-log: luatools activity-log list [--since <UTC-or-duration>] [--severity <level>] [--category <name>]; luatools activity-log watch [--cursor <opaque>]
 - application: luatools application start; luatools application restart; luatools application exit
 - cabinet-cloud: luatools cabinet-cloud get; luatools cabinet-cloud connect --secret-stdin [--server <HTTPS-origin>]; luatools cabinet-cloud disconnect; luatools cabinet-cloud update --friend-labels true
 - cabinet: luatools cabinet get; luatools cabinet sync
@@ -77,7 +113,7 @@ Use --idempotency-key for mutation retries; exit 6 means state or context change
 - cloudredirect: luatools cloudredirect get [--refresh]; luatools cloudredirect update [--enabled <bool>] [--refresh]; luatools cloudredirect manage
 - commands: luatools commands --json
 - completion: luatools completion <bash|zsh|fish|powershell>
-- depot: luatools depot list [--games | --appid <appid>] [--section <name>]; luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]; luatools depot get <depotid> --appid <appid>; luatools depot search --appid <appid> --query <text>; luatools depot reconcile <appid>; luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]; luatools depot download <appid> --depot <id>... --output <path>
+- depot: luatools depot list [--games | --appid <appid>] [--section <name>]; luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>] [--language <name>] [--os <platform>]; luatools depot get <depotid> --appid <appid>; luatools depot search --appid <appid> --query <text>; luatools depot reconcile <appid>; luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]; luatools depot download <appid> --depot <id>... --output <path> [--language <name>] [--os <platform>]
 - describe: luatools describe <resource>
 - dlc: luatools dlc get <appid> [--batch <id>]; luatools dlc check <appid> [--owned <appid>...]; luatools dlc add <appid> [--batch <id>]; luatools dlc cancel <id>
 - doctor: luatools doctor [--fix]
@@ -86,7 +122,7 @@ Use --idempotency-key for mutation retries; exit 6 means state or context change
 - game: luatools game list [--featured | --pending-added | --cabinet] [--refresh]; luatools game get <appid-or-supported-Steam-link> [--installed] [--fields <field,...>]; luatools game search [--installed] --query <text>; luatools game add <appid> --source <source-or-auto>; luatools game delete <appid>...; luatools game remove-drm <appid>; luatools game install <appid>
 - guide: luatools guide
 - help: luatools help [resource]
-- history: luatools history list [--kind <download-or-pending-added>]; luatools history delete <id-or-all-or-pending-added>
+- history: luatools history list [--kind <download-or-pending-added>] [--status <state>]; luatools history delete <id-or-all-or-pending-added>
 - hubcap-key: luatools hubcap-key get [--refresh]; luatools hubcap-key update --secret-stdin; luatools hubcap-key delete
 - job: luatools job list [--active] [--idempotency-key <key>]; luatools job get <id>; luatools job wait <id>; luatools job confirm <id> --decision <replace-or-skip>; luatools job cancel <id> [--keep-files | --delete-created]; luatools job retry <id>; luatools job pause <id>; luatools job resume <id>
 - launch-option: luatools launch-option get <appid>; luatools launch-option list [--drifted]; luatools launch-option create <appid> --file <path>; luatools launch-option update <appid> [--entry <index>] --file <path> [--apply <bool>]; luatools launch-option delete <appid> --entry <index>; luatools launch-option revert <appid>; luatools launch-option apply --drifted

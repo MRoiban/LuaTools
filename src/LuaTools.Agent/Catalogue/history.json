@@ -2,11 +2,11 @@
   {
     "resource": "history",
     "verb": "list",
-    "syntax": "luatools history list [--kind <download-or-pending-added>]",
+    "syntax": "luatools history list [--kind <download-or-pending-added>] [--status <state>]",
     "variants": [
       "luatools history list [--kind <download-or-pending-added>]"
     ],
-    "purpose": "List persisted download history.",
+    "purpose": "List persisted download history newest first, filtering by status and kind, with redacted failure reasons.",
     "capability_ids": [
       "C-077"
     ],
@@ -156,6 +156,17 @@
           "reverse"
         ],
         "required": false
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "default": null,
+        "allowed_values": [
+          "failed",
+          "completed",
+          "cancelled"
+        ],
+        "required": false
       }
     ],
     "identities": [],
@@ -192,7 +203,9 @@
       "state",
       "bytes",
       "completed_at",
-      "available_actions"
+      "available_actions",
+      "kind",
+      "message"
     ]
   },
   {
@@ -400,8 +413,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools history delete all",
-      "luatools history delete all --format text"
+      "luatools history delete all --dry-run",
+      "luatools history delete all --yes"
     ],
     "see_also": [
       "luatools describe history",
@@ -428,14 +441,12 @@
       "B"
     ],
     "output_fields": [
+      "plan",
+      "results",
+      "version",
       "id",
-      "appid",
-      "title",
-      "subtitle",
       "state",
-      "bytes",
-      "completed_at",
-      "available_actions"
+      "job_id"
     ]
   }
 ]

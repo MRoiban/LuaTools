@@ -156,7 +156,7 @@
       "luatools account login --browser",
       "luatools account login --code-stdin"
     ],
-    "purpose": "Begin human Discord browser sign-in.",
+    "purpose": "Sign in through a human browser or a code supplied on standard input.",
     "capability_ids": [
       "C-002",
       "C-003"
@@ -170,7 +170,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Browser Discord OAuth PKCE; localhost callback listener; exchange/apply session and auth-state event; signed-in check, Waiting for browser\u2026 and error StatusLine; Opens browser Discord OAuth with PKCE; localhost callback; exchanges code; persists session. Nav shows Waiting for browser\u2026 and SignInError",
+      "Browser Discord OAuth PKCE; localhost callback listener; exchange/apply session and auth-state event; signed-in check, Waiting for browser… and error StatusLine; Opens browser Discord OAuth with PKCE; localhost callback; exchanges code; persists session. Nav shows Waiting for browser… and SignInError",
       "Sends code to API, verifies magic-link hash at Supabase, stores session; clears input on success; CodeError on failure"
     ],
     "flags": [
@@ -366,8 +366,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools account login --browser",
-      "luatools account login --browser --format text"
+      "luatools account login --browser --dry-run",
+      "luatools account login --browser --yes"
     ],
     "see_also": [
       "luatools describe account",
@@ -603,8 +603,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools account logout",
-      "luatools account logout --format text"
+      "luatools account logout --dry-run",
+      "luatools account logout --yes"
     ],
     "see_also": [
       "luatools describe account",

@@ -209,7 +209,7 @@
     "variants": [
       "luatools job get <id>"
     ],
-    "purpose": "Review pending action or reveal output path.",
+    "purpose": "Inspect job progress, failure details, pending decisions and output paths.",
     "capability_ids": [
       "C-044",
       "C-096"
@@ -544,7 +544,7 @@
     "variants": [
       "luatools job confirm <id> --decision <replace-or-skip>"
     ],
-    "purpose": "Accept pending overwrite in LuaTools.",
+    "purpose": "Accept or reject a pending download overwrite decision.",
     "capability_ids": [
       "C-094",
       "C-095"
@@ -752,8 +752,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools job confirm 8e6cf92a8e524b72a7dab492c406eef0 --decision replace --yes",
-      "luatools job confirm 8e6cf92a8e524b72a7dab492c406eef0 --decision replace --format text"
+      "luatools job confirm 8e6cf92a8e524b72a7dab492c406eef0 --decision replace --dry-run",
+      "luatools job confirm 8e6cf92a8e524b72a7dab492c406eef0 --decision replace --yes"
     ],
     "see_also": [
       "luatools describe job",
@@ -780,16 +780,11 @@
       "None"
     ],
     "output_fields": [
-      "id",
-      "state",
-      "version",
-      "available_actions",
-      "cancel_requested",
-      "kind",
-      "bytes",
-      "total_bytes",
       "plan",
       "results",
+      "version",
+      "id",
+      "state",
       "job_id"
     ]
   },
@@ -1010,8 +1005,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools job cancel 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools job cancel 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools job cancel 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools job cancel 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe job",
@@ -1036,16 +1031,11 @@
       "No auth gate; deletion cannot cancel writes already completed; see cancellation caveat; B"
     ],
     "output_fields": [
-      "id",
-      "state",
-      "version",
-      "available_actions",
-      "cancel_requested",
-      "kind",
-      "bytes",
-      "total_bytes",
       "plan",
       "results",
+      "version",
+      "id",
+      "state",
       "job_id"
     ]
   },
@@ -1252,8 +1242,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools job retry 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools job retry 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools job retry 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools job retry 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe job",
@@ -1278,16 +1268,11 @@
       "Original job gates reapply, including executable opt-ins if applicable; no history-row retry"
     ],
     "output_fields": [
-      "id",
-      "state",
-      "version",
-      "available_actions",
-      "cancel_requested",
-      "kind",
-      "bytes",
-      "total_bytes",
       "plan",
       "results",
+      "version",
+      "id",
+      "state",
       "job_id"
     ]
   },
@@ -1494,8 +1479,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools job pause 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools job pause 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools job pause 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools job pause 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe job",
@@ -1520,16 +1505,11 @@
       "Original depot executable workflow gates were checked at acquisition/run"
     ],
     "output_fields": [
-      "id",
-      "state",
-      "version",
-      "available_actions",
-      "cancel_requested",
-      "kind",
-      "bytes",
-      "total_bytes",
       "plan",
       "results",
+      "version",
+      "id",
+      "state",
       "job_id"
     ]
   },
@@ -1736,8 +1716,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools job resume 8e6cf92a8e524b72a7dab492c406eef0",
-      "luatools job resume 8e6cf92a8e524b72a7dab492c406eef0 --format text"
+      "luatools job resume 8e6cf92a8e524b72a7dab492c406eef0 --dry-run",
+      "luatools job resume 8e6cf92a8e524b72a7dab492c406eef0 --yes"
     ],
     "see_also": [
       "luatools describe job",
@@ -1762,16 +1742,11 @@
       "Original job/depot tool gates apply; in-memory job only"
     ],
     "output_fields": [
-      "id",
-      "state",
-      "version",
-      "available_actions",
-      "cancel_requested",
-      "kind",
-      "bytes",
-      "total_bytes",
       "plan",
       "results",
+      "version",
+      "id",
+      "state",
       "job_id"
     ]
   }

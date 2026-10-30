@@ -38,7 +38,7 @@ public static class Protocol
 }
 
 public sealed record Problem(string Field, string Message, string[]? AllowedValues = null);
-public sealed record AgentError(string Code, int ExitCode, string Message, string Hint = "luatools help", bool Retryable = false,
+public sealed record AgentError(string Code, int ExitCode, string Message, string Hint = "Inspect the error code and details, then run luatools doctor --json for recovery actions.", bool Retryable = false,
     Problem[]? Problems = null, string? RequestId = null, JsonNode? Details = null);
 public sealed record Warning(string Code, string Message, object? Details = null);
 public sealed record Page(int Limit, string? NextCursor, bool HasMore, int Total);
@@ -46,8 +46,8 @@ public sealed record Page(int Limit, string? NextCursor, bool HasMore, int Total
 public sealed record Envelope(bool Ok, JsonNode? Data, Page? Page, Warning[] Warnings, AgentError? Error = null)
 {
     public static Envelope Success(object? data, Page? page = null, params Warning[] warnings) => new(true, Protocol.Node(data), page, warnings);
-    public static Envelope Fail(string code, int exit, string message, string hint = "luatools help", Problem[]? problems = null) =>
-        new(false, null, null, [], new(code, exit, message, hint, exit == 7, problems ?? []));
+    public static Envelope Fail(string code, int exit, string message, string? hint = null, Problem[]? problems = null) =>
+        new(false, null, null, [], new(code, exit, message, hint ?? ErrorHints.For(code, exit), exit == 7, problems ?? []));
 }
 
 internal sealed class EnvelopeConverter : JsonConverter<Envelope>
@@ -81,3 +81,20 @@ public sealed record AgentRequest(int Protocol, string Capability, string Instan
 }
 public sealed record SecretFrame(string Value);
 public sealed record Discovery(int Protocol, string InstanceId, string PipeName, int Pid, long StartTime, int SessionId, string Capability, bool Elevated = false, string? SteamIdentity = null);
+
+public static class ErrorHints
+{
+    public static string For(string code, int exit) => exit switch
+    {
+        2 => "Correct the reported arguments or input fields; use luatools <resource> <verb> --help for accepted values.",
+        3 => "List the resource again and use an identifier returned by that list.",
+        4 => "Run luatools account login --browser --dry-run, then repeat with --yes to sign in.",
+        5 => "Inspect available_actions and disabled reasons; run luatools doctor --json and follow its recovery commands.",
+        6 => "Refresh the resource and rerun --dry-run to obtain a current plan before retrying.",
+        7 => "Check luatools ping --json and luatools doctor --json; inspect job list before retrying an operation with an unknown outcome.",
+        8 => "Review this command with --dry-run, then resubmit with --yes; add --restart-steam only if the plan requires it.",
+        9 => "Start LuaTools, or omit --no-start to allow the client to start it, then retry.",
+        130 => "Inspect luatools job list --json before deciding whether to retry the interrupted operation.",
+        _ => "Inspect the error details and luatools history list --status failed --limit 1 --json for the failure reason."
+    };
+}
