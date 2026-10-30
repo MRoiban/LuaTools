@@ -114,12 +114,13 @@ transport, log reads and installation work run off it. The client never opens bu
 List cursors reference bounded host snapshots, expire after five minutes and bind query filters.
 Activity reads use the existing redacted log service and preserve seven-day warning retention.
 
-The foundation exposes only reads plus application start. Other commands remain discoverable and
-return `NOT_IMPLEMENTED` (exit 5), including doctor repair and setting writes. The agent authority
-policy for later write slices explicitly permits agents to enable executable workflows with
-`setting update <executable-key> --value true --yes`; this requires an activity warning naming
-the key and actor note, and a GUI toast. It must retain quarantine, digest, path and live consent
-checks. `--yes` never bypasses them. No such write is enabled by this foundation.
+The CLI can perform every GUI action, so an agent running as the same Windows user holds the same
+authority as that user. This deliberately includes enabling executable workflows with
+`setting update <executable-key> --value true --yes`, which writes an activity warning naming the
+key and actor note and shows a GUI toast. Quarantine, digest, path and live consent checks still
+apply, and `--yes` never bypasses them. Agents never see passwords: Discord login stays a human
+browser step. Destructive commands need `--yes`, Steam restarts also need `--restart-steam`, and
+`doctor --fix` runs only reversible repairs that spend no quota.
 
 ## Building and reviewing a release
 
