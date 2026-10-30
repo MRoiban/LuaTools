@@ -83,7 +83,7 @@ public sealed class LuaOverwriteCoordinator(LuaInstaller installer, SteamAppList
             ? $"https://steamdb.info/app/{dlcId}/"
             : $"https://steamdb.info/depot/{e.Id}/";
 
-        return new OverwriteRow(title, string.Join("  ·  ", meta), isDlc, isShared, url);
+        return new OverwriteRow(LogRedactor.Redact(title), string.Join("  ·  ", meta), isDlc, isShared, url);
     }
 
     private static string FormatSize(long bytes)

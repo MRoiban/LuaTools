@@ -21,7 +21,8 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         ApiContract.RequireAppId(appId.ToString());
         GameDetails? details;
         try { details = api is null ? null : await api.GetDetailsAsync(appId.ToString(), ct); }
-        catch (ApiException) { details = null; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { details = null; }
         if (details?.IsDlc == true)
         {
             if (!ApiContract.IsAppId(details.BaseAppId)) throw new MutationRejectedException("BASE_APP_REQUIRED", 6);
