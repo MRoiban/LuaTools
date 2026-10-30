@@ -19,6 +19,7 @@ public sealed partial class AgentCommandService
             string? path = r.Flags.GetValueOrDefault("path") ?? data["path"]?.GetValue<string>();
             bool auto = r.Flags.ContainsKey("auto") || data["auto"]?.GetValue<bool>() == true;
             bool restart = r.Command == "steam restart";
+            if (restart && data.Count != 0) throw new MutationRejectedException("INVALID_USAGE", 2);
             if (!restart && (auto == (path is not null) || path is not null && !Path.IsPathFullyQualified(path))) throw new MutationRejectedException("INVALID_USAGE", 2);
             if (restart) RequireSteamState();
             string version = SystemVersion("steam");

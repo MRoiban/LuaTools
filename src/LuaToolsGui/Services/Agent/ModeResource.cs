@@ -17,13 +17,13 @@ public sealed partial class AgentCommandService
                 detected_mode = state.Detected?.ToString().ToLowerInvariant(), version = SystemVersion("mode"),
                 available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c).Concat(c.Verb == "update" && s.Mode != UnlockerMode.Custom && !settings.IsExecutableWorkflowEnabled(s.Mode == UnlockerMode.Bst ? "BetterSteamTools" : "OpenSteamTools") ? new[] { "WORKFLOW_DISABLED" } : []).ToArray(), r.Flags.ContainsKey("read-only")),
             }).ToArray(), ct);
-            return r.Command == "mode list" ? List(r, Protocol.Node(rows)!.AsArray()) : Envelope.Success(new { selected_mode = unlocker.SelectedMode?.ToString().ToLowerInvariant(), detected_mode = state.Detected?.ToString().ToLowerInvariant(), modes = rows, cloudredirect = state.Cloud, version = SystemVersion("mode"), available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c), r.Flags.ContainsKey("read-only")) });
+            return r.Command == "mode list" ? SystemList(r, Protocol.Node(rows)!.AsArray()) : Envelope.Success(new { selected_mode = unlocker.SelectedMode?.ToString().ToLowerInvariant(), detected_mode = state.Detected?.ToString().ToLowerInvariant(), modes = rows, cloudredirect = state.Cloud, version = SystemVersion("mode"), available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c), r.Flags.ContainsKey("read-only")) });
         }
         return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r, "mode"); var data = BulkSelection.Data(r, "mode");
             string? value = r.Arguments.FirstOrDefault() ?? data["mode"]?.GetValue<string>();
-            if (!Enum.TryParse<UnlockerMode>(value, true, out var mode) || !Enum.IsDefined(mode)) throw new MutationRejectedException("INVALID_USAGE", 2);
+            if (value is not ("ost" or "bst" or "custom") || !Enum.TryParse<UnlockerMode>(value, true, out var mode) || !Enum.IsDefined(mode)) throw new MutationRejectedException("INVALID_USAGE", 2);
             void Gate() { if (mode != UnlockerMode.Custom) RequireGate(mode == UnlockerMode.Bst ? "BetterSteamTools" : "OpenSteamTools"); }
             Gate(); bool running = RequireSteamState(); string version = SystemVersion("mode");
             return new PreparedMutation(new(Guid.NewGuid().ToString("N"), PlanContext, version, [mode.ToString(), SteamIdentity],

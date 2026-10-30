@@ -12,7 +12,7 @@ public sealed partial class AgentCommandService
     {
         if (fixes is null) return Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented);
         long appId = 0;
-        if (r.Flags.GetValueOrDefault("appid") is { } app && (!long.TryParse(app, out appId) || appId <= 0)) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
+        if (r.Flags.GetValueOrDefault("appid") is { } app && (!ApiContract.IsAppId(app) || !long.TryParse(app, out appId))) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
         string? provider = r.Flags.GetValueOrDefault("provider");
         if (provider is not (null or "lua.tools" or "online-fix.me")) return Envelope.Fail("INVALID_USAGE", 2, Resources.Strings.Agent_InvalidArguments);
         if (r.Command is "fix list" or "fix search" or "fix get")
@@ -23,19 +23,19 @@ public sealed partial class AgentCommandService
                 var data = await fixes.ListAsync(ct);
                 var rows = FixCoordinator.Filter(data, r.Flags.GetValueOrDefault("tag"), r.Flags.ContainsKey("my-games"), r.Flags.GetValueOrDefault("query") ?? "", provider == "online-fix.me");
                 if (provider == "lua.tools" && auth.IsGuest) rows = [];
-                return List(r, Protocol.Node(rows.Select(g => new { id = g.AppId, appid = g.AppId, name = g.Name, fix_count = g.FixCount, tags = g.Tags, available_actions = FixActions(r, installed: fixes.InstallDir(long.Parse(g.AppId)) is not null) }).ToArray())!.AsArray());
+                return SystemList(r, Protocol.Node(rows.Select(g => new { id = g.AppId, appid = g.AppId, name = g.Name, fix_count = g.FixCount, tags = g.Tags, available_actions = FixActions(r, installed: fixes.InstallDir(long.Parse(g.AppId)) is not null) }).ToArray())!.AsArray());
             }
             if (r.Flags.ContainsKey("folder-url") && fixes.InstallDir(appId) is null) return Envelope.Fail("GAME_NOT_INSTALLED", 6, Resources.Strings.Fixes_Toast_GameNotFound);
             var detail = await fixes.DetailAsync(appId, r.Flags.GetValueOrDefault("folder-url"), r.Flags.ContainsKey("refresh") || r.Flags.ContainsKey("folder-url"), ct);
             var entries = detail.Fixes.Where(f => provider is null || (f.Folder is null ? "lua.tools" : "online-fix.me") == provider)
                 .Where(f => r.Flags.GetValueOrDefault("tag") is not { } tag || f.Fix.Tags.Any(t => t.Id == tag))
                 .Select(f => new { id = f.Fix.Id, appid = detail.AppId, provider = f.Folder is null ? "lua.tools" : "online-fix.me", title = f.Fix.Title, description = f.Fix.Description, tags = f.Fix.Tags, installed = f.Installed, applied = f.Applied, version = FixVersion(appId, f.Fix.Id), available_actions = FixActions(r, f.Installed, f.Applied, f.Folder is not null, f.Fix.Id, appId) }).ToArray();
-            return r.Command == "fix get" ? Envelope.Success(new { appid = detail.AppId, name = detail.Name, fixes = entries, provider_status = detail.ProviderStatus.ToString() }) : List(r, Protocol.Node(entries)!.AsArray());
+            return r.Command == "fix get" ? Envelope.Success(new { appid = detail.AppId, name = detail.Name, fixes = entries, provider_status = detail.ProviderStatus.ToString() }) : SystemList(r, Protocol.Node(entries)!.AsArray());
         }
         return await _mutations.ExecuteAsync(r, async token =>
         {
             var data = BulkSelection.Data(r, "appid", "id", "provider");
-            if (appId == 0 && data["appid"] is { } idNode && long.TryParse(idNode.ToString(), out long parsedId)) appId = parsedId;
+            if (appId == 0 && data["appid"] is { } idNode && ApiContract.IsAppId(idNode.ToString()) && long.TryParse(idNode.ToString(), out long parsedId)) appId = parsedId;
             if (appId <= 0) throw new MutationRejectedException("INVALID_USAGE", 2);
             bool apply = r.Command == "fix apply";
             provider ??= data["provider"]?.GetValue<string>();
@@ -45,7 +45,7 @@ public sealed partial class AgentCommandService
             FixDetail? detail = apply ? await fixes.DetailAsync(appId, ct: token) : null;
             var selectable = Protocol.Node(detail?.Fixes.Select(f => new { id = f.Fix.Id, provider = f.Folder is null ? "lua.tools" : "online-fix.me", applied = f.Applied }).ToArray() ?? [])!.AsArray();
             string[] ids = BulkSelection.Select(r, selectable, "id", ["provider", "applied"], data["id"]?.GetValue<string>());
-            if (ids.Any(id => id.Length is 0 or > 128 || id is "." or ".." || id.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is ':' or '-' or '_')))) throw new MutationRejectedException("INVALID_USAGE", 2);
+            if (ids.Any(id => !ApiContract.ValidFixId(id))) throw new MutationRejectedException("INVALID_USAGE", 2);
             return await Snapshot(() =>
             {
                 string CurrentVersion() => ids.Length == 1 ? FixVersion(appId, ids[0]) : MutationCoordinator.Hash(string.Join(':', ids.Select(id => FixVersion(appId, id))));

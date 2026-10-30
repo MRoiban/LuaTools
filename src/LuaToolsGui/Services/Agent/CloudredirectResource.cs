@@ -21,6 +21,7 @@ public sealed partial class AgentCommandService
             bool? enabled = r.Flags.GetValueOrDefault("enabled") is { } value ? bool.Parse(value) : data["enabled"]?.GetValue<bool>();
             bool refresh = r.Flags.ContainsKey("refresh") || data["refresh"]?.GetValue<bool>() == true;
             bool manage = r.Command == "cloudredirect manage";
+            if (manage && data.Count != 0) throw new MutationRejectedException("INVALID_USAGE", 2);
             if (!manage && (enabled is null && !refresh || enabled is not null && refresh)) throw new MutationRejectedException("INVALID_USAGE", 2);
             void Gate()
             {

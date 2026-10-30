@@ -1,9 +1,16 @@
 using System.Text.Json;
 using System.IO;
+using System.Text.Json.Nodes;
 using LuaTools.Agent;
 namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService
 {
+    private Envelope SystemList(AgentRequest r, JsonArray rows)
+    {
+        if (r.Flags.GetValueOrDefault("sort") == "reverse") rows = new JsonArray(rows.Reverse().Select(n => n?.DeepClone()).ToArray());
+        string key = r.Command + ":" + string.Join(';', r.Flags.Where(f => f.Key is "appid" or "query" or "tag" or "provider" or "my-games" or "sort" or "read-only").OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value));
+        return _pager.List(key, rows, r.Flags);
+    }
     private string SystemVersion(string target)
     {
         string[] names = target switch

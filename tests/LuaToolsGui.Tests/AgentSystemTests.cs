@@ -103,6 +103,16 @@ public sealed class AgentSystemTests : IDisposable
         Assert.Equal(0, _steam.Stops);
     }
     [Fact]
+    public async Task FixCursorsRejectChangedProviderFilters()
+    {
+        File.WriteAllText(Path.Combine(_root, "steamapps", "appmanifest_621.acf"), "\"appid\" \"621\"\n\"name\" \"Other Game\"\n\"installdir\" \"TestGame\"");
+        var first = await Run("fix list", flags: new() { ["limit"] = "1" });
+        Assert.True(first.Ok); Assert.NotNull(first.Page!.NextCursor);
+        var changed = await Run("fix list", flags: new() { ["limit"] = "1", ["cursor"] = first.Page.NextCursor, ["provider"] = "online-fix.me" });
+        Assert.Equal("CURSOR_EXPIRED", changed.Error!.Code);
+        Assert.Equal(0, _network.Requests);
+    }
+    [Fact]
     public async Task GuiModeConfirmationChecksGateBeforeShutdownAndCustomStillStartsClosedSteam()
     {
         var cache = new CacheService(Path.Combine(_root, "gui-cache.json")); var gh = new GithubProxy(_http);
