@@ -167,7 +167,7 @@ public sealed class AgentFinishTests
         // Earlier version reads also resolve the path. Suspend only inside the inspection itself.
         f.InspectPath = () =>
         {
-            if (!Environment.StackTrace.Contains(nameof(LuaToolsGui.Services.AppInfo.LaunchOptionsService.Inspect))) return;
+            if (!Environment.StackTrace.Contains(typeof(LuaToolsGui.Services.AppInfo.LaunchOptionsService).FullName + "." + nameof(LuaToolsGui.Services.AppInfo.LaunchOptionsService.Inspect) + "(")) return;
             preparing.Set(); Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
         };
         var run = f.Call("launch-option create", ["603750"], input: "{\"executable\":\"New.exe\"}");
