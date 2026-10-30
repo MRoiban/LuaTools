@@ -47,6 +47,7 @@ public partial class ModeCardViewModel(UnlockerMode mode, string title, string d
 public partial class ModeViewModel : ObservableObject
 {
     private readonly UnlockerService _unlocker;
+    private readonly ModeCoordinator _operations;
     private readonly ToastService _toast;
     private readonly SteamService _steam;
     private readonly CloudRedirectService _cloudRedirect;
@@ -69,13 +70,14 @@ public partial class ModeViewModel : ObservableObject
     private ModeCardViewModel? _pendingCard;
 
     public ModeViewModel(UnlockerService unlocker, ToastService toast, SteamService steam,
-        CloudRedirectService cloudRedirect, CabinetService? cabinet = null)
+        CloudRedirectService cloudRedirect, CabinetService? cabinet = null, ModeCoordinator? operations = null)
     {
         _unlocker = unlocker;
         _toast = toast;
         _steam = steam;
         _cloudRedirect = cloudRedirect;
         _cabinet = cabinet;
+        _operations = operations ?? new(unlocker, steam, cloudRedirect, cabinet);
     }
 
     /// <summary>CloudRedirect "Manage" (add-on panel): download (cache) the CloudRedirect GUI and launch it.</summary>
@@ -94,7 +96,7 @@ public partial class ModeViewModel : ObservableObject
                 if (p is not null) Progress = p.Value * 100;
             });
 
-            bool ok = await _cloudRedirect.LaunchAsync(prog);
+            bool ok = await _operations.ManageCloudAsync(prog);
             if (!ok)
                 _toast.Show(Resources.Strings.Mode_CloudRedirect_Manage,
                     Resources.Strings.Mode_CloudRedirect_LaunchFailed, error: true);
@@ -143,7 +145,7 @@ public partial class ModeViewModel : ObservableObject
     private async Task RefreshCloudRedirectAsync(bool forceRefresh)
     {
         CloudRedirectUnlocked = _unlocker.SelectedMode is UnlockerMode.Ost or UnlockerMode.Bst;
-        var s = await _unlocker.GetCloudRedirectStateAsync(checkUpdate: CloudRedirectUnlocked, forceRefresh);
+        var s = await _operations.ReadCloudAsync(forceRefresh);
         CloudRedirectInstalled = s.Installed;
         CloudRedirectEnabled = s.Enabled;
         CloudRedirectUpdateAvailable = s.UpdateAvailable;
@@ -183,15 +185,7 @@ public partial class ModeViewModel : ObservableObject
                 if (p is not null) Progress = p.Value * 100;
             });
 
-            var result = enabling
-                ? await _unlocker.EnableCloudRedirectAsync(prog)
-                : _unlocker.DisableCloudRedirect();
-
-            if (result.Success && enabling && _cabinet is not null)
-            {
-                try { await _cabinet.ConfigureCloudRedirectAsync(); }
-                catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
-            }
+            var result = await _operations.UpdateCloudAsync(enabling, false, prog);
 
             if (result.Success)
                 _toast.Show(CloudRedirectTitle, enabling
@@ -213,13 +207,9 @@ public partial class ModeViewModel : ObservableObject
     /// downloads the verified dll) and point it at the connected Cabinet server.</summary>
     internal async Task EnableCloudRedirectForCabinetAsync()
     {
+        try { await _operations.EnableCloudForCabinetAsync(); }
+        catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
         await LoadAsync();
-        if (!CloudRedirectEnabled) await ToggleCloudRedirect();
-        else if (_cabinet is not null)
-        {
-            try { await _cabinet.ConfigureCloudRedirectAsync(); }
-            catch { _toast.Show(CloudRedirectTitle, Resources.Strings.CabinetCloud_ConfigError, error: true); }
-        }
     }
 
     /// <summary>Replace cloud_redirect.dll with the latest. Reports "close Steam" if it's locked.</summary>
@@ -238,7 +228,7 @@ public partial class ModeViewModel : ObservableObject
                 if (p is not null) Progress = p.Value * 100;
             });
 
-            var result = await _unlocker.UpdateCloudRedirectAsync(prog);
+            var result = await _operations.UpdateCloudAsync(null, true, prog);
             if (result.Success)
                 _toast.Show(CloudRedirectTitle, Resources.Strings.Mode_CloudRedirect_Toast_Updated);
             else
@@ -290,35 +280,13 @@ public partial class ModeViewModel : ObservableObject
     /// "Switch to this": switching re-fetches anyway, so pinging for them is wasted, and their hash
     /// check would be misleading since modes share filenames). Active check is cached briefly.
     /// </summary>
-    private bool _detectionAttempted;
 
     public async Task LoadAsync(bool forceRefresh = false)
     {
-        // First time with no mode selected: try to auto-detect an existing install by hashing the
-        // on-disk DLLs against published releases, and adopt the match as active.
-        if (!_detectionAttempted && _unlocker.SelectedMode is null)
-        {
-            _detectionAttempted = true;
-            await _unlocker.DetectActiveModeAsync();
-        }
-
-        // Re-evaluate which cards are visible (hidden modes appear only when revealed).
+        var snapshot = await _operations.ReadAsync(forceRefresh, adoptDetection: true);
         SyncCards();
-
-        var active = _unlocker.SelectedMode;
         foreach (var card in Cards)
-        {
-            if (card.Mode == active)
-            {
-                card.StatusText = Resources.Strings.Mode_Checking;
-                Apply(card, await _unlocker.GetStateAsync(card.Mode, forceRefresh));
-            }
-            else
-            {
-                // No network for inactive modes.
-                Apply(card, new ModeState(card.Mode, ModeStatus.NotInstalled, IsActive: false, null));
-            }
-        }
+            if (snapshot.States.FirstOrDefault(s => s.Mode == card.Mode) is { } state) Apply(card, state);
 
         // Bottom CloudRedirect add-on panel (locked unless Nightly BST is the active mode).
         await RefreshCloudRedirectAsync(forceRefresh);
@@ -417,16 +385,10 @@ public partial class ModeViewModel : ObservableObject
                 if (p is not null) Progress = p.Value * 100;
             });
 
-            // Correct order: kill Steam → write the files → relaunch Steam.
-            // (Files can't be overwritten while Steam holds them open. CloudRedirect's CLI also closes
-            //  Steam itself, but stopping first is harmless and keeps all modes consistent.)
-            await Task.Run(_steam.StopSteam);
-
-            var result = await _unlocker.InstallAsync(mode, prog);
+            var (result, started) = await _operations.InstallAsync(mode, prog);
 
             if (result.Success)
             {
-                bool started = await Task.Run(_steam.StartSteam);
                 _toast.Show(Resources.Strings.Mode_Toast_Updated, started
                     ? string.Format(Resources.Strings.Mode_Toast_Updated_Restarting, mode)
                     : string.Format(Resources.Strings.Mode_Toast_Updated_Start, mode));
@@ -434,11 +396,14 @@ public partial class ModeViewModel : ObservableObject
             else
             {
                 // Install failed: bring Steam back up anyway so the user isn't left without it.
-                await Task.Run(_steam.StartSteam);
                 _toast.Show(Resources.Strings.Mode_Toast_InstallFailed, result.Error ?? Resources.Strings.Mode_Toast_InstallFailed_Body, error: true);
             }
 
             await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _toast.Show(Resources.Strings.Mode_Toast_InstallFailed, ex.Message, error: true);
         }
         finally
         {

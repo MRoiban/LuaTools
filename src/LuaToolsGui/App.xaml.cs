@@ -81,6 +81,9 @@ public partial class App : Application
                 services.AddSingleton<DepotCacheMigrationService>();
                 services.AddSingleton<AppliedFixIndexService>();
                 services.AddSingleton<UnlockerService>();
+                services.AddSingleton<ModeCoordinator>(); services.AddSingleton<FixCoordinator>();
+                services.AddSingleton<PluginCoordinator>(sp => PluginCoordinator.For(sp.GetRequiredService<PluginInstallerService>()));
+                services.AddSingleton<SteamCoordinator>(); services.AddSingleton<ApplicationCoordinator>();
                 services.AddSingleton<PluginInstallerService>();
                 services.AddTransient<DropInstallViewModel>(); // one per page (Home, Add)
                 services.AddSingleton<AuthService>();
@@ -198,7 +201,7 @@ public partial class App : Application
     }
 
     // Retained for legacy callers; no update flow is registered in this fork.
-    internal static Func<Task>? RunUpdateFlow => null;
+    internal static Func<Task>? RunUpdateFlow { get; private set; }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -265,6 +268,7 @@ public partial class App : Application
         toast.Attach(window.RootSnackbar); // wire the presenter before anything can raise a toast
 
         var updates = _host.Services.GetRequiredService<UpdateService>();
+        RunUpdateFlow = async () => { await _host.Services.GetRequiredService<ApplicationCoordinator>().CheckAsync(); };
         bool updateToastShown = false;
         updates.UpdateReady += () => Dispatcher.Invoke(() =>
         {
@@ -275,7 +279,7 @@ public partial class App : Application
                 updateToastShown = true;
                 toast.ShowAction(
                     "LuaTools", LuaToolsGui.Resources.Strings.Plugin_Badge_UpdateAvailable, LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
-                    () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } });
+                    () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch { /* Keep the running app usable. */ } });
             }
             window.ShowUpdateNotification();
             settingsVm.ShowUpdateResult(UpdateCheckResult.Staged, updates.StagedVersion);
@@ -318,8 +322,8 @@ public partial class App : Application
         settingsVm.RequestOfferCloudSaves = async () => { await OfferCloudSavesAsync(); cabinetVm.RefreshCloudSaves(); };
         cabinetVm.RefreshCloudSaves();
 
-        settingsVm.RequestUpdateCheck = async () => (await Task.Run(() => updates.CheckAndStageAsync()), updates.StagedVersion);
-        settingsVm.RequestApplyUpdate = () => { try { updates.ApplyAndRestart(); } catch { /* Keep the running app usable. */ } };
+        settingsVm.RequestUpdateCheck = async () => (await Task.Run(() => _host.Services.GetRequiredService<ApplicationCoordinator>().CheckAsync()), updates.StagedVersion);
+        settingsVm.RequestApplyUpdate = () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch { /* Keep the running app usable. */ } };
         _ = updates.CheckAndStageAsync();
         // The app usually lives in the tray for days (autostart --minimized), so a launch-time check alone
         // misses every release published after boot. Checks continue after staging so a newer release
@@ -449,29 +453,7 @@ public partial class App : Application
     /// <summary>Relaunch the app (used after a language change). The single-instance mutex is released
     /// only when THIS process exits, so we start the new instance via a short delayed shell command. By
     /// the time it launches the exe, our mutex is free and the new instance won't bow out.</summary>
-    private void RelaunchApp()
-    {
-        try
-        {
-            string? exe = Environment.ProcessPath;
-            if (exe is not null)
-            {
-                // cmd: wait ~1.2s for this process's mutex to release, then start the exe detached.
-                var psi = new System.Diagnostics.ProcessStartInfo("cmd.exe",
-                    $"/c timeout /t 2 /nobreak >nul & start \"\" \"{exe}\"")
-                {
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                };
-                System.Diagnostics.Process.Start(psi);
-            }
-        }
-        catch { /* if relaunch fails, the user can reopen manually */ }
-        finally
-        {
-            Shutdown();
-        }
-    }
+    private void RelaunchApp() => ApplicationCoordinator.Restart();
 
     /// <summary>Route a luatools:// protocol URL to the appropriate page and action.</summary>
     private void HandleProtocolUrl(string url)

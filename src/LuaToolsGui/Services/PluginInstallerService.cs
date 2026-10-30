@@ -64,6 +64,7 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
     public async Task<(bool ok, string? error)> InstallAsync(IProgress<double?>? progress, CancellationToken ct = default, bool reviewedInstallApproved = false)
     {
         if (!settings.IsExecutableWorkflowEnabled("LuaToolsPlugin")) return (false, "Enable the Steam plugin in Settings before installing it.");
+        using var selectedInstallation = steam.PinSelectedInstallation();
         if (SteamDir is not { } steamDir) return (false, Resources.Strings.Plugin_Err_SteamNotFound);
         bool wasRunning = false;
         bool stopped = false;
@@ -93,9 +94,10 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
             ValidateMarker(marker);
             markerInitiallyPresent = MarkerExists(marker);
             ct.ThrowIfCancellationRequested();
+            UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
             wasRunning = steam.IsSelectedSteamRunning();
-            steam.StopSteam();
-            stopped = true;
+            if (wasRunning) steam.StopSteam();
+            stopped = wasRunning;
             await Task.Delay(1200, ct);
             UserAuthorizedDependencies.RequireEnabled("LuaToolsPlugin", settings.IsExecutableWorkflowEnabled);
             mutationStarted = true;
@@ -149,12 +151,16 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
 
     public async Task<(bool ok, string? error)> UninstallAsync(CancellationToken ct = default)
     {
+        using var selectedInstallation = steam.PinSelectedInstallation();
         bool wasRunning = false;
         bool stopped = false;
         try
         {
             var receipt = BundledPlugin.ReadReceipt(BundledPlugin.ReceiptPath);
             if (receipt is null) return (true, null);
+            if (receipt.SteamDirectory is { } installedAt && !string.Equals(Path.GetFullPath(installedAt), steam.EffectivePath is { } selected ? Path.GetFullPath(selected) : null, StringComparison.OrdinalIgnoreCase))
+                return (false, Resources.Strings.Agent_System_PluginSelection);
+
             BundledPlugin.EnsureSafePath(BundledPlugin.ReceiptPath);
             // Disable injection even if an installed path has since become unsafe to remove.
             receipt.ActivationEnabled = false;
@@ -168,8 +174,8 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
             }
             ct.ThrowIfCancellationRequested();
             wasRunning = steam.IsSelectedSteamRunning();
-            steam.StopSteam();
-            stopped = true;
+            if (wasRunning) steam.StopSteam();
+            stopped = wasRunning;
             await Task.Delay(1200, ct);
             var unfamiliar = new List<string>();
             if (steamDir is not null)

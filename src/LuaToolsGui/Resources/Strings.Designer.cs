@@ -770,4 +770,19 @@ public static class Strings
         public static string Agent_RetryImpact => Get(nameof(Agent_RetryImpact));
 
     public static string Agent_CabinetImpact => Get(nameof(Agent_CabinetImpact));
+    // Agent system commands
+    public static string Agent_System_PluginSelection => Get(nameof(Agent_System_PluginSelection));
+        public static string Agent_System_Failed => Get(nameof(Agent_System_Failed));
+        public static string Agent_System_SteamRestart => Get(nameof(Agent_System_SteamRestart));
+        public static string Agent_System_SteamSelection => Get(nameof(Agent_System_SteamSelection));
+        public static string Agent_System_ModeImpact => Get(nameof(Agent_System_ModeImpact));
+        public static string Agent_System_ModeStartsSteam => Get(nameof(Agent_System_ModeStartsSteam));
+        public static string Agent_System_PluginImpact => Get(nameof(Agent_System_PluginImpact));
+        public static string Agent_System_CloudImpact => Get(nameof(Agent_System_CloudImpact));
+        public static string Agent_System_ToolImpact => Get(nameof(Agent_System_ToolImpact));
+        public static string Agent_System_RestartImpact => Get(nameof(Agent_System_RestartImpact));
+        public static string Agent_System_UpdateImpact => Get(nameof(Agent_System_UpdateImpact));
+        public static string Agent_System_FixApply => Get(nameof(Agent_System_FixApply));
+        public static string Agent_System_FixRevert => Get(nameof(Agent_System_FixRevert));
+
 }

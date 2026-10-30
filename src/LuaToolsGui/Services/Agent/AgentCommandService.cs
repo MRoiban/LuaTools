@@ -12,13 +12,15 @@ namespace LuaToolsGui.Services.Agent;
 
 /// <summary>Explicit, read-only application boundary. No DI resolution or plugin dispatch is exposed.</summary>
 public sealed partial class AgentCommandService(SettingsService settings, SteamService steam, AuthService auth,
-    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null)
+    DownloadQueue queue, UnlockerService unlocker, PluginInstallerService plugin, UpdateService updates, ToastService? toast = null, MutationCoordinator? mutations = null, Cabinet.ICabinetService? cabinet = null, ModeCoordinator? modes = null, FixCoordinator? fixes = null,
+    PluginCoordinator? plugins = null, SteamCoordinator? processes = null, ApplicationCoordinator? lifecycle = null,
+    SteamAutoCrackService? tool = null, ManifestJobFactory? factory = null)
 {
     public string InstanceId { get; } = Guid.NewGuid().ToString("N");
     public AgentEventHub Events => _jobs.Events;
     private volatile bool _exiting;
     private CancellationToken _hostLifetime;
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _shutdownReplies = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Action> _shutdownReplies = new();
     private readonly SnapshotPager _pager = new();
     private readonly MutationCoordinator _mutations = mutations ?? new();
     private readonly AgentJobRegistry _jobs = new(queue);
@@ -28,8 +30,8 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         Protocol.Node(ReadSettings(settings))!.AsArray().Select(n => n!["version"]!.ToString())));
     public void AfterReply(AgentRequest request)
     {
-        if (_shutdownReplies.TryRemove(request.RequestId, out _))
-            Application.Current?.Dispatcher.BeginInvoke(() => Application.Current.Shutdown());
+        if (_shutdownReplies.TryRemove(request.RequestId, out var action))
+            Application.Current?.Dispatcher.BeginInvoke(action);
     }
     public string SteamIdentity => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((steam.EffectivePath ?? "").ToUpperInvariant())));
     private Task<T> Snapshot<T>(Func<T> read, CancellationToken ct)
@@ -68,7 +70,7 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
     }    private bool? SelectedSteamRunning()
     {
         if (!steam.IsValid) return null;
-        try { return steam.IsSelectedSteamRunning(); }
+        try { return (processes ?? new(steam)).IsRunning(); }
         catch (InvalidOperationException) { return null; }
         catch (System.ComponentModel.Win32Exception) { return null; }
     }

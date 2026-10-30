@@ -10,12 +10,12 @@
     "capability_ids": [
       "C-140"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
-    "job_behavior": "none",
+    "dry_run": true,
+    "job_behavior": "job",
     "destructive": true,
     "reversible": false,
     "side_effects": [
@@ -204,8 +204,8 @@
       "steamautocrack"
     ],
     "examples": [
-      "luatools tool launch steamautocrack",
-      "luatools tool launch steamautocrack --format text"
+      "luatools tool launch steamautocrack --yes",
+      "luatools tool launch steamautocrack --format text --yes"
     ],
     "see_also": [
       "luatools describe tool",
@@ -235,7 +235,8 @@
       "version",
       "id",
       "state",
-      "job_id"
+      "job_id",
+      "available_actions"
     ]
   }
 ]

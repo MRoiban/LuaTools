@@ -10,6 +10,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly AuthService _auth;
     private readonly SteamService _steam;
+    private readonly SteamCoordinator _operations;
 
     /// <summary>The first-run welcome overlay VM (hosted at the window root, shown via its IsOpen).</summary>
     public OnboardingViewModel Onboarding { get; }
@@ -40,10 +41,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _isSigningIn;
     [ObservableProperty] private string? _signInError;
 
-    public MainViewModel(AuthService auth, SteamService steam, OnboardingViewModel onboarding)
+    public MainViewModel(AuthService auth, SteamService steam, OnboardingViewModel onboarding, SteamCoordinator? operations = null)
     {
         _auth = auth;
         _steam = steam;
+        _operations = operations ?? new(steam);
         Onboarding = onboarding;
         _auth.AuthStateChanged += () => IsGuest = _auth.IsGuest;
     }
@@ -92,7 +94,7 @@ public partial class MainViewModel : ObservableObject
             MessageBoxImage.Question);
         if (result != MessageBoxResult.OK) return;
 
-        if (!_steam.RestartSteam())
+        if (!_operations.Restart())
             MessageBox.Show(
                 Resources.Strings.Manage_RestartSteam_Failed,
                 Resources.Strings.Manage_RestartSteam_Title,

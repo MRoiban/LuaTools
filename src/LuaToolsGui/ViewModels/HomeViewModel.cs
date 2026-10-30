@@ -103,19 +103,14 @@ public partial class HomeViewModel : ObservableObject
     private async Task InstallPlugin()
     {
         if (IsInstallingPlugin) return;
-        var confirm = System.Windows.MessageBox.Show(
-            Resources.Strings.Plugin_Confirm_RestartBody,
-            Resources.Strings.Plugin_Confirm_RestartCaption,
-            System.Windows.MessageBoxButton.OKCancel,
-            System.Windows.MessageBoxImage.Warning);
-        if (confirm != System.Windows.MessageBoxResult.OK) return;
+        if (!PluginCoordinator.ConfirmSteamRestart()) return;
 
         IsInstallingPlugin = true;
         PluginStatusText = Resources.Strings.Plugin_Checking;
         PluginStatusColor = "#9ca3af";
         try
         {
-            var (ok, error) = await _plugin.InstallAsync(progress: null);
+            var (ok, error) = await PluginCoordinator.For(_plugin).ChangeAsync(true);
             _toast.Show(Resources.Strings.Plugin_Toast_Title, ok
                 ? Resources.Strings.Plugin_Toast_Installed
                 : string.Format(Resources.Strings.Plugin_Toast_InstallFailed, error), error: !ok);

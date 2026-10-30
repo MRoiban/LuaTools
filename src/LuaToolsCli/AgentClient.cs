@@ -11,7 +11,7 @@ public sealed class AgentClient
     public async Task<Envelope> InvokeAsync(Parsed parsed, CancellationToken ct)
     {
         if (!OperatingSystem.IsWindows()) return Unavailable();
-        if (parsed.Command?.Key == "application exit" && parsed.Has("drain") && !parsed.Has("dry-run"))
+        if (parsed.Command?.Key is ("application exit" or "application restart" or "update apply") && parsed.Has("yes") && parsed.Has("drain") && !parsed.Has("dry-run"))
         {
             while (true)
             {
@@ -58,6 +58,14 @@ public sealed class AgentClient
                         if (state is "failed" or "cancelled") return Envelope.Fail(state == "failed" ? "JOB_FAILED" : "JOB_CANCELLED", 1, "The job did not complete successfully.");
                         if (state != "completed") { await Task.Delay(100, ct).ConfigureAwait(false); continue; }
                     }
+                    if (reply.Ok && !parsed.Has("dry-run") && parsed.Command.Key is ("application restart" or "update apply"))
+                    {
+                        await pipe.DisposeAsync();
+                        var ready = await RediscoverAsync(record.InstanceId, ct);
+                        if (!ready.Ok) return ready with { Data = reply.Data };
+                        if (reply.Data is System.Text.Json.Nodes.JsonObject data)
+                            data["new_instance_id"] = ready.Data?["instance_id"]?.DeepClone();
+                    }
                     return reply;
                 }
                 finally { CryptographicOperations.ZeroMemory(capability); }
@@ -99,6 +107,24 @@ public sealed class AgentClient
                 if (watch.Elapsed > TimeSpan.FromSeconds(25)) return Unavailable();
                 await Task.Delay(100, ct).ConfigureAwait(false);
             }
+        }
+    }
+    private async Task<Envelope> RediscoverAsync(string previous, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var record = LocalDiscovery.Read<Discovery>(LocalDiscovery.Record);
+                if (record.InstanceId != previous)
+                {
+                    var response = await InvokeAsync(new(Catalogue.Find("ping"), [], new() { ["no-start"] = null }, []), ct);
+                    if (response.Ok) return response;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or ArgumentException) { }
+            await Task.Delay(100, ct);
         }
     }
     public static Envelope Unavailable() => Envelope.Fail("GUI_NOT_RUNNING", 9, "LuaTools could not be started or discovered.", "Launch the installed LuaTools.exe once. Expected launcher: %LOCALAPPDATA%\\LuaToolsGui-SecurityHardened\\bin\\gui-path.json; retry without --no-start.");

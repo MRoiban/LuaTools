@@ -827,4 +827,19 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>This job is missing or its retention period has expired.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Retry acquisition and installation; quota may be spent again.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet may publish progress and presence, credit playtime, download schemas or link Workshop content while enabled.</value></data>
+
+  <!-- Agent system commands -->
+  <data name="Agent_System_PluginSelection" xml:space="preserve"><value>Select the Steam installation where this plugin was installed before removing it.</value></data>
+  <data name="Agent_System_Failed" xml:space="preserve"><value>The operation failed. Inspect the job result and activity log.</value></data>
+  <data name="Agent_System_SteamRestart" xml:space="preserve"><value>Stop and restart only the selected Steam installation in this session; running games and downloads are interrupted.</value></data>
+  <data name="Agent_System_SteamSelection" xml:space="preserve"><value>Change the selected Steam folder; existing plans become stale.</value></data>
+  <data name="Agent_System_ModeImpact" xml:space="preserve"><value>Install or switch the selected mode using the existing verified installer; overwrite managed Steam files.</value></data>
+  <data name="Agent_System_ModeStartsSteam" xml:space="preserve"><value>Steam starts even if it was closed, including when selecting Custom and after a returned installation failure.</value></data>
+  <data name="Agent_System_PluginImpact" xml:space="preserve"><value>Change the bundled plugin and its receipt; restart selected Steam only if it was running.</value></data>
+  <data name="Agent_System_CloudImpact" xml:space="preserve"><value>Change the CloudRedirect add-on or launch its separate manager; changes apply on the next Steam launch. Steam is not stopped.</value></data>
+  <data name="Agent_System_ToolImpact" xml:space="preserve"><value>Acquire the authorized SteamAutoCrack bundle if needed and launch its external interface. This does not complete any action in that interface.</value></data>
+  <data name="Agent_System_RestartImpact" xml:space="preserve"><value>Restart the LuaTools owner after this reply; owner identity and connection capability rotate.</value></data>
+  <data name="Agent_System_UpdateImpact" xml:space="preserve"><value>Check and stage a signed fork release; prune old staged packages. Applying requires a separate explicit command.</value></data>
+  <data name="Agent_System_FixApply" xml:space="preserve"><value>Acquire and apply the selected executable repair archive to the installed game; modified files are backed up. lua.tools quota is nonrefundable. Steam is not stopped.</value></data>
+  <data name="Agent_System_FixRevert" xml:space="preserve"><value>Restore backed-up files and remove files added by the selected fix; changed files are preserved on conflicts. Steam is not stopped.</value></data>
 </root>

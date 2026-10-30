@@ -792,4 +792,19 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_JobMissing" xml:space="preserve"><value>Cette tâche est introuvable ou sa durée de conservation a expiré.</value></data>
   <data name="Agent_RetryImpact" xml:space="preserve"><value>Relancer l’acquisition et l’installation ; le quota peut être consommé de nouveau.</value></data>
   <data name="Agent_CabinetImpact" xml:space="preserve"><value>Cabinet peut publier la progression et la présence, comptabiliser du temps de jeu, télécharger des schémas ou lier du contenu Workshop lorsqu’il est activé.</value></data>
+
+  <!-- Agent system commands -->
+  <data name="Agent_System_PluginSelection" xml:space="preserve"><value>Sélectionnez l’installation Steam où ce plugin a été installé avant de le supprimer.</value></data>
+  <data name="Agent_System_Failed" xml:space="preserve"><value>L’opération a échoué. Consultez le résultat de la tâche et le journal d’activité.</value></data>
+  <data name="Agent_System_SteamRestart" xml:space="preserve"><value>Arrêter et relancer uniquement l’installation Steam sélectionnée dans cette session ; les jeux et téléchargements en cours seront interrompus.</value></data>
+  <data name="Agent_System_SteamSelection" xml:space="preserve"><value>Changer le dossier Steam sélectionné ; les plans existants deviennent obsolètes.</value></data>
+  <data name="Agent_System_ModeImpact" xml:space="preserve"><value>Installer ou changer le mode sélectionné avec le programme d’installation vérifié existant ; remplacer les fichiers Steam gérés.</value></data>
+  <data name="Agent_System_ModeStartsSteam" xml:space="preserve"><value>Steam sera lancé même s’il était fermé, y compris en sélectionnant Personnalisé et après un échec d’installation signalé.</value></data>
+  <data name="Agent_System_PluginImpact" xml:space="preserve"><value>Modifier le plugin intégré et sa preuve d’installation ; relancer Steam uniquement s’il était en cours d’exécution.</value></data>
+  <data name="Agent_System_CloudImpact" xml:space="preserve"><value>Modifier le module CloudRedirect ou lancer son gestionnaire séparé ; les changements prendront effet au prochain lancement de Steam. Steam ne sera pas arrêté.</value></data>
+  <data name="Agent_System_ToolImpact" xml:space="preserve"><value>Acquérir si nécessaire le package SteamAutoCrack autorisé et lancer son interface externe. Aucune action dans cette interface ne sera effectuée.</value></data>
+  <data name="Agent_System_RestartImpact" xml:space="preserve"><value>Relancer LuaTools après cette réponse ; l’identité du propriétaire et la capacité de connexion seront renouvelées.</value></data>
+  <data name="Agent_System_UpdateImpact" xml:space="preserve"><value>Rechercher et préparer une version signée de ce fork ; supprimer les anciens packages préparés. L’application nécessite une commande explicite distincte.</value></data>
+  <data name="Agent_System_FixApply" xml:space="preserve"><value>Acquérir et appliquer l’archive de réparation exécutable sélectionnée au jeu installé ; sauvegarder les fichiers modifiés. Le quota lua.tools ne sera pas remboursé. Steam ne sera pas arrêté.</value></data>
+  <data name="Agent_System_FixRevert" xml:space="preserve"><value>Restaurer les fichiers sauvegardés et supprimer ceux ajoutés par le correctif sélectionné ; préserver les fichiers modifiés en cas de conflit. Steam ne sera pas arrêté.</value></data>
 </root>

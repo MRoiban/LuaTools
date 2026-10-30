@@ -248,11 +248,11 @@
     "capability_ids": [
       "C-006"
     ],
-    "status": "disabled",
-    "disabled_code": "NOT_IMPLEMENTED",
+    "status": "enabled",
+    "disabled_code": null,
     "aliases": [],
     "read_only": false,
-    "dry_run": false,
+    "dry_run": true,
     "job_behavior": "none",
     "destructive": true,
     "reversible": false,
@@ -438,8 +438,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools application restart",
-      "luatools application restart --format text"
+      "luatools application restart --yes",
+      "luatools application restart --format text --yes"
     ],
     "see_also": [
       "luatools describe application",
@@ -460,8 +460,7 @@
       9
     ],
     "preconditions": [
-      "Only after user changes language",
-      "None"
+      "Requires --yes. Active jobs/helpers refuse with exit 6 unless --drain; waits within --timeout. Reply precedes shutdown."
     ],
     "output_fields": [
       "plan",
@@ -673,8 +672,8 @@
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools application exit",
-      "luatools application exit --format text"
+      "luatools application exit --yes",
+      "luatools application exit --format text --yes"
     ],
     "see_also": [
       "luatools describe application",
@@ -695,8 +694,7 @@
       9
     ],
     "preconditions": [
-      "--yes and no active jobs or Cabinet helpers; active drain remains a lifecycle extraction.",
-      "None"
+      "Requires --yes. Active jobs/helpers refuse with exit 6 unless --drain; waits within --timeout. Reply precedes shutdown."
     ],
     "output_fields": [
       "plan",

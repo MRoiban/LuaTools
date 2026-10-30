@@ -21,11 +21,22 @@ public class SteamService(SettingsService settings)
     /// <summary>Steam path detected from the registry (confirmed via steam.exe), or null.</summary>
     public string? AutoDetectedPath => DetectFromRegistry();
 
+    private readonly AsyncLocal<string?> _operationPath = new();
+    // Keep stop/install/start on the admitted installation across awaits and concurrent selection changes.
+    internal IDisposable PinSelectedInstallation()
+    {
+        string? previous = _operationPath.Value;
+        _operationPath.Value = EffectivePath;
+        return new SelectionScope(() => _operationPath.Value = previous);
+    }
+    private sealed class SelectionScope(Action restore) : IDisposable { public void Dispose() => restore(); }
+
     /// <summary>The effective path: user override if set, otherwise the auto-detected one.</summary>
     public string? EffectivePath
     {
         get
         {
+            if (_operationPath.Value is { } selected) return selected;
             string? overridePath = Environment.GetEnvironmentVariable(SteamProcessControl.SteamVariable) is { Length: > 0 } inherited
                 ? Path.GetDirectoryName(inherited) : settings.SteamPathOverride;
             return !string.IsNullOrWhiteSpace(overridePath) ? Normalize(overridePath) : AutoDetectedPath;
@@ -152,7 +163,7 @@ public class SteamService(SettingsService settings)
 
     /// <summary>Checks the selected installation in this session; ambiguous identity throws so
     /// callers cannot treat an unreadable running Steam as safe to edit.</summary>
-    public bool IsSelectedSteamRunning()
+    public virtual bool IsSelectedSteamRunning()
     {
         string path = EffectivePath ?? throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_SelectSteam);
         using var current = Process.GetCurrentProcess();
@@ -160,7 +171,7 @@ public class SteamService(SettingsService settings)
             Process.GetProcessesByName("steam").Select(p => (ISteamProcess)new SystemSteamProcess(p)));
     }
 
-    public void StopSteam()
+    public virtual void StopSteam()
     {
         string path = EffectivePath ?? throw new InvalidOperationException(LuaToolsGui.Resources.Strings.SteamIsolation_SelectBeforeStop);
         using var current = Process.GetCurrentProcess();
@@ -171,7 +182,7 @@ public class SteamService(SettingsService settings)
     }
 
     /// <summary>Launch Steam from the effective path. Returns false if it can't be located/launched.</summary>
-    public bool StartSteam()
+    public virtual bool StartSteam()
     {
         string? path = EffectivePath;
         if (path is null) return false;
@@ -192,7 +203,7 @@ public class SteamService(SettingsService settings)
     /// Stop only the selected Steam in this Windows session and relaunch it through its inherited
     /// isolation route when present. Returns false if shutdown, route validation or launch fails.
     /// </summary>
-    public bool RestartSteam()
+    public virtual bool RestartSteam()
     {
         try { StopSteam(); return StartSteam(); }
         catch { return false; }

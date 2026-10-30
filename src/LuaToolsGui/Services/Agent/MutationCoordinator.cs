@@ -81,7 +81,10 @@ public sealed class MutationCoordinator(string? journalPath = null)
             return receipt;
         }
         catch (MutationRejectedException ex) { return Failure(ex.Code, ex.ExitCode); }
-        catch (Exception ex) when (ex is IOException or JsonException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
+        catch (JsonException) { return Failure("INVALID_DATA", 2); }
+        catch (ArgumentException) { return Failure("INVALID_USAGE", 2); }
+        catch (InvalidOperationException) { return Failure("INVALID_DATA", 2); }
+        catch (IOException) { return Failure("JOURNAL_UNAVAILABLE", 7); }
         finally { _admission.Release(); }
     }
     public async Task<Envelope?> FindAsync(string idempotencyKey, CancellationToken ct)
