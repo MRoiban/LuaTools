@@ -772,7 +772,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Navigate Depots, clear conflicting search and jump to correct game page; game-selection side effects in R31; Select game; cancels editor/rename and clears depot search. Sync can overwrite/delete old Default, adopt loose Lua and auto-apply newest build if no live Lua. Read game title/ID/latest Steam build, presets newest-captured first, Default / Build {0} / Saved · {date}, custom names, depot/DLC counts, Pinned / Auto-updating, source, ACTIVE, unsaved",
+      "Navigate Depots, clear conflicting search and jump to correct game page; game-selection side effects in R31; Select game; cancels editor/rename and clears depot search. Sync can overwrite/delete old Default, adopt loose Lua and auto-apply newest build if no live Lua. Read game title/ID/latest Steam build, presets newest-captured first, Default / Build {0} / Saved \u00b7 {date}, custom names, depot/DLC counts, Pinned / Auto-updating, source, ACTIVE, unsaved",
       "Invalidate active game depot memory cache, rescan, recompute badges and reselect existing game; repeats selection sync/adoption effects. Keeps text search"
     ],
     "flags": [
@@ -1292,9 +1292,9 @@
   {
     "resource": "depot",
     "verb": "download",
-    "syntax": "luatools depot download <appid> --depot <id>... --output <path> [--language <name>] [--os <platform>]",
+    "syntax": "luatools depot download <appid> [--depot <id>...] --output <path> [--language <name>] [--os <platform>]",
     "variants": [
-      "luatools depot download <appid> --depot <id>... --output <path>"
+      "luatools depot download <appid> [--depot <id>...] --output <path> [--language <name>] [--os <platform>]"
     ],
     "purpose": "Download selected depots to chosen output directory.",
     "capability_ids": [
@@ -1532,8 +1532,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --dry-run",
-      "luatools depot download 570 --depot 571 --output C:\\Lua\\570.lua --yes"
+      "luatools depot download 570 --depot 571 --output D:\\Depots\\570 --dry-run",
+      "luatools depot download 570 --depot 571 --output D:\\Depots\\570 --yes"
     ],
     "see_also": [
       "luatools describe depot",

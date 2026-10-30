@@ -36,7 +36,7 @@ public sealed partial class AgentCommandService
                     return found is null ? Envelope.Fail("NOT_FOUND", 3, Resources.Strings.Agent_Depot_Unavailable) : Envelope.Success(PresetRow(id, found));
                 }, ct);
             if (r.Command == "preset create" || r.Flags.ContainsKey("from-live")) return await SavePreset(r, id, ct);
-            return await _mutations.ExecuteAsync(r, token => Snapshot(() => PreparePreset(r, id), token), ct);
+            return await MutateAsync(r, token => Snapshot(() => PreparePreset(r, id), token), ct);
         }
         catch (MutationRejectedException ex) { return Envelope.Fail(ex.Code, ex.ExitCode, Resources.Strings.Agent_Depot_Unavailable); }
     }
@@ -81,7 +81,7 @@ public sealed partial class AgentCommandService
                 : Envelope.Success(new { results, version = VaultVersion(id) });
         }, token));
     }
-    private Task<Envelope> SavePreset(AgentRequest r, long id, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    private Task<Envelope> SavePreset(AgentRequest r, long id, CancellationToken ct) => MutateAsync(r, async token =>
     {
         ValidateScalarInput(r, "name");
         var data = BulkSelection.Data(r, "name");

@@ -63,14 +63,14 @@ Doctor --fix never enables executable workflows, spends download quota, overwrit
 It reports repairs requiring extra authority as skipped; invoke the exact suggested command after reviewing its dry-run.
 Discord login requires a human browser step. Public sources work as a guest.
 Secrets go through --secret-stdin or --code-stdin, never command arguments or logs.
-Jobs do not survive app exit. Keep the app running and inspect job results before shutting it down.
+`job wait` returns on a terminal state or when a decision is needed. Inspect state/result, resolve awaiting_confirmation with `job confirm`, then wait again. Jobs do not survive app exit. Keep the app running and inspect job results before shutting it down.
 Quota is spent before overwrite is known: inspect sources and plans before accepting acquisition.
 A timeout after acceptance does not cancel work; inspect the returned job ID before retrying.
 Use --idempotency-key for mutation retries; exit 6 means state or context changed and needs a fresh plan.
 
 ## Added games and Steam installations
 A game is added when it has a live Lua. Steam installation is separate: game list/get report added and installed independently.
-`game list` lists added games, including uninstalled ones. `game search --installed --query harvest` searches this added library (the flag name is historical); search without --installed searches the remote catalogue.
+`game list` lists added games, including uninstalled ones. `game search --added --query harvest` searches this added library; --installed remains a legacy alias for --added. Search without either flag searches the remote catalogue. Search supports --limit, --cursor, --all and --count like other lists.
 Activity severity is a minimum threshold: warn includes warning, error and critical. --since accepts UTC RFC3339 or positive relative durations up to 24h.
 History is newest first; `history list --status failed --limit 1` returns the last failure's `message`, not merely its state.
 
@@ -89,7 +89,7 @@ luatools preset list --appid 730 --json
 luatools preset apply HASH --appid 730 --dry-run --json
 luatools preset apply HASH --appid 730 --yes --json
 ```
-Plan first, inspect selected depots, then download with the same language/OS options. Neutral content and the GUI language fallback are included:
+Inspect `depot plan` before choosing a strict language/OS selection. Defaults include eligible neutral, English and selected-language content, honor matching active pins, exclude shared depots, and fall back to eligible depots if no language matches. These defaults do not promise exclusive language content; inspect the plan and pass explicit --depot IDs for a strict selection. Then download with the same language/OS options:
 ```sh
 luatools depot plan 730 --language english --os windows --json
 luatools depot download 730 --language english --os windows --output D:\Depots --dry-run --json

@@ -90,6 +90,8 @@ public partial class DropInstallViewModel : ObservableObject
     /// <summary>Entry point: hand the dropped file paths to install (called by the view's Drop handler).</summary>
     public async Task HandleDropAsync(IEnumerable<string> paths)
     {
+        try
+        {
         var files = paths.Where(LuaInstaller.IsInstallable).ToArray();
         if (files.Length == 0) { ResultFailed = true; ResultText = Resources.Strings.Drop_Nothing; return; }
         var results = await _batches.InstallAsync(files, async (path, diff, ct) =>
@@ -118,6 +120,8 @@ public partial class DropInstallViewModel : ObservableObject
             ResultText = $"{ok}{bad}{(error is null ? ResultFailed && failed == 0 ? Resources.Strings.Agent_Add_InstallFailed : "" : " " + error)}".Trim();
         }
         if (luas + manifests > 0) Installed?.Invoke();
+            }
+        catch (Exception ex) { ResultFailed = true; ResultText = Resources.Strings.Agent_Add_InstallFailed; AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Drop", ResultText, ex); }
     }
 
     [RelayCommand]

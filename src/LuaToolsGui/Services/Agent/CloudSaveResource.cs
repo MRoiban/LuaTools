@@ -3,7 +3,7 @@ namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService
 {
     [AgentResource("cloud-save")]
-    private Task<Envelope> CloudSaveAsync(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
+    private Task<Envelope> CloudSaveAsync(AgentRequest r, CancellationToken ct) => MutateAsync(r, token => Snapshot(() =>
     {
         ValidateScalarInput(r, "enabled");
         var data = BulkSelection.Data(r, "enabled");

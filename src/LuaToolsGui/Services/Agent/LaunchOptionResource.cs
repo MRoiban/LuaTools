@@ -22,6 +22,8 @@ public sealed partial class AgentCommandService
     private async Task<Envelope> LaunchOptionAsync(AgentRequest r, CancellationToken ct)
     {
         if (launch is null) return Envelope.Fail("SERVICE_UNAVAILABLE", 7, Resources.Strings.Agent_Depot_Unavailable);
+        var installation = Admitted;
+        using var pinned = installation.Pin();
         try
         {
             if (r.Command == "launch-option get")
@@ -36,7 +38,7 @@ public sealed partial class AgentCommandService
                     return List(r, Protocol.Node(ids.Select(LaunchRow))!.AsArray());
                 }, ct);
             if (r.Command is "launch-option create" or "launch-option update" or "launch-option delete") return await EditLaunch(r, ct);
-            return await _mutations.ExecuteAsync(r, async token =>
+            return await MutateAsync(r, async token =>
             {
                 int[] ids = r.Command == "launch-option revert" ? [(int)DepotAppId(r)]
                     : await Task.Run(() =>
@@ -56,6 +58,8 @@ public sealed partial class AgentCommandService
     }
     private PreparedMutation PrepareLaunch(AgentRequest r, int[] ids)
     {
+        var installation = Admitted;
+        RequireAdmission(installation, r);
         try { BulkSelection.Data(r); } catch (JsonException) { throw new MutationRejectedException("INVALID_DATA", 2); }
         if (!launch!.IsAvailable) throw new MutationRejectedException("APPINFO_UNAVAILABLE", 5);
         if (ids.Any(id => launch.Store.Get(id) is null)) throw new MutationRejectedException("NOT_FOUND", 3);
@@ -70,7 +74,8 @@ public sealed partial class AgentCommandService
             string job = Jobs.Register(r.Command, async lifetime => await Task.Run(() =>
             {
                 if (PlanContext != context || LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
-                using var selected = steam.PinSelectedInstallation();
+                RequireAdmission(installation, r);
+                using var selected = installation.Pin();
                 bool nowRunning = LaunchRunning();
                 if (nowRunning && (!r.Flags.ContainsKey("restart-steam") || !r.Flags.ContainsKey("yes"))) throw new MutationRejectedException("STEAM_RUNNING", 6);
                 var coordinator = new LaunchEditCoordinator(launch);
@@ -81,12 +86,17 @@ public sealed partial class AgentCommandService
             return Envelope.Success(new { job_id = job, state = "accepted" });
         }, token));
     }
-    private Task<Envelope> EditLaunch(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    private Task<Envelope> EditLaunch(AgentRequest r, CancellationToken ct) => MutateAsync(r, async token =>
     {
+        var installation = Admitted;
+        RequireAdmission(installation, r);
+        using var pinned = installation.Pin();
+        string context = PlanContext, version = LaunchVersion();
         ValidateScalarInput(r); // complex entry data travels only via the bounded file transport
         int id = (int)DepotAppId(r);
         var state = await Task.Run(() => launch!.Inspect(id), token) ?? throw new MutationRejectedException("NOT_FOUND", 3);
-        string version = LaunchVersion(), context = await Snapshot(() => PlanContext, token);
+        RequireAdmission(installation, r);
+        if (LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
         var desired = (launch!.Store.Get(id)?.Desired ?? state.Current).Select(o => o.Clone()).ToList();
         int? at = r.Flags.GetValueOrDefault("entry") is { } entry && int.TryParse(entry, out int index) ? index : null;
         if (r.Flags.ContainsKey("entry") && (at is null || at < 0 || at >= desired.Count)) throw new MutationRejectedException("INVALID_ENTRY", 2);
@@ -131,7 +141,8 @@ public sealed partial class AgentCommandService
             {
                 if (PlanContext != context || LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
                 if (apply && LaunchRunning() && (!r.Flags.ContainsKey("restart-steam") || !r.Flags.ContainsKey("yes"))) throw new MutationRejectedException("STEAM_RUNNING", 6);
-                using var selected = steam.PinSelectedInstallation();
+                RequireAdmission(installation, r);
+                using var selected = installation.Pin();
                 var coordinator = new LaunchEditCoordinator(launch!);
                 coordinator.Stage(id, desired);
                 if (apply && !coordinator.Reapply([id]).Ok) return Envelope.Fail("APPLY_FAILED", 1, Resources.Strings.Agent_Depot_Unavailable);

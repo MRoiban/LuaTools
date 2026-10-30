@@ -189,6 +189,8 @@ public partial class App : Application
                 MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
             return;
 
+        try
+        {
         var result = await Task.Run(() => new Services.AppInfo.LaunchEditCoordinator(launch).Reapply(drifted));
 
         if (result.Ok)
@@ -199,6 +201,8 @@ public partial class App : Application
         else
             toast.Show(LuaToolsGui.Resources.Strings.Launch_Title,
                 string.Format(LuaToolsGui.Resources.Strings.Launch_ApplyFailed, result.Error), error: true);
+        }
+        catch (Exception ex) { GuiOperationFeedback.Report(toast, LuaToolsGui.Resources.Strings.Launch_Title, LuaToolsGui.Resources.Strings.Agent_Depot_Unavailable, ex); }
     }
 
     // Retained for legacy callers; no update flow is registered in this fork.
@@ -269,7 +273,11 @@ public partial class App : Application
         toast.Attach(window.RootSnackbar); // wire the presenter before anything can raise a toast
 
         var updates = _host.Services.GetRequiredService<UpdateService>();
-        RunUpdateFlow = async () => { await _host.Services.GetRequiredService<ApplicationCoordinator>().CheckAsync(); };
+        RunUpdateFlow = async () =>
+        {
+            try { await _host.Services.GetRequiredService<ApplicationCoordinator>().CheckAsync(); }
+            catch (Exception ex) { GuiOperationFeedback.Report(toast, "LuaTools", LuaToolsGui.Resources.Strings.Agent_System_Failed, ex); }
+        };
         bool updateToastShown = false;
         updates.UpdateReady += () => Dispatcher.Invoke(() =>
         {
@@ -280,7 +288,7 @@ public partial class App : Application
                 updateToastShown = true;
                 toast.ShowAction(
                     "LuaTools", LuaToolsGui.Resources.Strings.Plugin_Badge_UpdateAvailable, LuaToolsGui.Resources.Strings.Lang_Changed_Restart,
-                    () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch { /* Keep the running app usable. */ } });
+                    () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch (Exception ex) { GuiOperationFeedback.Report(toast, "LuaTools", LuaToolsGui.Resources.Strings.Agent_System_Failed, ex); } });
             }
             window.ShowUpdateNotification();
             settingsVm.ShowUpdateResult(UpdateCheckResult.Staged, updates.StagedVersion);
@@ -324,7 +332,7 @@ public partial class App : Application
         cabinetVm.RefreshCloudSaves();
 
         settingsVm.RequestUpdateCheck = async () => (await Task.Run(() => _host.Services.GetRequiredService<ApplicationCoordinator>().CheckAsync()), updates.StagedVersion);
-        settingsVm.RequestApplyUpdate = () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch { /* Keep the running app usable. */ } };
+        settingsVm.RequestApplyUpdate = () => { try { _host.Services.GetRequiredService<ApplicationCoordinator>().Apply(); } catch (Exception ex) { GuiOperationFeedback.Report(toast, "LuaTools", LuaToolsGui.Resources.Strings.Agent_System_Failed, ex); } };
         _ = updates.CheckAndStageAsync();
         // The app usually lives in the tray for days (autostart --minimized), so a launch-time check alone
         // misses every release published after boot. Checks continue after staging so a newer release

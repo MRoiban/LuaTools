@@ -91,12 +91,12 @@ public class FixCoordinator(LuaToolsApiClient api, AuthService auth, SettingsSer
     public DownloadJob CreateJob(long appId, string name, DenuvoFix fix, Uri? folder, string slot, Action<DownloadItem, JobResult?>? finished = null)
     {
         RequireApply(appId, folder is not null, slot == "manifest");
-        string? selectedRoot = steam.EffectivePath;
+        var installation = new InstallationBinding(steam, steam.EffectivePath);
         var job = folder is not null ? jobs.CreateOnlineFixMeJob(folder, fix.FixFilename!, appId, name, finished)
             : jobs.CreateDenuvoJob(fix.Id, slot, slot == "manifest" ? fix.ManifestFilename ?? $"{appId}.zip" : fix.FixFilename ?? $"{appId}_fix.zip", appId, name, fix.Title, finished);
         void RequireSameSteam()
         {
-            if (!string.Equals(selectedRoot, steam.EffectivePath, StringComparison.OrdinalIgnoreCase))
+            if (!installation.IsCurrent)
                 throw new DownloadAbortedException(Resources.Strings.Agent_System_TargetChanged);
         }
         return job with
@@ -104,13 +104,13 @@ public class FixCoordinator(LuaToolsApiClient api, AuthService auth, SettingsSer
             DownloadAsync = async (item, progress, ct) =>
             {
                 RequireSameSteam();
-                using var selected = steam.PinSelectedInstallation();
+                using var selected = installation.Pin();
                 return await job.DownloadAsync(item, progress, ct);
             },
             InstallAsync = async (file, item, ct) =>
             {
                 RequireSameSteam();
-                using var selected = steam.PinSelectedInstallation();
+                using var selected = installation.Pin();
                 return await job.InstallAsync(file, item, ct);
             },
         };

@@ -87,6 +87,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void RestartSteam()
     {
+        try
+        {
         var result = MessageBox.Show(
             Resources.Strings.Main_RestartSteam_Ask,
             Resources.Strings.Manage_RestartSteam_Title,
@@ -100,5 +102,7 @@ public partial class MainViewModel : ObservableObject
                 Resources.Strings.Manage_RestartSteam_Title,
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+            }
+        catch (Exception ex) { AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Steam", Resources.Strings.Manage_RestartSteam_Failed, ex); MessageBox.Show(Resources.Strings.Manage_RestartSteam_Failed, Resources.Strings.Manage_RestartSteam_Title, MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 }

@@ -11,7 +11,7 @@ public sealed partial class AgentCommandService
             current_version = UpdateService.CurrentVersion.ToString(), staged_version = updates.StagedVersion?.ToString(), staged = updates.HasStagedUpdate,
             version = SystemVersion("update"), available_actions = AvailableActions.ForReasons("update", c => SystemReasons("update", c), r.Flags.ContainsKey("read-only")),
         }), ct);
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r); string version = SystemVersion("update");
             return new PreparedMutation(new(Guid.NewGuid().ToString("N"), PlanContext, version, [InstanceId], [Resources.Strings.Agent_System_UpdateImpact], false),

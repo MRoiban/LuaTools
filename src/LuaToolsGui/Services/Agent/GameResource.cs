@@ -6,7 +6,7 @@ public sealed partial class AgentCommandService
     [AgentResource("game")]
     private async Task<Envelope> GameAsync(AgentRequest r, CancellationToken ct)
     {
-        if (r.Command == "game install") return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        if (r.Command == "game install") return await MutateAsync(r, token => Snapshot(() =>
         {
             AddNoData(r); long id = AddAppId(r.Arguments.FirstOrDefault());
             var handler = new SteamInstallHandoff(steam);
@@ -55,7 +55,7 @@ public sealed partial class AgentCommandService
             return GamePage(r, Protocol.Node(top.Where(i => !libraryHardware.IsBlacklisted(i.Id)).Select(i => new { id = i.Id, name = i.Name, category = "top-sellers", image = i.LargeCapsuleImage })
                 .Concat(fresh.Where(i => !libraryHardware.IsBlacklisted(i.Id)).Select(i => new { id = i.Id, name = i.Name, category = "new-releases", image = i.LargeCapsuleImage })))!.AsArray());
         }
-        if (r.Command == "game search" && !r.Flags.ContainsKey("installed"))
+        if (r.Command == "game search" && !r.Flags.ContainsKey("added") && !r.Flags.ContainsKey("installed"))
         {
             if (libraryApi is null || libraryHardware is null) return Envelope.Fail("ACTION_UNAVAILABLE", 6, Resources.Strings.Agent_Library_Unavailable);
             string q = r.Flags.GetValueOrDefault("query")?.Trim() ?? "";
@@ -116,7 +116,7 @@ public sealed partial class AgentCommandService
         }
         return _pager.List(r.Command + string.Join(';', r.Flags.Where(f => f.Key is not ("cursor" or "limit" or "all" or "count" or "fields")).OrderBy(f => f.Key).Select(f => f.Key + "=" + f.Value)), data, r.Flags);
     }
-    private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
+    private Task<Envelope> LibraryMutationAsync(AgentRequest r, List<LibraryEntry> entries, CancellationToken ct) => MutateAsync(r, token => Snapshot(() =>
     {
         if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);
         string[] ids = LibrarySelect(r, Protocol.Node(entries.Select(e => new { id = e.AppId.ToString(), name = e.Name }))!.AsArray(), "id", ["id", "name"]);

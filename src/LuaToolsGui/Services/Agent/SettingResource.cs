@@ -11,7 +11,7 @@ public sealed partial class AgentCommandService
     {
         "setting list" => Snapshot(() => List(r, Protocol.Node(ReadSettings(settings))!.AsArray()), ct),
         "setting get" => Snapshot(() => GetSetting(r.Arguments[0]), ct),
-        _ => _mutations.ExecuteAsync(r, token => Snapshot(() => PrepareSetting(r), token), ct),
+        _ => MutateAsync(r, token => Snapshot(() => PrepareSetting(r), token), ct),
     };
     private PreparedMutation PrepareSetting(AgentRequest r)
     {

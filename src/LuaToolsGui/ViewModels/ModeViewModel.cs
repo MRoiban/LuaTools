@@ -84,6 +84,8 @@ public partial class ModeViewModel : ObservableObject
     [RelayCommand]
     private async Task ManageCloudRedirect()
     {
+        try
+        {
         if (IsBusy) return;
         IsBusy = true;
         IsProgressIndeterminate = true;
@@ -106,6 +108,8 @@ public partial class ModeViewModel : ObservableObject
             IsBusy = false;
             IsProgressIndeterminate = false;
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Mode_Toast_InstallFailed, Resources.Strings.Mode_Toast_InstallFailed_Body, ex); }
     }
 
     // ── CloudRedirect add-on (bottom panel; usable when either OST or BST is active) ───
@@ -172,6 +176,8 @@ public partial class ModeViewModel : ObservableObject
     [RelayCommand]
     private async Task ToggleCloudRedirect()
     {
+        try
+        {
         if (IsBusy || !CloudRedirectUnlocked) return;
         bool enabling = !CloudRedirectEnabled;
         IsBusy = true;
@@ -201,6 +207,8 @@ public partial class ModeViewModel : ObservableObject
             IsBusy = false;
             IsProgressIndeterminate = false;
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Mode_Toast_InstallFailed, Resources.Strings.Mode_Toast_InstallFailed_Body, ex); }
     }
 
     /// <summary>Cabinet's cloud-saves offer, after the user agreed: enable the add-on (first enable
@@ -216,6 +224,8 @@ public partial class ModeViewModel : ObservableObject
     [RelayCommand]
     private async Task UpdateCloudRedirect()
     {
+        try
+        {
         if (IsBusy || !CloudRedirectUnlocked) return;
         IsBusy = true;
         IsProgressIndeterminate = true;
@@ -241,6 +251,8 @@ public partial class ModeViewModel : ObservableObject
             IsBusy = false;
             IsProgressIndeterminate = false;
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Mode_Toast_InstallFailed, Resources.Strings.Mode_Toast_InstallFailed_Body, ex); }
     }
 
     /// <summary>True if a hidden mode should be shown: its reveal-file exists, or it's the active mode.</summary>
@@ -283,13 +295,19 @@ public partial class ModeViewModel : ObservableObject
 
     public async Task LoadAsync(bool forceRefresh = false)
     {
+        try
+        {
+        var installation = new InstallationBinding(_steam, _steam.EffectivePath);
         var snapshot = await _operations.ReadAsync(forceRefresh, adoptDetection: true);
+        if (!installation.MatchesSelection) return;
         SyncCards();
         foreach (var card in Cards)
             if (snapshot.States.FirstOrDefault(s => s.Mode == card.Mode) is { } state) Apply(card, state);
 
         // Bottom CloudRedirect add-on panel (locked unless Nightly BST is the active mode).
         await RefreshCloudRedirectAsync(forceRefresh, snapshot.Cloud);
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Mode_Toast_InstallFailed, Resources.Strings.Mode_Toast_InstallFailed_Body, ex); }
     }
 
     private DateTime _lastCheck;

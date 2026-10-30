@@ -9,7 +9,7 @@ public sealed partial class AgentCommandService
         if (r.Command == "history list") return Snapshot(() => r.Flags.GetValueOrDefault("kind") == "pending-added"
             ? List(r, Protocol.Node((libraryCache?.GetLoadedAppIds() ?? []).Select(id => new { id, appid = id }))!.AsArray())
             : List(r, HistoryRows(r)), ct);
-        return _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return MutateAsync(r, token => Snapshot(() =>
         {
             if (r.Flags.ContainsKey("data")) throw new MutationRejectedException("INVALID_DATA", 2);
             bool pending = r.Arguments.FirstOrDefault() == "pending-added";

@@ -20,6 +20,7 @@ public class PluginInstallerService(SteamService steam, SettingsService settings
     private const string CdpMarkerName = ".cef-enable-remote-debugging";
     private const string CdpMarkerJunctionTarget = @"C:\LuaToolsGui-CdpMarker-Target-Does-Not-Exist";
     private const string LegacyCdpMarkerTarget = @"C:\fuckass\folder\that\shall\never\exist\die\millennium";
+    internal InstallationBinding CaptureInstallation() => new(steam, steam.EffectivePath);
     private string? SteamDir => steam.EffectivePath;
     public Func<Task>? ActivatePlugin { get; set; }
     public bool MillenniumPresent => SteamDir is { } s && File.Exists(Path.Combine(s, "millennium", "lib", "millennium.dll"));

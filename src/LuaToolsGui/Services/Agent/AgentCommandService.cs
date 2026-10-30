@@ -35,11 +35,49 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (_shutdownReplies.TryRemove(request.RequestId, out var action))
             Application.Current?.Dispatcher.BeginInvoke(action);
     }
-    public string SteamIdentity => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes((steam.EffectivePath ?? "").ToUpperInvariant())));
+    public string SteamIdentity => MutationCoordinator.Hash((steam.SelectedPath ?? "").ToUpperInvariant());
+    private readonly AsyncLocal<InstallationBinding?> _admission = new();
+    private readonly AsyncLocal<string?> _admittedContext = new();
+    private InstallationBinding Admitted => _admission.Value ?? throw new InvalidOperationException("Missing request admission");
+    private void RequireAdmission(InstallationBinding installation, AgentRequest request)
+    {
+        if (!installation.MatchesSelection || request.ExpectedSteam is { } expected && expected != installation.Identity)
+            throw new MutationRejectedException("CONTEXT_CHANGED", 6);
+    }
+    // Capture at ExecuteAsync, before any handler or semaphore await. Carry that exact root through
+    // preparation, dispatcher snapshots and commits; never authorize a later UI selection.
+    private Task<Envelope> MutateAsync(AgentRequest request, Func<CancellationToken, Task<PreparedMutation>> prepare, CancellationToken ct)
+    {
+        var installation = Admitted;
+        string context = _admittedContext.Value!;
+        void Revalidate() { RequireAdmission(installation, request); if (PlanContext != context) throw new MutationRejectedException("CONTEXT_CHANGED", 6); }
+        return _mutations.ExecuteAsync(request, async token =>
+        {
+            Revalidate();
+            using var pinned = installation.Pin();
+            var prepared = await prepare(token);
+            Revalidate();
+            return prepared with { Commit = async commit =>
+            {
+                Revalidate();
+                using var selected = installation.Pin();
+                return await prepared.Commit(commit);
+            }};
+        }, ct);
+    }
     private Task<T> Snapshot<T>(Func<T> read, CancellationToken ct)
     {
+        var installation = _admission.Value;
+        string? context = _admittedContext.Value;
+        T ReadPinned()
+        {
+            var previous = _admission.Value; string? priorContext = _admittedContext.Value;
+            _admission.Value = installation; _admittedContext.Value = context;
+            try { using var pinned = installation?.Pin(); return read(); }
+            finally { _admission.Value = previous; _admittedContext.Value = priorContext; }
+        }
         var dispatcher = queue.CommandDispatcher;
-        return dispatcher is null || dispatcher.CheckAccess() ? Task.FromResult(read()) : dispatcher.InvokeAsync(read, DispatcherPriority.Background, ct).Task;
+        return dispatcher is null || dispatcher.CheckAccess() ? Task.FromResult(ReadPinned()) : dispatcher.InvokeAsync(ReadPinned, DispatcherPriority.Background, ct).Task;
     }
     public async Task<Envelope> ExecuteAsync(AgentRequest request, CancellationToken ct)
     {
@@ -60,6 +98,12 @@ public sealed partial class AgentCommandService(SettingsService settings, SteamS
         if (request.Flags.ContainsKey("dry-run") && !parsed.Command.DryRun) return Envelope.Fail("DRY_RUN_UNSUPPORTED", 5, Resources.Strings.Agent_MutationRejected);
         if (request.Command is "activity-log watch" or "download watch") return Envelope.Success(new { watching = true });
         var handler = ResourceRegistry.Find(this, parsed.Command.Resource);
+        var installation = new InstallationBinding(steam, steam.SelectedPath);
+        if (request.ExpectedSteam is { } expected && (installation.Identity != expected || !installation.IsCurrent))
+            return Envelope.Fail("CONTEXT_CHANGED", 6, Resources.Strings.Agent_ContextChanged);
+        _admission.Value = installation;
+        _admittedContext.Value = PlanContext;
+        using var pinned = installation.Pin();
         Envelope result = handler is null ? Envelope.Fail("NOT_IMPLEMENTED", 5, Resources.Strings.Agent_NotImplemented)
             : await handler(request, ct);
         return Results.Project(result, request.Flags.GetValueOrDefault("fields"));

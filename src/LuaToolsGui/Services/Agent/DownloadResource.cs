@@ -9,7 +9,7 @@ public sealed partial class AgentCommandService
     private async Task<Envelope> DownloadAsync(AgentRequest r, CancellationToken ct)
     {
         if (r.Command is "download list" or "queue list") return List(r, await DownloadSnapshotAsync(ct));
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             System.Text.Json.Nodes.JsonObject data;
             string? move, dataId;

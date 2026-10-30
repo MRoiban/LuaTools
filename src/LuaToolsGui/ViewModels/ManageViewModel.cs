@@ -510,6 +510,7 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
             await _appList.EnsureLoadedAsync();
 
             var entries = await LibraryCoordinator.ScanAsync(dir, _appList, _appInfo);
+            if (!string.Equals(steamPath, _steam.EffectivePath, StringComparison.OrdinalIgnoreCase)) return;
             var tiles = entries.Select(t => new LuaTileViewModel(t.AppId, t.FilePath, t.AddedAt, t.Name, t.NameIsPlaceholder)).ToList();
 
             foreach (var t in tiles) t.SelectionChanged = RecountSelection;
@@ -521,6 +522,7 @@ public partial class ManageViewModel : PagedListViewModel<LuaTileViewModel>
 
             StartCoverPrefetch(_all);
         }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Agent_Library_Unavailable, ex); }
         finally
         {
             IsLoading = false;

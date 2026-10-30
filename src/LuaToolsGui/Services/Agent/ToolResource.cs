@@ -3,7 +3,7 @@ namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService
 {
     [AgentResource("tool")]
-    private Task<Envelope> ToolAsync(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, token => Snapshot(() =>
+    private Task<Envelope> ToolAsync(AgentRequest r, CancellationToken ct) => MutateAsync(r, token => Snapshot(() =>
     {
         ValidateScalarInput(r);
         if (r.Arguments is not ["steamautocrack"]) throw new MutationRejectedException("INVALID_USAGE", 2);

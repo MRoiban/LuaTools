@@ -20,7 +20,7 @@ public sealed partial class AgentCommandService
         if (r.Command is "job get" or "job wait") return await Snapshot(() => Jobs.Get(r.Arguments[0]) is { } value
             ? Envelope.Success(value) : Envelope.Fail("JOB_EXPIRED", 3, Resources.Strings.Agent_JobMissing), ct);
         if (r.Command == "job confirm" && acquisition?.Local.Operations.FirstOrDefault(b => b.Id == r.Arguments.FirstOrDefault()) is { } batch)
-            return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+            return await MutateAsync(r, token => Snapshot(() =>
             {
                 BulkSelection.Data(r);
                 string version = AgentJobRegistry.LocalVersion(batch), context = PlanContext;
@@ -31,7 +31,7 @@ public sealed partial class AgentCommandService
                     return Envelope.Success(new { id = batch.Id, decision = r.Flags.GetValueOrDefault("decision") });
                 }, commit));
             }, token), ct);
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             string[] targets;
             try { targets = BulkSelection.Select(r, Protocol.Node(Jobs.List())!.AsArray(), "id", ["id", "state", "kind"]); }

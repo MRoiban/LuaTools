@@ -102,6 +102,8 @@ public partial class HomeViewModel : ObservableObject
     [RelayCommand]
     private async Task InstallPlugin()
     {
+        try
+        {
         if (IsInstallingPlugin) return;
         if (!PluginCoordinator.ConfirmSteamRestart()) return;
 
@@ -120,6 +122,8 @@ public partial class HomeViewModel : ObservableObject
             IsInstallingPlugin = false;
             await RefreshPluginStatusAsync();
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Plugin_Toast_Title, Resources.Strings.Plugin_Status_OfflineCheck, ex); }
     }
 
     /// <summary>Called when the page is shown. Refresh everything.</summary>
@@ -167,6 +171,8 @@ public partial class HomeViewModel : ObservableObject
     /// so App can call it from LuaInstaller.Installed to refresh live after any add.</summary>
     public async Task RefreshLibraryAsync()
     {
+        try
+        {
         string? dir = _steam.StPlugInDir;
         if (dir is null || !Directory.Exists(dir))
         {
@@ -176,6 +182,7 @@ public partial class HomeViewModel : ObservableObject
         }
 
         var entries = await LibraryCoordinator.ScanAsync(dir, _appList, _appInfo, home: true);
+        if (!string.Equals(dir, _steam.StPlugInDir, StringComparison.OrdinalIgnoreCase)) return;
         var tiles = entries.Select(t => new LuaTileViewModel(t.AppId, t.FilePath, t.AddedAt, t.Name, t.NameIsPlaceholder)).ToList();
 
         GameCount = tiles.Count;
@@ -183,6 +190,8 @@ public partial class HomeViewModel : ObservableObject
         var recent = tiles.Take(4).ToList();
         Recent = new ObservableCollection<LuaTileViewModel>(recent);
         foreach (var t in recent) _ = t.EnsureResolvedAsync(_appInfo, _covers); // warm covers
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Agent_Library_Unavailable, ex); }
     }
 
     private void RefreshAccount()

@@ -406,6 +406,44 @@ Test("embedded agent guide and recipes", () =>
     foreach (string line in guide.Split('\n').Where(l => l.StartsWith("luatools ")))
         Assert(CommandParser.Parse(line.TrimEnd().Split(' ').Skip(1).ToArray()).Problems.Length == 0, "Invalid recipe: " + line);
 });
+Test("added search alias and standard list flags", () =>
+{
+    foreach (string flag in new[] { "added", "installed" })
+        Assert(CommandParser.Parse(["game", "search", "--" + flag, "--query", "Portal", "--limit", "1", "--cursor", "example"]).Problems.Length == 0, flag);
+    Assert(CommandParser.Parse(["game", "search", "--query", "Portal", "--all", "--count"]).Problems.Length == 0, "search lists");
+});
+Test("GUI acquisition rejection boundaries", () =>
+{
+    // Conservative source guard supplements real command-path Windows tests. Every direct call to
+    // a coordinator declaring MutationRejectedException needs a local catch; callbacks have their
+    // own queue boundary. Discover types and injected fields so a newly migrated VM cannot slip in.
+    string services = Path.Combine(root, "src/LuaToolsGui/Services");
+    var types = Directory.GetFiles(services, "*Coordinator.cs").Where(p => File.ReadAllText(p).Contains("throw new MutationRejectedException"))
+        .Select(Path.GetFileNameWithoutExtension).ToArray();
+    foreach (string file in Directory.GetFiles(Path.Combine(root, "src/LuaToolsGui"), "*.cs", SearchOption.AllDirectories)
+        .Where(p => p.Contains(Path.DirectorySeparatorChar + "ViewModels" + Path.DirectorySeparatorChar) || p.EndsWith(".xaml.cs")))
+    {
+        string code = File.ReadAllText(file);
+        foreach (string? type in types)
+        {
+            var names = System.Text.RegularExpressions.Regex.Matches(code, @"\b" + type + @"\??\s+(\w+)").Select(m => m.Groups[1].Value).Append(type!);
+            foreach (string name in names)
+            foreach (System.Text.RegularExpressions.Match call in System.Text.RegularExpressions.Regex.Matches(code, @"\b" + name + @"\s*\.\s*\w+\s*\("))
+            {
+                bool handled = false;
+                foreach (System.Text.RegularExpressions.Match attempt in System.Text.RegularExpressions.Regex.Matches(code[..call.Index], @"\btry\s*\{"))
+                {
+                    int open = code.IndexOf('{', attempt.Index), depth = 1, end = open + 1;
+                    while (end < code.Length && depth > 0) { if (code[end] == '{') depth++; if (code[end] == '}') depth--; end++; }
+                    if (end <= call.Index) continue;
+                    string tail = code[end..];
+                    handled |= System.Text.RegularExpressions.Regex.IsMatch(tail, @"^\s*catch\s*\(\s*(Exception|MutationRejectedException)\b");
+                }
+                Assert(handled, $"Unhandled coordinator call in {file}: {call.Value}");
+            }
+        }
+    }
+});
 foreach (var command in Catalogue.Commands)
 await AsyncTest("fake host contract " + command.Key, async () =>
 {

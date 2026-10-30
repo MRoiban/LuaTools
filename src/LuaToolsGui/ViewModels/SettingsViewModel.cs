@@ -114,9 +114,9 @@ public partial class SettingsViewModel : ObservableObject
         if (_cloud is null || !CabinetEnabled || CloudBusy) return;
         CloudBusy = true; CloudError = null; bool connected = false;
         try { await AccountCabinetOperations.ConnectAsync(_cabinet, _cloud, CloudPairingCode, CloudServer); CloudPairingCode = ""; connected = true; }
-        catch (CabinetConnectException ex) { CloudError = ex.Message; }
-        catch (FormatException) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; }
-        catch { CloudError = Resources.Strings.CabinetCloud_ConnectError; }
+        catch (CabinetConnectException ex) { CloudError = ex.Message; AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", CloudError, ex); }
+        catch (FormatException ex) { CloudError = Resources.Strings.CabinetCloud_InvalidLink; AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", CloudError, ex); }
+        catch (Exception ex) { CloudError = Resources.Strings.CabinetCloud_ConnectError; AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", CloudError, ex); }
         finally { CloudBusy = false; RefreshCloud(); }
         if (connected && RequestOfferCloudSaves is { } offer)
         {
@@ -449,6 +449,7 @@ public partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             CodeError = ex.Message;
+            AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Account", CodeError, ex);
         }
         finally
         {

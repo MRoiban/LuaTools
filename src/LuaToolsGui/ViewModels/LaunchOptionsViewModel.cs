@@ -283,6 +283,8 @@ public partial class LaunchOptionsViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
+        try
+        {
         if (_state is null) return;
 
         var desired = Entries.Select(e => e.ToOption()).ToList();
@@ -302,12 +304,16 @@ public partial class LaunchOptionsViewModel : ObservableObject
             _toast.Show(Resources.Strings.Launch_Title, Resources.Strings.Launch_Staged);
 
         CloseWith?.Invoke(true);
+            }
+        catch (Exception ex) { Error = Resources.Strings.Agent_Depot_Unavailable; GuiOperationFeedback.Report(_toast, Resources.Strings.Launch_Title, Resources.Strings.Agent_Depot_Unavailable, ex); }
     }
 
     /// <summary>Put back the snapshot taken before this game was first edited.</summary>
     [RelayCommand]
     private void Restore()
     {
+        try
+        {
         if (_launch.StageRestore((int)AppId) is not { } original)
         {
             _toast.Show(Resources.Strings.Launch_Title, Resources.Strings.Launch_NothingToRestore, error: true);
@@ -321,6 +327,8 @@ public partial class LaunchOptionsViewModel : ObservableObject
         if (!restored.Ok) return;
         IsModded = false;
         CloseWith?.Invoke(true);
+            }
+        catch (Exception ex) { Error = Resources.Strings.Agent_Depot_Unavailable; GuiOperationFeedback.Report(_toast, Resources.Strings.Launch_Title, Resources.Strings.Agent_Depot_Unavailable, ex); }
     }
 
     [RelayCommand]

@@ -574,8 +574,7 @@
       9
     ],
     "preconditions": [
-      "Disabled IsBusy; pending card required; Steam valid/writable; upstream release/manifest and wanted files required; locked/invalid/hash failures surfaced. UpToDate active=>Reinstall; update active=>Update; other active=>Install; inactive=>Switch; Active Custom action hidden; otherwise idle and confirmed",
-      "OST: IsExecutableWorkflowEnabled(\"OpenSteamTools\"); BST: IsExecutableWorkflowEnabled(\"BetterSteamTools\"). DependencyQuarantine + UserAuthorizedDependencies gate staged/installed bytes; explicit user action. VM stops Steam BEFORE service checks opt-in; NO executable opt-in; Custom branch returns before Steam validity check"
+      "OST requires IsExecutableWorkflowEnabled(\"OpenSteamTools\"); BST requires IsExecutableWorkflowEnabled(\"BetterSteamTools\"). Live opt-in is checked before stopping Steam. Managed bytes require DependencyQuarantine and UserAuthorizedDependencies. Custom requires no executable opt-in and writes no Steam payload; the confirmed workflow still stops and starts selected Steam. A valid selected Steam installation is required."
     ],
     "output_fields": [
       "plan",

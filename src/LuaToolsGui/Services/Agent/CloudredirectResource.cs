@@ -15,7 +15,7 @@ public sealed partial class AgentCommandService
             catch { cabinetState = new { configured = false, error = "CONFIG_ERROR" }; }
             return await Snapshot(() => Envelope.Success(new { status, cabinet = cabinetState, cabinet_connected = cabinet?.Status.Cloud.Connected == true, connected_server_host = cabinet?.Status.Cloud.ServerHost, unlocked = modes.CloudUnlocked, version = SystemVersion("cloudredirect"), available_actions = AvailableActions.ForReasons("cloudredirect", c => SystemReasons("cloudredirect", c), r.Flags.ContainsKey("read-only")) }), ct);
         }
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r, "enabled", "refresh"); var data = BulkSelection.Data(r, "enabled", "refresh");
             bool? enabled = r.Flags.GetValueOrDefault("enabled") is { } value ? bool.Parse(value) : data["enabled"]?.GetValue<bool>();

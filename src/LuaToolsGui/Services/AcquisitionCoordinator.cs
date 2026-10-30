@@ -106,9 +106,15 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
     public DownloadItem Enqueue(long appId, string? name, SourceRow source, string? baseAppId = null,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
         Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null)
+        => EnqueueCaptured(installer?.CaptureInstallation(), appId, name, source, baseAppId, confirm, onFinished, onReveal, installVersion);
+
+    internal DownloadItem EnqueueCaptured(InstallationBinding? installation, long appId, string? name, SourceRow source, string? baseAppId = null,
+        Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool reuseActive = false)
     {
+        if (installation is { IsCurrent: false }) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
+        using var pinned = installation?.Pin();
         if (!source.CanDownload) throw new MutationRejectedException(source.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", 6);
-        var installation = installer?.CaptureInstallation();
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
             : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal);
         string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
@@ -151,7 +157,7 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             return await original(item, progress, ct);
         }};
         var active = queue.Items.FirstOrDefault(i => i.IsActive && i.Job.DedupeKey == job.DedupeKey);
-        if (active is not null && active.Job.SubTitle != job.SubTitle) throw new MutationRejectedException("JOB_ACTIVE", 6);
+        if (!reuseActive && active is not null && active.Job.SubTitle != job.SubTitle) throw new MutationRejectedException("JOB_ACTIVE", 6);
         return queue.Enqueue(job);
     }
 }

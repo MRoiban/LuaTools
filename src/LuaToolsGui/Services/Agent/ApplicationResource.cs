@@ -10,7 +10,7 @@ public sealed partial class AgentCommandService
         if (r.Flags.ContainsKey("drain") && !r.Flags.ContainsKey("dry-run") && r.Flags.ContainsKey("yes"))
             while (await Snapshot(() => queue.ActiveCount + Jobs.ActiveOperations > 0 || Cabinet.CabinetService.HasActiveHelpers, ct))
                 await Task.Delay(100, ct);
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r);
             if (r.Command == "application start") return new PreparedMutation(

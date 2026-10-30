@@ -14,7 +14,7 @@ public sealed partial class AgentCommandService
             () => AccountCabinetOperations.SyncAsync(cabinet!, _hostLifetime), ct);
     }
     private Task<Envelope> CabinetMutationAsync(AgentRequest r, Func<string[]> impacts, Func<Task> run, CancellationToken ct) =>
-        _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        MutateAsync(r, token => Snapshot(() =>
         {
             if (CabinetGate() is { } gate) throw new MutationRejectedException(gate, 5);
             string context = PlanContext, version = CabinetVersion;

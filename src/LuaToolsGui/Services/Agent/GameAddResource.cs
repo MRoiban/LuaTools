@@ -28,7 +28,7 @@ public sealed partial class AgentCommandService
     }
     private static Envelope AddFailure(string code, int exit) => Envelope.Fail(code, exit, Resources.Strings.Agent_Add_Rejected);
 
-    private Task<Envelope> AddRemoteAsync(AgentRequest r, bool dlc, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    private Task<Envelope> AddRemoteAsync(AgentRequest r, bool dlc, CancellationToken ct) => MutateAsync(r, async token =>
     {
         AddNoData(r);
         if (r.Arguments.Length != 1) throw new MutationRejectedException("INVALID_APPID", 2);

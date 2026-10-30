@@ -14,13 +14,18 @@ public sealed partial class AgentCommandService
         {
             long editApp;
             try { editApp = DepotAppId(r); } catch (MutationRejectedException ex) { return Envelope.Fail(ex.Code, ex.ExitCode, Resources.Strings.Agent_Depot_Unavailable); }
+            string admittedVersion = VaultVersion(editApp);
             var metadata = depotInfo is null ? null : await depotInfo.GetAsync(editApp, ct);
             if (metadata is null) return Envelope.Fail("METADATA_UNAVAILABLE", 7, Resources.Strings.Agent_Depot_Unavailable);
-            return await _mutations.ExecuteAsync(r, token => Snapshot(() => PrepareDepotEdit(r, metadata), token), ct);
+            return await MutateAsync(r, token => Snapshot(() =>
+            {
+                if (VaultVersion(editApp) != admittedVersion) throw new MutationRejectedException("PLAN_STALE", 6);
+                return PrepareDepotEdit(r, metadata);
+            }, token), ct);
         }
         if (r.Command is "depot list" or "depot search" or "depot get") return await ReadDepots(r, ct);
         if (r.Command != "depot reconcile") return Envelope.Fail("REFACTOR_REQUIRED", 5, Resources.Strings.Agent_Depot_Unavailable);
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             long id = DepotAppId(r);
             ValidateScalarInput(r);
@@ -140,11 +145,13 @@ public sealed partial class AgentCommandService
         if (depotTool is null || depotInfo is null || factory is null) return Envelope.Fail("SERVICE_UNAVAILABLE", 7, Resources.Strings.Agent_Depot_Unavailable);
         var planning = r.Command == "depot plan" ? r with { Flags = r.Flags.Where(f => f.Key != "read-only").ToDictionary(f => f.Key, f => f.Value) } : r;
         if (r.Command == "depot plan") planning.Flags["dry-run"] = null;
-        return await _mutations.ExecuteAsync(planning, async token =>
+        return await MutateAsync(planning, async token =>
         {
             ValidateScalarInput(r);
             long id = DepotAppId(r);
             if (r.Command == "depot download") RequireGate("DepotDownloader");
+            string Version() => MutationCoordinator.Hash(VaultVersion(id) + string.Join(',', depotTool.ResolveKeys(id).OrderBy(k => k.Key).Select(k => k.Key + ":" + MutationCoordinator.Hash(k.Value))));
+            string version = Version(), context = PlanContext;
             var info = await depotInfo.GetAsync(id, token) ?? throw new MutationRejectedException("METADATA_UNAVAILABLE", 7);
             var rows = DepotProjection.BuildRows(info, LuaFileParser.ParseText(vault!.ReadLiveText(id), id), appid => appList?.GetName(appid)).InLua;
             var picks = await Task.Run(() => DepotDownloadPlanning.Build(rows, depotTool, id, r.Flags.GetValueOrDefault("language") ?? SteamService.SteamLanguage, r.Flags.GetValueOrDefault("os") ?? "windows"), token);
@@ -157,15 +164,14 @@ public sealed partial class AgentCommandService
             if (output is not null) output = DepotDownloadPlanning.ValidateOutput(output, steam.EffectivePath);
             if (r.Command == "depot download" && output is null) throw new MutationRejectedException("OUTPUT_REQUIRED", 2);
             var selections = selected.Select(p => new DepotSelection(p.DepotId, p.ManifestId, p.ManifestPath, p.Size) { FromAppId = p.FromAppId }).ToArray();
-            string version = MutationCoordinator.Hash(VaultVersion(id) + string.Join(',', depotTool.ResolveKeys(id).OrderBy(k => k.Key).Select(k => k.Key + ":" + MutationCoordinator.Hash(k.Value))));
-            string context = await Snapshot(() => PlanContext, token);
+            if (Version() != version) throw new MutationRejectedException("PLAN_STALE", 6);
             long size = selected.Sum(p => p.Size);
             var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, selected.Select(p => id + ":live:" + p.DepotId + ":" + p.ManifestId).ToArray(),
                 [Resources.Strings.Agent_Finish_DepotImpact, System.Text.Json.JsonSerializer.Serialize(new { output, estimated_bytes = size, disabled_reasons = settings.DepotDownloaderEnabled ? Array.Empty<string>() : new[] { "WORKFLOW_DISABLED" }, unavailable = picks.Where(p => !p.CanDownload).Select(p => new { id = p.DepotId, reason = p.BlockReason }), depots = selected.Select(p => new { id = p.DepotId, manifest_id = p.ManifestId, size = p.Size, needs_fetch = p.NeedsFetch }) })], true);
             return new PreparedMutation(plan, commit => Snapshot(() =>
             {
                 if (r.Command == "depot plan") return Envelope.Success(new { plan });
-                if (PlanContext != context || MutationCoordinator.Hash(VaultVersion(id) + string.Join(',', depotTool.ResolveKeys(id).OrderBy(k => k.Key).Select(k => k.Key + ":" + MutationCoordinator.Hash(k.Value)))) != version) throw new MutationRejectedException("PLAN_STALE", 6);
+                if (PlanContext != context || Version() != version) throw new MutationRejectedException("PLAN_STALE", 6);
                 RequireGate("DepotDownloader");
                 DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
                 if (size > 0 && DepotDownloaderService.FreeSpaceFor(output!) is { } free && free < size) throw new MutationRejectedException("NO_SPACE", 6);

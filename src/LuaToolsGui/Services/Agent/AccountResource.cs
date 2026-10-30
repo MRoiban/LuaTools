@@ -8,7 +8,7 @@ public sealed partial class AgentCommandService
     private Task<Envelope> AccountAsync(AgentRequest r, CancellationToken ct)
     {
         if (r.Command == "account get") return Snapshot(Whoami, ct);
-        return _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return MutateAsync(r, token => Snapshot(() =>
         {
             if (r.Flags.ContainsKey("code-stdin") && !AccountCabinetOperations.ValidCode(r.Secret ?? "")) throw new MutationRejectedException("INVALID_SECRET", 2);
             string context = PlanContext;

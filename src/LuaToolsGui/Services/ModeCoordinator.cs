@@ -12,12 +12,14 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
     public void RequireInstall(UnlockerMode mode) => unlocker.RequireInstallAllowed(mode);
     public async Task<(ModeInstallResult Result, bool Started)> InstallAsync(UnlockerMode mode, IProgress<double?>? progress = null, CancellationToken ct = default, Action? revalidate = null)
     {
+        var installation = new InstallationBinding(steam, steam.EffectivePath);
         await _write.WaitAsync(ct);
         try
         {
             // A denied or revoked workflow must never close Steam.
             revalidate?.Invoke();
-            using var selected = steam.PinSelectedInstallation();
+            if (!installation.IsCurrent) throw new InvalidOperationException(Resources.Strings.Agent_System_TargetChanged);
+            using var selected = installation.Pin();
             RequireInstall(mode);
             ct.ThrowIfCancellationRequested();
             if (steam.IsSelectedSteamRunning()) await Task.Run(steam.StopSteam, ct);
@@ -30,6 +32,7 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
     }
     public async Task<(UnlockerMode? Detected, ModeState[] States, CloudRedirectAddonState Cloud)> ReadAsync(bool refresh = false, bool adoptDetection = false, CancellationToken ct = default)
     {
+        using var selected = steam.PinSelectedInstallation();
         bool force = refresh && DateTimeOffset.UtcNow - _lastRefresh >= TimeSpan.FromSeconds(30);
         if (force) _lastRefresh = DateTimeOffset.UtcNow;
         var detected = unlocker.SelectedMode is null ? await unlocker.DetectActiveModeAsync(ct, adoptDetection) : null;
@@ -45,11 +48,13 @@ public class ModeCoordinator(UnlockerService unlocker, SteamService steam, Cloud
         unlocker.GetCloudRedirectStateAsync(CloudUnlocked, refresh, ct);
     public virtual async Task<ModeInstallResult> UpdateCloudAsync(bool? enabled, bool refresh, IProgress<double?>? progress = null, CancellationToken ct = default, Action? revalidate = null)
     {
+        var installation = new InstallationBinding(steam, steam.EffectivePath);
         await _write.WaitAsync(ct);
         try
         {
             revalidate?.Invoke();
-            using var selected = steam.PinSelectedInstallation();
+            if (!installation.IsCurrent) throw new InvalidOperationException(Resources.Strings.Agent_System_TargetChanged);
+            using var selected = installation.Pin();
             if (!CloudUnlocked) return ModeInstallResult.Fail(Resources.Strings.Mode_CloudRedirect_Locked);
             var result = refresh ? await unlocker.UpdateCloudRedirectAsync(progress, ct)
                 : enabled == true ? await unlocker.EnableCloudRedirectAsync(progress, ct) : unlocker.DisableCloudRedirect();

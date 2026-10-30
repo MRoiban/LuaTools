@@ -8,6 +8,8 @@ using CommunityToolkit.Mvvm.Input;
 using LuaToolsGui.Models;
 using LuaToolsGui.Services;
 using LuaToolsGui.Services.Downloads;
+using LuaToolsGui.Services.Agent;
+using Microsoft.Extensions.Logging;
 
 namespace LuaToolsGui.ViewModels;
 
@@ -41,6 +43,13 @@ public partial class SourceRowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanDownload))]
     private DownloadItem? _queueItem;
+
+    partial void OnQueueItemChanged(DownloadItem? oldValue, DownloadItem? newValue)
+    {
+        if (oldValue is not null) oldValue.PropertyChanged -= OnQueueChanged;
+        if (newValue is not null) newValue.PropertyChanged += OnQueueChanged;
+    }
+    private void OnQueueChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => OnPropertyChanged(nameof(CanDownload));
 
     // Guard against re-queuing from a double-click while the item is still live. The queue's DedupeKey
     // would collapse it anyway; this just keeps the button from looking clickable.
@@ -516,20 +525,25 @@ public partial class DownloadViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanFetch))]
     private async Task FetchAsync()
     {
-        if (Details is null) return;
+        if (Details is not { } details) return;
+        bool fastFetch = FastFetch;
+        var installation = _installer.CaptureInstallation();
         // Signed out, DLC info comes from the base game's SteamML archive instead of lua.tools.
         ResetResults();
         IsChecking = true;
         try
         {
-            if (Details.IsDlc)
+            if (details.IsDlc)
             {
-                if (Details.BaseAppId is null)
+                if (details.BaseAppId is null)
                 {
                     Error = Resources.Strings.Add_Err_BaseGame;
                     return;
                 }
-                DlcInfo = await _api.GetDlcInfoAsync(Details.AppId.ToString(), Details.BaseAppId);
+                var info = await _api.GetDlcInfoAsync(details.AppId.ToString(), details.BaseAppId);
+                if (!ReferenceEquals(Details, details)) return;
+                if (!installation.IsCurrent) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
+                DlcInfo = info;
                 DlcDepots.Clear();
                 // Included depots first, then missing: mirrors the website ordering
                 foreach (var d in DlcInfo?.Depots.OrderByDescending(d => d.Included) ?? Enumerable.Empty<DlcDepot>())
@@ -537,12 +551,14 @@ public partial class DownloadViewModel : ObservableObject
             }
             else
             {
-                var checkedSources = await _acquisition.CheckAsync(Details.AppId, FastFetch);
+                var checkedSources = await _acquisition.CheckAsync(details.AppId, fastFetch);
+                if (!ReferenceEquals(Details, details)) return;
+                if (!installation.IsCurrent) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
                 foreach (var row in checkedSources.Sources)
                     Sources.Add(new SourceRowViewModel(this, row.Name, row.Status)
                     { IsLocked = row.Locked, StatsText = row.Stats, IsSupporter = row.IsSupporter });
 
-                if (FastFetch)
+                if (fastFetch)
                 {
                     var best = Sources.FirstOrDefault(s => s.CanDownload);
                     if (best is null)
@@ -560,14 +576,7 @@ public partial class DownloadViewModel : ObservableObject
                 }
             }
         }
-        catch (ApiException ex)
-        {
-            Error = ex.Message;
-        }
-        catch (Exception)
-        {
-            Error = Resources.Strings.Add_Err_Generic;
-        }
+        catch (Exception ex) { ReportAcquisitionError(ex); }
         finally
         {
             IsChecking = false;
@@ -577,11 +586,16 @@ public partial class DownloadViewModel : ObservableObject
     private Task ApplyHubcapStateAsync() => RefreshStandardUsageAsync();
     public async Task RefreshStandardUsageAsync()
     {
-        var rows = Sources.Select(s => new PluginAddService.SourceRow { Name = s.Name, NeedsKey = s.NeedsKey, Status = s.Status }).ToList();
+        try
+        {
+        var targets = Sources.ToArray();
+        var rows = targets.Select(s => new PluginAddService.SourceRow { Name = s.Name, NeedsKey = s.NeedsKey, Status = s.Status }).ToList();
         await _acquisition.RefreshUsageAsync(rows);
         foreach (var row in rows)
-            if (Sources.FirstOrDefault(s => s.Name == row.Name) is { } target)
+            if (targets.FirstOrDefault(s => s.Name == row.Name) is { } target)
             { target.IsLocked = row.Locked; target.StatsText = row.Stats; target.IsSupporter = row.IsSupporter; }
+        }
+        catch (Exception ex) { ReportAcquisitionError(ex); }
     }
 
     // ── Downloads ───────────────────────────────────────────────────
@@ -598,8 +612,13 @@ public partial class DownloadViewModel : ObservableObject
     /// </remarks>
     public async Task<DownloadItem?> DownloadFromSourceAsync(SourceRowViewModel source)
     {
-        if (Details is null) return null;
-
+        if (Details is not { } details) return null;
+        long appId = details.AppId;
+        string gameName = details.Name;
+        bool needsKey = source.NeedsKey;
+        var installation = _installer.CaptureInstallation();
+        try
+        {
         // Hubcap downloads use the user's OWN key and never touch lua.tools, so a guest with a key
         // configured can download without signing in. SteamML is public; lua.tools sources need an account.
         bool hubcapWithKey = source.NeedsKey && !string.IsNullOrEmpty(_settings.HubcapApiKey);
@@ -611,39 +630,57 @@ public partial class DownloadViewModel : ObservableObject
 
         // Captured now, not read from Details later: once the download is backgrounded the user can load
         // a different game before the confirmation appears, and the dialog must still name THIS one.
-        long appId = Details.AppId;
-        string gameName = Details.Name;
-        bool needsKey = source.NeedsKey;
-
+        if (FindActive(appId, installation) is { } active) { Attach(active, source); return active; }
         var checkedSources = await _acquisition.CheckAsync(appId);
         var selected = checkedSources.Sources.FirstOrDefault(r => r.Name == source.Name);
         if (selected is null || !selected.CanDownload) { Error = Resources.Strings.Agent_Add_GateChanged; return null; }
-        var queued = _acquisition.Enqueue(appId, gameName, selected,
+        var queued = _acquisition.EnqueueCaptured(installation, appId, gameName, selected,
             confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
             onFinished: (item, result) => OnManifestFinished(item, result, needsKey),
-            onReveal: () => NavigateToGame?.Invoke(appId));
-        source.QueueItem = queued;
-        _lastEnqueued = queued;
+            onReveal: () => NavigateToGame?.Invoke(appId), reuseActive: true);
+        Attach(queued, source);
         return queued;
+        }
+        catch (Exception ex) { ReportAcquisitionError(ex); return null; }
+    }
+
+    private DownloadItem? FindActive(long appId, InstallationBinding installation) => _queue.Items.FirstOrDefault(i =>
+        i.IsActive && i.AppId == appId && i.Job.DedupeKey == $"manifest:{appId}:steam:{installation.Identity}");
+    private void Attach(DownloadItem item, SourceRowViewModel source)
+    {
+        source.QueueItem = _lastEnqueued = item;
+        if (Details?.AppId == item.AppId)
+            foreach (var row in Sources) row.QueueItem = item;
+    }
+    private void ReportAcquisitionError(Exception ex)
+    {
+        Error = ex is MutationRejectedException ? Resources.Strings.Agent_Add_GateChanged
+            : ex is ApiException ? ex.Message : Resources.Strings.Add_Err_Generic;
+        AppEventLog.Shared.Write(LogLevel.Warning, "Add", Error, ex);
     }
 
     /// <summary>DLC lua: download and install silently (it's just an unlock, no confirm).</summary>
     [RelayCommand]
     private async Task GenerateDlcAsync()
     {
-        if (Details?.BaseAppId is null) return;
-
+        if (Details is not { BaseAppId: { } parent } details) return;
+        long appId = details.AppId;
+        string gameName = details.Name;
+        var installation = _installer.CaptureInstallation();
+        try
+        {
         Error = null;
         LastDownload = null;
         InstallStatus = null;
 
-        long appId = Details.AppId;
-        var rows = await _acquisition.CheckDlcSourcesAsync(appId.ToString(), Details.BaseAppId, false);
+        var rows = await _acquisition.CheckDlcSourcesAsync(appId.ToString(), parent, false);
         var selected = rows.FirstOrDefault(r => r.Name == PluginAddService.DlcSourceName && r.CanDownload);
         if (selected is null) { Error = Resources.Strings.Agent_Add_GateChanged; return; }
-        DlcQueueItem = _lastEnqueued = _acquisition.Enqueue(appId, Details.Name, selected, Details.BaseAppId,
-            confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, Details.Name, ct),
-            onFinished: (item, result) => OnManifestFinished(item, result, false), onReveal: () => NavigateToGame?.Invoke(appId));
+        DlcQueueItem = _lastEnqueued = _acquisition.EnqueueCaptured(installation, appId, gameName, selected, parent,
+            confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
+            onFinished: (item, result) => OnManifestFinished(item, result, false), onReveal: () => NavigateToGame?.Invoke(appId), reuseActive: true);
+        }
+        catch (Exception ex) { ReportAcquisitionError(ex); }
     }
 
     /// <summary>

@@ -555,8 +555,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option create 570 --file C:\\Lua\\570.lua --dry-run",
-      "luatools launch-option create 570 --file C:\\Lua\\570.lua --yes"
+      "luatools launch-option create 570 --file C:\\LaunchOptions\\new-entry.json --dry-run",
+      "luatools launch-option create 570 --file C:\\LaunchOptions\\new-entry.json --yes"
     ],
     "see_also": [
       "luatools describe launch-option",
@@ -610,7 +610,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Reorder buffered entries; Save compacts keys 0,1,2… so Steam uses list order; Required nonblank on Save; free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Used as play-menu label and list title, otherwise executable fallback. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options windows / macos / linux / blank; arbitrary free text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options default / none / option1 / option2 / vr; arbitrary text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable free branch name; suggestions blank, beta, default, development, test, legacy, steam_legacy, experimental. Blank means every branch; tooltip explains. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text App ID; no numeric validation here. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences",
+      "Reorder buffered entries; Save compacts keys 0,1,2\u2026 so Steam uses list order; Required nonblank on Save; free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Used as play-menu label and list title, otherwise executable fallback. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options windows / macos / linux / blank; arbitrary free text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable options default / none / option1 / option2 / vr; arbitrary text accepted. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Editable free branch name; suggestions blank, beta, default, development, test, legacy, steam_legacy, experimental. Blank means every branch; tooltip explains. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences; Free text App ID; no numeric validation here. Trimmed for dirty comparison/save; edits buffered, Save enables on actual field/order/list differences",
       "Persist desired list in launchmods.json (first original preserved, .bak, temp swap). OK applies to appinfo: stop selected Steam if running, best-effort 1 backup beside cache if room, temp-write/swap, restart only if previously running. Cancel at apply prompt keeps staged edit and shows Saved toast; dialog closes either way. Apply success/failure toast",
       "Plans disclose affected live/stored target; explicit consent applies to overwrite, executable enablement and process restart."
     ],
@@ -819,8 +819,8 @@
     ],
     "identity_values": [],
     "examples": [
-      "luatools launch-option update 570 --file C:\\Lua\\570.lua --dry-run",
-      "luatools launch-option update 570 --file C:\\Lua\\570.lua --yes"
+      "luatools launch-option update 570 --entry 0 --file C:\\LaunchOptions\\entry-0.json --apply true --restart-steam --dry-run",
+      "luatools launch-option update 570 --entry 0 --file C:\\LaunchOptions\\entry-0.json --apply true --restart-steam --yes"
     ],
     "see_also": [
       "luatools describe launch-option",

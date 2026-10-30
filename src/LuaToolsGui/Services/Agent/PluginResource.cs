@@ -10,7 +10,7 @@ public sealed partial class AgentCommandService
             var status = await (plugins ?? PluginCoordinator.For(plugin)).ReadAsync(r.Flags.ContainsKey("refresh"), ct);
             return await Snapshot(() => Envelope.Success(new { status, version = SystemVersion("plugin"), available_actions = AvailableActions.ForReasons("plugin", c => SystemReasons("plugin", c), r.Flags.ContainsKey("read-only")) }), ct);
         }
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r); bool install = r.Command == "plugin update";
             if (install && !r.Flags.ContainsKey("install")) throw new MutationRejectedException("INVALID_USAGE", 2);

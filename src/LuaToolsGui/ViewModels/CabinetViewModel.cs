@@ -121,7 +121,7 @@ public sealed partial class CabinetViewModel : ObservableObject, IDisposable
     {
         ManualSync = true; Error = null;
         try { await AccountCabinetOperations.SyncAsync(_service); }
-        catch (Exception) { Error = Strings.Cabinet_SyncFailed; }
+        catch (Exception ex) { Error = Strings.Cabinet_SyncFailed; AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", Error, ex); }
         finally { ManualSync = false; }
     }
     [RelayCommand]

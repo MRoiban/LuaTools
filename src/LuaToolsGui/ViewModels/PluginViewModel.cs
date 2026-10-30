@@ -80,6 +80,8 @@ public partial class PluginViewModel : ObservableObject
 
     private async Task RefreshAsync(bool force)
     {
+        try
+        {
         var st = await _operations.ReadAsync(force);
         IsInstalled = st.FrontendInstalled && st.DllInstalled;
         InstalledVersion = st.InstalledTag ?? (IsInstalled ? Resources.Strings.Plugin_Version_Unknown : "—");
@@ -99,6 +101,8 @@ public partial class PluginViewModel : ObservableObject
         StatusLine = st.Offline ? Resources.Strings.Plugin_Status_OfflineCheck
             : st.Port8080Busy ? Resources.Strings.Plugin_Status_Port8080Busy
             : null;
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Plugin_Toast_Title, Resources.Strings.Plugin_Status_OfflineCheck, ex); }
     }
 
     private bool ConfirmSteamRestart() => PluginCoordinator.ConfirmSteamRestart();
@@ -112,6 +116,8 @@ public partial class PluginViewModel : ObservableObject
     [RelayCommand]
     private async Task Install()
     {
+        try
+        {
         if (IsBusy) return;
         if (!ConfirmSteamRestart()) return;
 
@@ -130,11 +136,15 @@ public partial class PluginViewModel : ObservableObject
             IsBusy = false;
             await RefreshAsync(force: true);
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Plugin_Toast_Title, string.Format(Resources.Strings.Plugin_Toast_InstallFailed, Resources.Strings.Agent_System_Failed), ex); }
     }
 
     [RelayCommand]
     private async Task Uninstall()
     {
+        try
+        {
         if (IsBusy || !IsInstalled) return;
         if (!ConfirmSteamRestart()) return;
 
@@ -152,11 +162,15 @@ public partial class PluginViewModel : ObservableObject
             IsBusy = false;
             await RefreshAsync(force: true);
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Plugin_Toast_Title, string.Format(Resources.Strings.Plugin_Toast_InstallFailed, Resources.Strings.Agent_System_Failed), ex); }
     }
 
     [RelayCommand]
     private async Task CheckForUpdates()
     {
+        try
+        {
         if (IsBusy) return;
         IsBusy = true;
         IsProgressIndeterminate = true;
@@ -168,5 +182,7 @@ public partial class PluginViewModel : ObservableObject
                     UpdateAvailable ? Resources.Strings.Plugin_Toast_UpdateAvailable : Resources.Strings.Plugin_Toast_UpToDate);
         }
         finally { IsBusy = false; }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Plugin_Toast_Title, Resources.Strings.Plugin_Status_OfflineCheck, ex); }
     }
 }

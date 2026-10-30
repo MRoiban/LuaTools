@@ -13,7 +13,7 @@ public sealed partial class AgentCommandService
             if (r.Flags.ContainsKey("refresh") && key is not null) _agentHubcapStats = await hubcap.GetStatsAsync(key, ct);
             return Envelope.Success(new { configured = key is not null, stats = _agentHubcapStats, available_actions = AvailableActions.For("hubcap-key") });
         }
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             bool delete = r.Command == "hubcap-key delete";
             if (!delete && !HubcapService.IsValidKeyFormat(r.Secret?.Trim())) throw new MutationRejectedException("INVALID_SECRET", 2);

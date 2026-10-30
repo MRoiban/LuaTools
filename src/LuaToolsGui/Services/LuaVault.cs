@@ -492,7 +492,12 @@ public class LuaVault
     /// Store edited text as a new named preset (the editor's "Save as preset"). Goes through a temp file
     /// so it shares <see cref="Capture"/>'s hashing/dedupe/describe path instead of duplicating it.
     /// </summary>
-    public LuaVariant? SaveText(long appId, string text, string? label)
+    public LuaVariant? SaveText(long appId, string text, string? label) => StoreText(appId, text, label, completeLiveEdit: true);
+
+    /// <summary>Import bytes without changing the provenance of an unrelated live edit.</summary>
+    public LuaVariant? ImportText(long appId, string text, string? label) => StoreText(appId, text, label, completeLiveEdit: false);
+
+    private LuaVariant? StoreText(long appId, string text, string? label, bool completeLiveEdit)
     {
         string tmp = Path.Combine(Path.GetTempPath(), $"luavault_{Guid.NewGuid():N}.lua");
         try
@@ -503,7 +508,8 @@ public class LuaVault
             var variant = Capture(appId, tmp, LuaVariantKind.Preset);
             if (variant is null) return null;
 
-            SetEditBase(appId, null); // the edit now has a home of its own
+            if (completeLiveEdit && text == ReadLiveText(appId))
+                SetEditBase(appId, null); // only the corresponding live edit now has a home
             if (!string.IsNullOrWhiteSpace(label))
             {
                 Rename(appId, variant.Hash, label);

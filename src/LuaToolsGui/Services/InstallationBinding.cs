@@ -6,7 +6,8 @@ namespace LuaToolsGui.Services;
 internal sealed class InstallationBinding(SteamService steam, string? path)
 {
     public string Identity { get; } = MutationCoordinator.Hash((path ?? "").ToUpperInvariant());
-    public bool IsCurrent => path is not null && string.Equals(path, steam.SelectedPath, StringComparison.OrdinalIgnoreCase);
+    public bool MatchesSelection => string.Equals(path, steam.SelectedPath, StringComparison.OrdinalIgnoreCase);
+    public bool IsCurrent => path is not null && MatchesSelection;
     public IDisposable Pin() => steam.PinInstallation(path);
     public DownloadJob Bind(DownloadJob job) => job with
     {

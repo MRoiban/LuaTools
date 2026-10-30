@@ -19,7 +19,7 @@ public sealed partial class AgentCommandService
             }).ToArray(), ct);
             return r.Command == "mode list" ? SystemList(r, Protocol.Node(rows)!.AsArray()) : Envelope.Success(new { selected_mode = unlocker.SelectedMode?.ToString().ToLowerInvariant(), detected_mode = state.Detected?.ToString().ToLowerInvariant(), modes = rows, cloudredirect = state.Cloud, version = SystemVersion("mode"), available_actions = AvailableActions.ForReasons("mode", c => SystemReasons("mode", c), r.Flags.ContainsKey("read-only")) });
         }
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             ValidateScalarInput(r, "mode"); var data = BulkSelection.Data(r, "mode");
             string? value = r.Arguments.FirstOrDefault() ?? data["mode"]?.GetValue<string>();

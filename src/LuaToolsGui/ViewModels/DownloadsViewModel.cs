@@ -100,6 +100,8 @@ public partial class DownloadsViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task Cancel(DownloadItem item)
     {
+        try
+        {
         string? outDir = item.Job.OutputPath;
         if (item.Job.Kind is not DownloadKind.Depot
             || !DepotDownloaderService.HasDownloadedContent(outDir))
@@ -123,6 +125,8 @@ public partial class DownloadsViewModel : ObservableObject
         if (!await DownloadCancellationCoordinator.CancelAsync(_queue, item, choice == MessageBoxResult.Yes))
             _toast.Show(Resources.Strings.Depot_Cancel_Title,
                 string.Format(Resources.Strings.Depot_Cancel_DeleteFailed, outDir), error: true);
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Depot_Cancel_Title, Resources.Strings.Agent_System_Failed, ex); }
     }
 
     [RelayCommand]

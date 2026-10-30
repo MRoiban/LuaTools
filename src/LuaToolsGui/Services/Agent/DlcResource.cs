@@ -37,7 +37,7 @@ public sealed partial class AgentCommandService
                 }, ct);
             }
             if (r.Command == "dlc add" && !r.Flags.ContainsKey("batch")) return await AddRemoteAsync(r, true, ct);
-            return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+            return await MutateAsync(r, token => Snapshot(() =>
             {
                 string batchId = r.Command == "dlc cancel" ? r.Arguments[0] : r.Flags["batch"]!;
                 var batch = service.Find(batchId) ?? throw new MutationRejectedException("NOT_FOUND", 3);

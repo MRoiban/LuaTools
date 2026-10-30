@@ -7,7 +7,7 @@
       "luatools game list [--featured | --pending-added | --cabinet] [--refresh]",
       "luatools game list [--type <type>] [--genre <genre>] [--year <year>] [--price <free-or-paid>]"
     ],
-    "purpose": "List added Lua games, even when Steam-uninstalled; --featured lists remote games, --pending-added recent additions, --cabinet tracked games. Filter, sort or count.",
+    "purpose": "List added games; --featured: remote, --pending-added: recent, --cabinet: tracked. Filter, sort or count.",
     "capability_ids": [
       "C-054",
       "C-062",
@@ -260,7 +260,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
+      "Selected Steam required. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -288,11 +288,11 @@
   {
     "resource": "game",
     "verb": "get",
-    "syntax": "luatools game get <appid-or-supported-Steam-link> [--installed] [--fields <field,...>]",
+    "syntax": "luatools game get <appid-or-Steam-link> [--installed]",
     "variants": [
-      "luatools game get <appid-or-supported-Steam-link> [--installed] [--fields <field,...>]"
+      "luatools game get <appid-or-Steam-link> [--installed]"
     ],
-    "purpose": "Inspect an added game, its Steam installation, details, paths and acquisition status, or resolve a Steam link.",
+    "purpose": "Inspect a game, installation, paths and acquisition status; resolve Steam links.",
     "capability_ids": [
       "C-057",
       "C-058",
@@ -436,7 +436,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
+      "Selected Steam required. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -473,11 +473,11 @@
   {
     "resource": "game",
     "verb": "search",
-    "syntax": "luatools game search [--installed] --query <text>",
+    "syntax": "luatools game search --query <text> [--added]",
     "variants": [
-      "luatools game search [--installed] --query <text>"
+      "luatools game search --query <text> [--added]"
     ],
-    "purpose": "Search added games by name or App ID with --installed (legacy flag name); without it search the remote game catalogue, including featured lists.",
+    "purpose": "Search remote games, or added games with --added (--installed: legacy alias). Supports pagination and count.",
     "capability_ids": [
       "C-055",
       "C-056"
@@ -597,13 +597,61 @@
         "default": null,
         "allowed_values": [],
         "required": true
+      },
+      {
+        "name": "added",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "limit",
+        "type": "integer",
+        "default": 50,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "default": null,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "all",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "count",
+        "type": "bool",
+        "default": false,
+        "allowed_values": [],
+        "required": false
+      },
+      {
+        "name": "sort",
+        "type": "enum",
+        "default": "recently-added",
+        "allowed_values": [
+          "recently-added",
+          "name",
+          "release-date",
+          "metacritic",
+          "most-reviewed"
+        ],
+        "required": false
       }
     ],
     "identities": [],
     "identity_values": [],
     "examples": [
-      "luatools game search --installed --query Portal",
-      "luatools game search --installed --query 570 --json"
+      "luatools game search --added --query Portal --limit 10",
+      "luatools game search --installed --query 570 --count --json"
     ],
     "see_also": [
       "luatools describe game",
@@ -623,7 +671,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and its Lua directory must be available. Added = live Lua; installed = Steam game files."
+      "Selected Steam required. Added = live Lua; installed = Steam game files."
     ],
     "output_fields": [
       "id",
@@ -879,7 +927,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
+      "Writable selected Steam required. Plan first, then --yes; gates, versions and identity are rechecked."
     ],
     "output_fields": [
       "plan",
@@ -1115,7 +1163,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
+      "Writable selected Steam required. Plan first, then --yes; gates, versions and identity are rechecked."
     ],
     "output_fields": [
       "plan",
@@ -1351,7 +1399,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes.",
+      "Writable selected Steam required. Plan first, then --yes; gates, versions and identity are rechecked.",
       "Steamless executable workflow must be enabled; select exactly one installed game."
     ],
     "output_fields": [
@@ -1588,7 +1636,7 @@
       9
     ],
     "preconditions": [
-      "Selected Steam and writable target required. Dry-run first, then --yes. Live gates, versions and Steam identity are rechecked before writes."
+      "Writable selected Steam required. Plan first, then --yes; gates, versions and identity are rechecked."
     ],
     "output_fields": [
       "plan",

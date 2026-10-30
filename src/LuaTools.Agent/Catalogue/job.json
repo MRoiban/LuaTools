@@ -377,7 +377,7 @@
     "variants": [
       "luatools job wait <id>"
     ],
-    "purpose": "Wait for a job to finish or need a decision.",
+    "purpose": "Wait until a job reaches a terminal state or needs a decision. Inspect state/result; if awaiting_confirmation, use job confirm and then job wait again. Failed or cancelled jobs return failure.",
     "capability_ids": [
       "C-096"
     ],

@@ -297,9 +297,10 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
 
             ApplyFilter();
         }
-        catch
+        catch (Exception ex)
         {
             EmptyMessage = Resources.Strings.Fixes_Err_Load;
+            AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Fixes", EmptyMessage, ex);
         }
         finally
         {
@@ -463,7 +464,7 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
                 RebuildFixTags();
             }
         }
-        catch { /* The other provider can still supply fixes. */ }
+        catch (Exception ex) { AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Fixes", Resources.Strings.Fixes_Err_Load, ex); }
         finally { if (IsCurrentDetail(game, version)) IsLoadingFixes = false; }
     }
 
@@ -520,8 +521,9 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
             ShowOnlineFixMeFolderInput = _detailInstallDir is not null && result.Status != OnlineFixMeLookupStatus.Found;
             RebuildFixTags();
         }
-        catch
+        catch (Exception ex)
         {
+            AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Fixes", Resources.Strings.Fixes_OnlineFixMe_Unavailable, ex);
             if (!IsCurrentDetail(game, detailVersion) || lookupVersion != _onlineFixMeLookupVersion) return;
             OnlineFixMeStatus = Resources.Strings.Fixes_OnlineFixMe_Unavailable;
             ShowOnlineFixMeFolderInput = _detailInstallDir is not null;
@@ -603,6 +605,8 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     [RelayCommand]
     private async Task ConfirmRevert()
     {
+        try
+        {
         IsConfirmingRevert = false;
         var pending = _pendingRevert;
         _pendingRevert = null;
@@ -614,6 +618,8 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
         // RevertDenuvoFix owns every revert toast (done / partial / conflict / not-found / no-record).
         // Showing another one here meant a failed revert fired two toasts for one action.
         if (result.Ok) fix.IsApplied = false;
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(toast, Resources.Strings.Fixes_Toast_DownloadFailed, Resources.Strings.Fixes_Toast_DownloadFailed_Body, ex); }
     }
 
     private (FixItemVm Fix, FixGameCardVm Game)? _pendingRevert;
@@ -628,8 +634,11 @@ public partial class FixesViewModel : PagedListViewModel<FixGameCardVm>
     private async Task RunDownload(FixItemVm fix, string slot)
     {
         if (slot == "manifest" && !fix.HasManifest) return;
-        if (fix.OnlineFixMeFolder is null && await PromptSignInIfGuestAsync(Resources.Strings.Fixes_SignIn)) return;
         if (SelectedGame is not { } game) return;
+        var installation = new InstallationBinding(steam, steam.SelectedPath);
+        if (fix.OnlineFixMeFolder is null && await PromptSignInIfGuestAsync(Resources.Strings.Fixes_SignIn)) return;
+        if (!installation.IsCurrent) { toast.Show(Resources.Strings.Fixes_Toast_DownloadFailed, Resources.Strings.Agent_System_TargetChanged, error: true); return; }
+        using var selectedInstallation = installation.Pin();
         if (!long.TryParse(game.AppId, out long appId)) return;
 
         // The Fix button is disabled for uninstalled games, but the flyout's snapshot can be stale by

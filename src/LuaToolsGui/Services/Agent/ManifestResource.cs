@@ -4,14 +4,14 @@ namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService
 {
     [AgentResource("manifest")]
-    private Task<Envelope> ManifestAsync(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    private Task<Envelope> ManifestAsync(AgentRequest r, CancellationToken ct) => MutateAsync(r, async token =>
     {
         AddNoData(r);
         if (r.Arguments.Length != 1) throw new MutationRejectedException("INVALID_USAGE", 2);
         long id = AddAppId(r.Flags.GetValueOrDefault("appid"));
+        var snapshot = await Snapshot(() => (Context: PlanContext, Version: AddVersion(id)), token);
         var fixes = await Acquisition.Api.GetDenuvoFixesAsync(id.ToString(), token);
         var fix = fixes?.Fixes.FirstOrDefault(f => f.Id == r.Arguments[0] && f.HasManifest) ?? throw new MutationRejectedException("NOT_FOUND", 3);
-        var snapshot = await Snapshot(() => (Context: PlanContext, Version: AddVersion(id)), token);
         var plan = new MutationPlan(Guid.NewGuid().ToString("N"), snapshot.Context, snapshot.Version, [id.ToString(), fix.Id], [Resources.Strings.Agent_Add_Impact, "force_locked=true"], true);
         return new PreparedMutation(plan, commitToken => Snapshot(() =>
         {

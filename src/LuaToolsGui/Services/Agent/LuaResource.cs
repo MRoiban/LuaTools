@@ -36,7 +36,7 @@ public sealed partial class AgentCommandService
                     available_actions = AvailableActions.For("lua") });
             }
             if (r.Command == "lua update") return await UpdateLiveLua(r, ct);
-            return await _mutations.ExecuteAsync(r, async token =>
+            return await MutateAsync(r, async token =>
             {
                 ValidateAddInputs(r);
                 if (r.Files!.Any(f => !LuaInstaller.IsInstallable(f.Name))) throw new MutationRejectedException("INVALID_FILE_TYPE", 2);
@@ -78,7 +78,7 @@ public sealed partial class AgentCommandService
         }
         catch (MutationRejectedException ex) { return AddFailure(ex.Code, ex.ExitCode); }
     }
-    private Task<Envelope> UpdateLiveLua(AgentRequest r, CancellationToken ct) => _mutations.ExecuteAsync(r, async token =>
+    private Task<Envelope> UpdateLiveLua(AgentRequest r, CancellationToken ct) => MutateAsync(r, async token =>
     {
         if (vault is null) throw new MutationRejectedException("SERVICE_UNAVAILABLE", 7);
         ValidateScalarInput(r);

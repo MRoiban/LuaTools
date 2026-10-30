@@ -296,9 +296,13 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
 
     private async Task LoadCoreAsync()
     {
+        try
+        {
         IsLoading = true;
         try
         {
+            var installation = new InstallationBinding(_steam, _steam.EffectivePath);
+            using var pinned = installation.Pin();
             string? dir = _steam.StPlugInDir;
             if (dir is null || !Directory.Exists(dir))
             {
@@ -330,6 +334,7 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
                     .Select(e => new LuaTileViewModel(e.AppId, e.FilePath, e.AddedAt, e.Name, e.NameIsPlaceholder)).ToList();
             });
 
+            if (!installation.MatchesSelection) return;
             _allGames = games;
             EmptyMessage = Resources.Strings.Manage_Empty_NoLuas;
             ApplyGameFilter();
@@ -347,6 +352,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         {
             IsLoading = false;
         }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     /// <summary>Filtering only. Badges are computed by <see cref="RefreshBadgesAsync"/>, not here. This
@@ -491,10 +498,14 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     /// <summary>Rebuild the switcher from the vault + the live file's hash.</summary>
     private void RefreshVariants()
     {
+        try
+        {
         if (_refreshingVariants) return;
         _refreshingVariants = true;
         try { RefreshVariantsCore(); }
         finally { _refreshingVariants = false; }
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     private void RefreshVariantsCore()
@@ -572,6 +583,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     [RelayCommand]
     private void Apply()
     {
+        try
+        {
         if (ActiveGame is not { } game || SelectedVariant?.Variant is not { } variant) return;
 
         if (!new DepotPresetCoordinator(_vault).Apply(game.AppId, variant))
@@ -583,11 +596,15 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         RefreshVariants();
         _toast.Show(Resources.Strings.Builds_Title,
             string.Format(Resources.Strings.Builds_Apply_Done, variant.DisplayLabel));
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     [RelayCommand]
     private void DeleteVariant()
     {
+        try
+        {
         if (ActiveGame is not { } game || SelectedVariant?.Variant is not { } variant) return;
 
         var result = MessageBox.Show(
@@ -597,6 +614,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         if (result != MessageBoxResult.OK) return;
 
         if (new DepotPresetCoordinator(_vault).Delete(game.AppId, variant.Hash)) RefreshVariants();
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     // ── Rename ──────────────────────────────────────────────────────
@@ -617,10 +636,14 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     [RelayCommand]
     private void CommitRename()
     {
+        try
+        {
         if (ActiveGame is { } game && SelectedVariant?.Variant is { } v)
             new DepotPresetCoordinator(_vault).Rename(game.AppId, v.Hash, RenameText);
         IsRenaming = false;
         RefreshVariants();
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     [RelayCommand]
@@ -676,6 +699,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     [RelayCommand]
     private void SaveInPlace()
     {
+        try
+        {
         if (ActiveGame is not { } game) return;
 
         string? baseHash = _vault.GetEditBase(game.AppId);
@@ -701,6 +726,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         _ = LoadDepotsAsync(quiet: true);
         _toast.Show(Resources.Strings.Builds_Title,
             string.Format(Resources.Strings.Builds_Save_Updated, updated.DisplayLabel));
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     /// <summary>The variant Save would overwrite, for the button's label. Null → Save makes a new preset.</summary>
@@ -1158,6 +1185,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     /// </summary>
     private void EditLive(DepotRow row, Func<string, string> edit)
     {
+        try
+        {
         if (ActiveGame is not { } game) return;
 
         bool editingLive = SelectionDescribesLive;
@@ -1188,6 +1217,8 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
             SelectedVariant = Variants.FirstOrDefault(v => v.Hash == newHash) ?? SelectedVariant;
 
         _ = LoadDepotsAsync(quiet: true);
+            }
+        catch (Exception ex) { GuiOperationFeedback.Report(_toast, Resources.Strings.Builds_Title, Resources.Strings.Builds_Save_Failed, ex); }
     }
 
     /// <summary>

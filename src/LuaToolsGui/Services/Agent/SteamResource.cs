@@ -13,7 +13,7 @@ public sealed partial class AgentCommandService
             running = SelectedSteamRunning(), steam_identity = SteamIdentity, version = SystemVersion("steam"),
             available_actions = AvailableActions.ForReasons("steam", c => SystemReasons("steam", c), r.Flags.ContainsKey("read-only")),
         }), ct);
-        return await _mutations.ExecuteAsync(r, token => Snapshot(() =>
+        return await MutateAsync(r, token => Snapshot(() =>
         {
             var data = BulkSelection.Data(r, "path", "auto"); ValidateScalarInput(r, "path", "auto");
             string? path = r.Flags.GetValueOrDefault("path") ?? data["path"]?.GetValue<string>();

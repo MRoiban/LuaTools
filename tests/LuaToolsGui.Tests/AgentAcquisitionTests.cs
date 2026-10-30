@@ -170,7 +170,8 @@ public sealed class AgentAcquisitionTests
         vm.SearchText = ""; vm.Details = replace ? new() { AppId = 999, Name = "Other DLC", Type = "dlc", BaseAppId = "900" } : null;
         f.Release.SetResult(); await run;
         var item = Assert.Single(f.Queue.Items); Assert.Equal(730, item.AppId); Assert.Contains("Original DLC", item.Job.Title);
-        Assert.NotNull(item.Job.DownloadAsync); // download closes over the captured parent
+        var file = await item.Job.DownloadAsync(item, new Progress<DownloadProgress>(), default);
+        Assert.Contains("addappid(730)", File.ReadAllText(file.FilePath)); // requires the captured parent 700
 
     }
 

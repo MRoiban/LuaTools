@@ -32,7 +32,7 @@ public sealed partial class AgentCommandService
                 .Select(f => new { id = f.Fix.Id, appid = detail.AppId, provider = f.Folder is null ? "lua.tools" : "online-fix.me", title = f.Fix.Title, description = f.Fix.Description, tags = f.Fix.Tags, installed = f.Installed, applied = f.Applied, version = FixVersion(appId, f.Fix.Id), available_actions = FixActions(r, f.Installed, f.Applied, f.Folder is not null, f.Fix.Id, appId) }).ToArray();
             return r.Command == "fix get" ? Envelope.Success(new { appid = detail.AppId, name = detail.Name, fixes = entries, provider_status = detail.ProviderStatus.ToString() }) : SystemList(r, Protocol.Node(entries)!.AsArray());
         }
-        return await _mutations.ExecuteAsync(r, async token =>
+        return await MutateAsync(r, async token =>
         {
             var data = BulkSelection.Data(r, "appid", "id", "provider");
             if (appId == 0 && data["appid"] is { } idNode && ApiContract.IsAppId(idNode.ToString()) && long.TryParse(idNode.ToString(), out long parsedId)) appId = parsedId;
