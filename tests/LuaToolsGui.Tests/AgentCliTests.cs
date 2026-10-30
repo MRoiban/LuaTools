@@ -20,7 +20,7 @@ public sealed class AgentCliTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agent-tests-" + Guid.NewGuid().ToString("N"));
     private readonly HttpClient _http = new();
-    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null, LuaVault? vault = null)
+    private AgentCommandService Facade(SettingsService? settings = null, DownloadQueue? queue = null, MutationCoordinator? mutations = null, LuaVault? vault = null, LuaToolsGui.Services.AppInfo.LaunchOptionsService? launch = null)
     {
         Directory.CreateDirectory(_directory);
         settings ??= new SettingsService(new AppSettings());
@@ -29,10 +29,32 @@ public sealed class AgentCliTests : IDisposable
         var github = new GithubProxy();
         return new(settings, steam, new AuthService(_http, Path.Combine(_directory, "auth.dat")),
             queue ?? new DownloadQueue(cache, NullLogger<DownloadQueue>.Instance), new UnlockerService(steam, settings, cache, github),
-            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), vault: vault);
+            new PluginInstallerService(steam, settings, github, null!), new UpdateService(), mutations: mutations ?? new MutationCoordinator(Path.Combine(_directory, "journal.json")), vault: vault, launch: launch);
     }
     private static AgentRequest Request(AgentCommandService facade, string command, string[]? args = null, Dictionary<string, string?>? flags = null, string token = "") => new(1, token, facade.InstanceId, Guid.NewGuid().ToString("N"), command, args ?? [], flags ?? [], facade.SteamIdentity);
 
+
+    [Fact]
+    public async Task LaunchApplyRequiresBothProcessAndMutationConsentWithoutCallingRealSteam()
+    {
+        Directory.CreateDirectory(_directory);
+        string appinfo = Path.Combine(_directory, "appinfo.vdf");
+        LaunchOptionsServiceTests.WriteAppInfo(appinfo, [("0", "Game.exe", "windows")]);
+        var store = new LuaToolsGui.Services.AppInfo.LaunchModStore(Path.Combine(_directory, "launchmods.json"));
+        int stops = 0;
+        var launch = new LuaToolsGui.Services.AppInfo.LaunchOptionsService(() => appinfo, () => true,
+            () => stops++, () => { }, store, Path.Combine(_directory, "backups"));
+        var state = launch.Read(603750)!;
+        launch.Stage(603750, state.ChangeNumber, state.Current, [new LuaToolsGui.Services.AppInfo.LaunchOption { Executable = "Edited.exe" }]);
+        var facade = Facade(launch: launch);
+        Task<Envelope> Call(Dictionary<string, string?> flags) => facade.ExecuteAsync(Request(facade, "launch-option apply", flags: flags), default);
+        var dry = await Call(new() { ["drifted"] = null, ["dry-run"] = null });
+        Assert.True(dry.Ok); Assert.True(dry.Data!["plan"]!["requires_steam_restart"]!.GetValue<bool>());
+        Assert.Equal("CONSENT_REQUIRED", (await Call(new() { ["drifted"] = null })).Error!.Code);
+        Assert.Equal("STEAM_RUNNING", (await Call(new() { ["drifted"] = null, ["yes"] = null })).Error!.Code);
+        Assert.Equal(0, stops);
+        Assert.NotNull(store.Get(603750));
+    }
     [Fact]
     public async Task PresetReadsAndDryRunsAcrossRealPipeNeverChangeDiskOrExposeKeys()
     {
@@ -40,7 +62,7 @@ public sealed class AgentCliTests : IDisposable
         string plug = Path.Combine(_directory, "plug"); Directory.CreateDirectory(plug);
         var vault = new LuaVault(() => plug, Path.Combine(_directory, "vault"));
         string live = Path.Combine(plug, "570.lua");
-        File.WriteAllText(live, "addappid(570)\naddappid(571,0,\"secret-depot-key\")\n");
+        File.WriteAllText(live, "addappid(570)\naddappid(571,0,\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\")\n");
         vault.SyncDefaultFromLive(570);
         string hash = Assert.Single(vault.GetVariants(570)).Hash;
         // External divergence and loose builds must remain unadopted by every read and dry-run.
@@ -63,7 +85,7 @@ public sealed class AgentCliTests : IDisposable
         foreach (string command in new[] { "preset list", "preset get" })
         {
             var reply = await Call(command, command.EndsWith("get") ? [hash] : [], new() { ["appid"] = "570" });
-            Assert.True(reply.Ok); Assert.DoesNotContain("secret-depot-key", JsonSerializer.Serialize(reply, Protocol.Json));
+            Assert.True(reply.Ok); Assert.DoesNotContain("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", JsonSerializer.Serialize(reply, Protocol.Json));
         }
         var dry = await Call("depot reconcile", ["570"], new() { ["dry-run"] = null });
         Assert.True(dry.Ok); Assert.Contains("discard", dry.Data!.ToJsonString());

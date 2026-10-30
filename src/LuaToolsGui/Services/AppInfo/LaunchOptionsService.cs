@@ -72,6 +72,8 @@ public class LaunchOptionsService
     /// <summary>Full path to Steam's appinfo cache, or null if Steam isn't located.</summary>
     public string? AppInfoPath => _appInfoPath();
 
+    public bool IsSteamRunning => _isSteamRunning();
+
     public bool IsAvailable => AppInfoPath is { } p && File.Exists(p);
 
     /// <summary>

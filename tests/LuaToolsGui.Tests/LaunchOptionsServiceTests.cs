@@ -81,7 +81,7 @@ public class LaunchOptionsServiceTests : IDisposable
     }
 
     /// <summary>Minimal but structurally real v29 appinfo containing one app.</summary>
-    private static void WriteAppInfo(string path, (string Index, string Exe, string Os)[] launches)
+    internal static void WriteAppInfo(string path, (string Index, string Exe, string Os)[] launches)
     {
         string[] keys =
         [

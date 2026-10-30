@@ -4,6 +4,12 @@ using LuaToolsGui.Services.AppInfo;
 namespace LuaToolsGui.Services.Agent;
 public sealed partial class AgentCommandService
 {
+    private bool LaunchRunning()
+    {
+        try { return launch!.IsSteamRunning; }
+        catch (InvalidOperationException) { throw new MutationRejectedException("STEAM_IDENTITY_UNPROVEN", 5); }
+        catch (System.ComponentModel.Win32Exception) { throw new MutationRejectedException("STEAM_IDENTITY_UNPROVEN", 5); }
+    }
     private string LaunchVersion() => MutationCoordinator.Hash(JsonSerializer.Serialize(launch!.Store.All, Protocol.Json) + (launch.AppInfoPath is { } path && System.IO.File.Exists(path) ? new System.IO.FileInfo(path).LastWriteTimeUtc.Ticks + ":" + new System.IO.FileInfo(path).Length : "missing"));
     private object LaunchRow(int id)
     {
@@ -29,17 +35,21 @@ public sealed partial class AgentCommandService
                     var ids = r.Flags.ContainsKey("drifted") ? launch.FindDrifted() : launch.Store.All.Select(m => m.AppId).ToList();
                     return List(r, Protocol.Node(ids.Select(LaunchRow))!.AsArray());
                 }, ct);
-            return await _mutations.ExecuteAsync(r, token => Snapshot(() => PrepareLaunch(r), token), ct);
+            return await _mutations.ExecuteAsync(r, async token =>
+            {
+                int[] ids = r.Command == "launch-option revert" ? [(int)DepotAppId(r)]
+                    : await Task.Run(() => launch.FindDrifted().ToArray(), token);
+                return await Snapshot(() => PrepareLaunch(r, ids), token);
+            }, ct);
         }
         catch (MutationRejectedException ex) { return Envelope.Fail(ex.Code, ex.ExitCode, Resources.Strings.Agent_Depot_Unavailable); }
     }
-    private PreparedMutation PrepareLaunch(AgentRequest r)
+    private PreparedMutation PrepareLaunch(AgentRequest r, int[] ids)
     {
         try { BulkSelection.Data(r); } catch (JsonException) { throw new MutationRejectedException("INVALID_DATA", 2); }
         if (!launch!.IsAvailable) throw new MutationRejectedException("APPINFO_UNAVAILABLE", 5);
-        int[] ids = r.Command == "launch-option revert" ? [(int)DepotAppId(r)] : launch.FindDrifted().ToArray();
         if (ids.Any(id => launch.Store.Get(id) is null)) throw new MutationRejectedException("NOT_FOUND", 3);
-        bool running = SelectedSteamRunning() ?? throw new MutationRejectedException("STEAM_IDENTITY_UNPROVEN", 5);
+        bool running = LaunchRunning();
         string version = LaunchVersion(), context = PlanContext;
         var plan = new MutationPlan(Guid.NewGuid().ToString("N"), context, version, ids.Select(id => id.ToString()).ToArray(),
             [Resources.Strings.Agent_Depot_LaunchImpact], true, running);
@@ -50,7 +60,7 @@ public sealed partial class AgentCommandService
             string job = Jobs.Register(r.Command, async lifetime => await Task.Run(() =>
             {
                 if (LaunchVersion() != version) throw new MutationRejectedException("PLAN_STALE", 6);
-                bool nowRunning = SelectedSteamRunning() ?? throw new MutationRejectedException("STEAM_IDENTITY_UNPROVEN", 5);
+                bool nowRunning = LaunchRunning();
                 if (nowRunning && (!r.Flags.ContainsKey("restart-steam") || !r.Flags.ContainsKey("yes"))) throw new MutationRejectedException("STEAM_RUNNING", 6);
                 var coordinator = new LaunchEditCoordinator(launch);
                 var result = r.Command == "launch-option revert" ? coordinator.Restore(ids[0]) : coordinator.Reapply(ids);
