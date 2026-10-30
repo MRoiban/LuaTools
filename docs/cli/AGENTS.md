@@ -77,7 +77,7 @@ Use --idempotency-key for mutation retries; exit 6 means state or context change
 - cloudredirect: luatools cloudredirect get [--refresh]; luatools cloudredirect update [--enabled <bool>] [--refresh]; luatools cloudredirect manage
 - commands: luatools commands --json
 - completion: luatools completion <bash|zsh|fish|powershell>
-- depot: luatools depot list --appid <appid> [--section <name>]; luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]; luatools depot get <depotid> --appid <appid>; luatools depot search --appid <appid> --query <text>; luatools depot reconcile <appid>; luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]; luatools depot download <appid> --depot <id>... --output <path>
+- depot: luatools depot list [--games | --appid <appid>] [--section <name>]; luatools depot plan <appid> [--depot <id>...] [--all-depots] [--output <path>]; luatools depot get <depotid> --appid <appid>; luatools depot search --appid <appid> --query <text>; luatools depot reconcile <appid>; luatools depot update <depotid> --appid <appid> [--preset <hash>] [--locked <bool>] [--enabled <bool>]; luatools depot download <appid> --depot <id>... --output <path>
 - describe: luatools describe <resource>
 - dlc: luatools dlc get <appid> [--batch <id>]; luatools dlc check <appid> [--owned <appid>...]; luatools dlc add <appid> [--batch <id>]; luatools dlc cancel <id>
 - doctor: luatools doctor [--fix]
@@ -96,7 +96,7 @@ Use --idempotency-key for mutation retries; exit 6 means state or context change
 - mode: luatools mode get [--refresh]; luatools mode list; luatools mode update <ost-or-bst-or-custom>
 - ping: luatools ping
 - plugin: luatools plugin get [--refresh]; luatools plugin update --install; luatools plugin delete
-- preset: luatools preset list --appid <appid>; luatools preset get <hash> --appid <appid>; luatools preset create --appid <appid> [--file <path> | --from-live]; luatools preset update <hash> --appid <appid> --name <name>; luatools preset apply <hash> --appid <appid>; luatools preset delete <hash> --appid <appid>
+- preset: luatools preset list --appid <appid>; luatools preset get <hash> --appid <appid>; luatools preset create --appid <appid> [--file <path> | --from-live]; luatools preset update <hash> --appid <appid> [--name <name> | --from-live]; luatools preset apply <hash> --appid <appid>; luatools preset delete <hash> --appid <appid>
 - queue: luatools queue list
 - session: luatools session --stdio
 - setting: luatools setting list; luatools setting get <key>; luatools setting update [key] --value <value>
