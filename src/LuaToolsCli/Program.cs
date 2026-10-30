@@ -24,7 +24,7 @@ public static class Program
             if (parsed.Problems.Length > 0) result = Envelope.Fail("INVALID_USAGE", 2, "Invalid command arguments.", problems: parsed.Problems);
             else if (parsed.Has("help") || parsed.Command!.Key == "help")
             {
-                Command? target = parsed.Has("help") ? parsed.Command : parsed.Arguments.Length > 0 ? Catalogue.Find(string.Join(' ', parsed.Arguments)) : null;
+                Command? target = parsed.Has("help") ? parsed.Command!.Key == "help" ? null : parsed.Command : parsed.Arguments.Length > 0 ? Catalogue.Find(string.Join(' ', parsed.Arguments)) : null;
                 string? resource = target is null ? parsed.Arguments.FirstOrDefault() : null;
                 string help = Rendering.Help(target, resource);
                 if (parsed.Format(tty) is "text" or "table") { Console.WriteLine(help); return 0; }

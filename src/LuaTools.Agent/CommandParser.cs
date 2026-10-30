@@ -40,11 +40,16 @@ public static class CommandParser
         }
         if (operands.Count == 0) operands.Add("help");
         var command = Catalogue.Find(string.Join(' ', operands.Take(2))) ?? Catalogue.Find(operands[0]);
+        if (command is null && flags.ContainsKey("help") && operands.Count == 1 && Catalogue.Commands.Any(c => c.Resource == operands[0]))
+        {
+            command = Catalogue.Find("help"); operands.Insert(0, "help"); flags.Remove("help");
+        }
         int consumed = command?.Verb.Length > 0 ? 2 : 1;
         string[] identities = operands.Skip(consumed).ToArray();
         if (command is null) problems.Add(new("command", "Unknown command. Closest matches: " + string.Join(", ", Catalogue.Suggest(string.Join(' ', operands.Take(2))))));
         else
         {
+            if (command.Key == "help" && identities.Length > 0 && !Catalogue.Commands.Any(c => c.Resource == identities[0])) problems.Add(new("resource", "Unknown resource. Closest matches: " + string.Join(", ", Catalogue.Suggest(identities[0]))));
             if (!flags.ContainsKey("help") && identities.Length < command.Identities.Length) problems.Add(new("identity", "Required: " + string.Join(", ", command.Identities)));
             int max = command.Key == "help" ? 2 : command.Identities.Length;
             if (identities.Length > max && !(command.Syntax.Contains(">...", StringComparison.Ordinal) && command.Identities.Length > 0)) problems.Add(new("identity", "Too many arguments."));

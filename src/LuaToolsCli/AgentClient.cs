@@ -20,6 +20,7 @@ public sealed class AgentClient
             try
             {
                 var record = LocalDiscovery.Read<Discovery>(LocalDiscovery.Record);
+                if (record.Protocol != Protocol.Version) return Envelope.Fail("PROTOCOL_MISMATCH", 6, "The running LuaTools uses a different agent protocol. Use its bundled CLI.");
                 LocalDiscovery.VerifyProcess(record);
                 await using var pipe = new NamedPipeClientStream(".", record.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await pipe.ConnectAsync(250, ct).ConfigureAwait(false);
@@ -34,8 +35,10 @@ public sealed class AgentClient
                 }
                 finally { CryptographicOperations.ZeroMemory(capability); }
             }
+            catch (CryptographicException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "The local discovery capability is invalid."); }
+            catch (FormatException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "The local discovery capability is invalid."); }
             catch (UnauthorizedAccessException) { return Envelope.Fail("PIPE_IDENTITY_DENIED", 5, "Local owner, session or elevation mismatch. Run LuaTools and the agent unelevated in the same Windows session."); }
-            catch (Exception ex) when (ex is IOException or TimeoutException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or CryptographicException or System.Text.Json.JsonException or FormatException)
+            catch (Exception ex) when (ex is IOException or TimeoutException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
             {
                 if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
                 if (connected) return Envelope.Fail("TRANSPORT_FAILURE", 7, "Invalid or unavailable local pipe response.");

@@ -70,6 +70,14 @@ Test("snapshot paging and changed query", () =>
     Assert(pager.List("y", [], new() { ["cursor"] = first.Page.NextCursor }).Error!.ExitCode == 3, "changed query");
 });
 Test("completion shells", () => { foreach (string shell in new[] { "bash", "fish", "zsh", "powershell" }) Assert(Rendering.Completion(shell).Contains("luatools"), shell); });
+Test("resource help flags", () => Assert(CommandParser.Parse(["setting", "--help", "--format", "json"]).Problems.Length == 0, "resource help"));
+Test("unknown resource help", () => Assert(CommandParser.Parse(["help", "bogus"]).Problems.Length == 1, "resource help"));
+Test("strict unknown protocol fields", () =>
+{
+    bool rejected = false;
+    try { JsonSerializer.Deserialize<AgentRequest>("{\"protocol\":1,\"unknown\":true}", Protocol.Json); } catch (JsonException) { rejected = true; }
+    Assert(rejected, "unknown fields");
+});
 Test("help start and exits", () => Assert(Rendering.Help().Contains("Start here:") && Rendering.Help().Contains("9 GUI not running"), "help"));
 await AsyncTest("absent GUI has exit 9 without stdin", async () => { if (!OperatingSystem.IsWindows()) Assert((await new AgentClient().InvokeAsync(CommandParser.Parse(["ping", "--no-start"]), default)).Error!.ExitCode == 9, "absent"); });
 async Task<Exception?> BrokenFrame(Func<NamedPipeServerStream, CancellationToken, Task> send)
@@ -107,7 +115,7 @@ foreach (var (arguments, expected) in new (string[], int)[]
     (["version", "--json"], 0), (["help", "setting", "--json"], 0), (["commands", "--json"], 0),
     (["completion", "bash", "--json"], 0), (["setting", "update", "Language", "--value", "fr", "--json"], 5),
     (["statuz", "--json"], 2), (["activity-log", "list", "--severity", "bad", "--limit", "0", "--json"], 2),
-    (["ping", "--no-start", "--json"], 9),
+    (["ping", "--no-start", "--json"], OperatingSystem.IsWindows() && LocalDiscovery.IsElevated() ? 5 : 9),
 })
 await AsyncTest("entrypoint " + string.Join(' ', arguments), async () =>
 {

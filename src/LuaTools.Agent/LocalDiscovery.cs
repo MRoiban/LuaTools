@@ -68,7 +68,8 @@ public static class LocalDiscovery
         if (d.Protocol != Protocol.Version || !d.PipeName.StartsWith("LuaTools.Agent.v1.", StringComparison.Ordinal) || d.PipeName.Length > 180 || d.PipeName.Any(c => !(char.IsAsciiLetterOrDigit(c) || c == '.')))
             throw new InvalidDataException();
         using var process = Process.GetProcessById(d.Pid);
-        if (process.StartTime.ToUniversalTime().Ticks != d.StartTime || process.SessionId != d.SessionId || process.SessionId != Process.GetCurrentProcess().SessionId) throw new UnauthorizedAccessException();
+        if (process.StartTime.ToUniversalTime().Ticks != d.StartTime) throw new InvalidDataException();
+        if (process.SessionId != d.SessionId || process.SessionId != Process.GetCurrentProcess().SessionId) throw new UnauthorizedAccessException();
         var launcher = Read<LauncherRecord>(Launcher);
         if (!string.Equals(process.MainModule?.FileName, launcher.Executable, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException();
     }
@@ -119,7 +120,8 @@ public static class LocalDiscovery
         using (token)
         {
             using var peer = new WindowsIdentity(token.DangerousGetHandle());
-            if (!Equals(peer.User, WindowsIdentity.GetCurrent().User) || !GetTokenInformation(token, 20, out int elevated, 4, out _) || elevated != 0)
+            using var current = WindowsIdentity.GetCurrent();
+            if (!Equals(peer.User, current.User) || !GetTokenInformation(token, 20, out int elevated, 4, out _) || elevated != (IsElevated() ? 1 : 0))
                 throw new UnauthorizedAccessException();
         }
     }
