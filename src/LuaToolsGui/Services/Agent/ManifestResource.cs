@@ -18,9 +18,10 @@ public sealed partial class AgentCommandService
             AddSteamGate();
             if (auth.IsGuest) throw new MutationRejectedException("LOGIN_REQUIRED", 4);
             if (PlanContext != snapshot.Context || AddVersion(id) != snapshot.Version) throw new MutationRejectedException("PLAN_STALE", 6);
-            var job = Acquisition.Factory.CreateDenuvoJob(fix.Id, "manifest", fix.ManifestFilename ?? $"{id}.zip", id, fixes!.Name, fix.Title);
+            var job = Acquisition.Factory.CreateDenuvoJob(fix.Id, "manifest", fix.ManifestFilename ?? $"{id}.zip", id, fixes!.Name, fix.Title,
+                admitted: () => AddVersion(id) == snapshot.Version);
             var download = job.DownloadAsync;
-            job = AdmittedOnly(job, () => AddVersion(id), snapshot.Version) with { DownloadAsync = (item, progress, lifetime) =>
+            job = job with { DownloadAsync = (item, progress, lifetime) =>
             {
                 if (auth.IsGuest) throw new DownloadAbortedException(Resources.Strings.Add_SignIn_Download);
                 return download(item, progress, lifetime);
@@ -29,15 +30,4 @@ public sealed partial class AgentCommandService
             return Envelope.Success(new { id = item.Id, job_id = item.Id, state = "queued" });
         }, commitToken));
     }, ct);
-    /// <summary>Confirmation runs before the wait for the install slot, so the target can change in between.</summary>
-    internal static DownloadJob AdmittedOnly(DownloadJob job, Func<string> version, string admitted)
-    {
-        var install = job.InstallAsync;
-        return job with { InstallAsync = (file, item, ct) =>
-        {
-            if (version() == admitted) return install(file, item, ct);
-            ManifestJobFactory.DeleteStaged(file.FilePath);
-            return Task.FromResult(new JobResult(false, Resources.Strings.Agent_Add_Rejected));
-        } };
-    }
 }

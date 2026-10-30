@@ -176,17 +176,35 @@ public sealed class AgentAcquisitionTests
     }
 
     [Fact]
-    public async Task ManifestInstallRejectsAnEditMadeWhileWaitingForTheInstallSlot()
+    public async Task ManifestInstallRejectsAnInstallThatWinsTheInstallGate()
     {
         using var f = new Fixture(); f.Live("addappid(730)\n");
         string admitted = f.Diff.Version(730);
-        var job = AgentCommandService.AdmittedOnly(f.Factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture"), () => f.Diff.Version(730), admitted);
+        var job = f.Factory.CreateDenuvoJob("fixture-fix", "manifest", "730.lua", 730, "Fixture", "Fixture", admitted: () => f.Diff.Version(730) == admitted);
         var item = f.Queue.Enqueue(job);
-        f.Live("addappid(730)\n-- edited after consent\n");
         string file = f.CreateFile("730.lua", "addappid(730)\n");
-        Assert.False((await job.InstallAsync(new(file, "730.lua"), item, default)).Ok);
-        Assert.Contains("edited after consent", File.ReadAllText(Path.Combine(f.Steam.StPlugInDir!, "730.lua")));
+        Task<JobResult> install;
+        lock (LuaInstaller.InstallGate)
+        {
+            install = Task.Run(() => job.InstallAsync(new(file, "730.lua"), item, default));
+            Thread.Sleep(200); // the job is now queued behind this holder, as behind a local drop
+            f.Live("addappid(730)\n-- installed first\n");
+        }
+        Assert.False((await install.WaitAsync(TimeSpan.FromSeconds(5))).Ok);
+        Assert.Contains("installed first", File.ReadAllText(Path.Combine(f.Steam.StPlugInDir!, "730.lua")));
         Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public void GuiAndAgentDepotJobsShareOnePayloadFingerprint()
+    {
+        using var f = new Fixture();
+        string output = Path.Combine(f.Root, "output");
+        var first = f.Factory.CreateDepotJob(730, "Game", [new(2, "b", null, 0), new(1, "a", null, 0)], output);
+        var reordered = f.Factory.CreateDepotJob(730, "Game", [new(1, "a", null, 0), new(2, "b", null, 0)], output);
+        var moved = f.Factory.CreateDepotJob(730, "Game", [new(1, "a", null, 0), new(2, "b", null, 0)], output + "-other");
+        Assert.Equal(first.Payload, reordered.Payload);
+        Assert.NotEqual(first.Payload, moved.Payload);
     }
 
     [Fact]

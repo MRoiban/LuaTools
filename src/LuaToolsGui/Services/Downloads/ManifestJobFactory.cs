@@ -85,7 +85,7 @@ public class ManifestJobFactory(
     public DownloadJob CreateDenuvoJob(
         string fixId, string slot, string fallbackName,
         long appId, string gameName, string fixTitle,
-        Action<DownloadItem, JobResult?>? onFinished = null)
+        Action<DownloadItem, JobResult?>? onFinished = null, Func<bool>? admitted = null)
     {
         bool isManifestSlot = slot == "manifest";
         var job = new DownloadJob(
@@ -110,7 +110,7 @@ public class ManifestJobFactory(
                 return api.DownloadDenuvoAsync(fixId, slot, fallbackName, progress, ct);
             },
             (file, _, _) => Task.FromResult(isManifestSlot
-                ? InstallDenuvoManifest(file, appId, gameName)
+                ? InstallDenuvoManifest(file, appId, gameName, admitted)
                 : ApplyDenuvoFix(file, appId, fixId, gameName)),
             ConfirmAsync: null,
             OnFinished: onFinished);
@@ -192,7 +192,9 @@ public class ManifestJobFactory(
                 string.Format(Resources.Strings.Depot_Status_Done, selections.Count, outDir), outDir)),
             ConfirmAsync: null,
             OnFinished: onFinished,
-            OutputPath: outDir));
+            OutputPath: outDir,
+            Payload: string.Join(',', selections.Select(s => s.DepotId + ":" + s.ManifestId).Order(StringComparer.Ordinal))
+                + "|" + Path.GetFullPath(outDir).ToUpperInvariant()));
     }
 
     /// <summary>
@@ -625,14 +627,20 @@ public class ManifestJobFactory(
     /// the lua directories listed in <c>opensteamtool.toml</c>'s <c>[lua] paths</c> — which includes the
     /// <c>config/stplug-in</c> we just wrote to — so the write itself applies the change live.
     /// </remarks>
-    private JobResult InstallDenuvoManifest(DownloadedFile file, long appId, string gameName)
+    private JobResult InstallDenuvoManifest(DownloadedFile file, long appId, string gameName, Func<bool>? admitted = null)
     {
         try
         {
             bool isZip = IsZip(file.FilePath);
-            var result = isZip
-                ? installer.InstallZip(file.FilePath, appId, forceLocked: true)
-                : installer.InstallLuaFile(file.FilePath, appId, forceLocked: true);
+            InstallResult result;
+            // The admission check shares the install turn. Toasts dispatch synchronously, so they stay outside it.
+            lock (LuaInstaller.InstallGate)
+            {
+                if (admitted?.Invoke() == false) return new JobResult(false, Resources.Strings.Agent_Add_Rejected);
+                result = isZip
+                    ? installer.InstallZip(file.FilePath, appId, forceLocked: true)
+                    : installer.InstallLuaFile(file.FilePath, appId, forceLocked: true);
+            }
 
             if (result.AnyFailed)
             {

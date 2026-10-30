@@ -181,7 +181,7 @@ public sealed partial class AgentCommandService
                     if (selectedSteam != SteamIdentity) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
                     RequireGate("DepotDownloader");
                     DepotDownloadPlanning.ValidateOutput(output!, steam.EffectivePath);
-                }) with { Payload = string.Join(',', selections.Select(s => s.DepotId + ":" + s.ManifestId).Order(StringComparer.Ordinal)) + "|" + Path.GetFullPath(output!).ToUpperInvariant() };
+                });
                 // One depot job per app: only an identical request may share the active item.
                 var active = queue.Items.FirstOrDefault(i => i.IsActive && i.Job.DedupeKey == job.DedupeKey);
                 if (active is not null && active.Job.Payload != job.Payload) throw new MutationRejectedException("JOB_ACTIVE", 6);
