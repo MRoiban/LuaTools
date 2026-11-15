@@ -480,7 +480,7 @@ This deletes the .lua files from Steam\config\stplug-in.</value></data>
        NOT YET TRANSLATED. These keys are English-only on purpose while the page settles; the
        Strings.<tag>.resx files fall back to English for anything missing. See Resources/README.md
        (“Pending translation”) for the list to hand to the translation pass. -->
-  <data name="Nav_Builds" xml:space="preserve"><value>Depots</value></data>
+  <data name="Nav_Builds" xml:space="preserve"><value>Tools</value></data>
   <data name="Builds_Title" xml:space="preserve"><value>Depots</value></data>
   <data name="Builds_Subtitle" xml:space="preserve"><value>Keep multiple versions of a game's lua and switch which one Steam uses.</value></data>
   <data name="Builds_NoSelection" xml:space="preserve"><value>Pick a game on the left to see its presets.</value></data>
@@ -888,4 +888,73 @@ Restart Steam afterwards. Turn on CloudRedirect now?</value></data>
   <data name="Agent_Doctor_Repeated" xml:space="preserve"><value>This warning or error occurred repeatedly in the last 24 hours.</value></data>
   <data name="Agent_Doctor_Update" xml:space="preserve"><value>Reports an already staged update. Use update check to search and stage; doctor never applies updates.</value></data>
   <data name="Agent_Doctor_Disk" xml:space="preserve"><value>Downloads and staging need free disk space. Below 512 MiB, free space before accepting work.</value></data>
+  <data name="Tools_Title" xml:space="preserve"><value>Tools</value></data>
+  <data name="Tools_Subtitle" xml:space="preserve"><value>Depots, achievements, stats and playtime for each game.</value></data>
+  <data name="Tools_NoSelection" xml:space="preserve"><value>Pick a game on the left to manage its depots, achievements, stats and playtime.</value></data>
+  <data name="Tools_Tab_Depots" xml:space="preserve"><value>Depots</value></data>
+  <data name="Tools_Tab_Achievements" xml:space="preserve"><value>Achievements</value></data>
+  <data name="Tools_Tab_Stats" xml:space="preserve"><value>Stats</value></data>
+  <data name="Tools_Tab_Playtime" xml:space="preserve"><value>Playtime</value></data>
+  <data name="Tools_SearchAchievements" xml:space="preserve"><value>Search achievements</value></data>
+  <data name="Tools_Summary" xml:space="preserve"><value>{0} of {1} unlocked</value></data>
+  <data name="Tools_UnlockAll" xml:space="preserve"><value>Unlock all</value></data>
+  <data name="Tools_LockAll" xml:space="preserve"><value>Lock all</value></data>
+  <data name="Tools_BulkHint" xml:space="preserve"><value>Unlock all and Lock all apply to the achievements shown by the search. Nothing is written until you save.</value></data>
+  <data name="Tools_Save" xml:space="preserve"><value>Save changes</value></data>
+  <data name="Tools_Discard" xml:space="preserve"><value>Discard</value></data>
+  <data name="Tools_UnlockedAt" xml:space="preserve"><value>Unlocked {0}</value></data>
+  <data name="Tools_Unlocked" xml:space="preserve"><value>Unlocked</value></data>
+  <data name="Tools_Locked" xml:space="preserve"><value>Locked</value></data>
+  <data name="Tools_Hidden" xml:space="preserve"><value>Hidden</value></data>
+  <data name="Tools_Protected" xml:space="preserve"><value>Only the game's server can change this.</value></data>
+  <data name="Tools_IncrementOnly" xml:space="preserve"><value>Only goes up</value></data>
+  <data name="Tools_NoAchievements" xml:space="preserve"><value>This game has no achievements.</value></data>
+  <data name="Tools_NoStats" xml:space="preserve"><value>This game has no stats to edit.</value></data>
+  <data name="Tools_NoSchema" xml:space="preserve"><value>Steam hasn't downloaded this game's achievement list yet. Start Steam and open this tab again.</value></data>
+  <data name="Tools_FetchingSchema" xml:space="preserve"><value>Asking Steam for the achievement list…</value></data>
+  <data name="Tools_NoAccount" xml:space="preserve"><value>No Steam login was found on this PC.</value></data>
+  <data name="Tools_NoMatch" xml:space="preserve"><value>No achievements match your search.</value></data>
+  <data name="Tools_SteamRunning" xml:space="preserve"><value>Steam is running: changes are sent through Steam.</value></data>
+  <data name="Tools_SteamClosed" xml:space="preserve"><value>Steam is closed: changes are written to Steam's files.</value></data>
+  <data name="Tools_Note_Cabinet" xml:space="preserve"><value>Cabinet syncs this game's achievements and only ever adds them, so an achievement you lock comes back at its next sync.</value></data>
+  <data name="Tools_Note_CloudRedirect" xml:space="preserve"><value>CloudRedirect manages this game's achievements. Saving a lock closes Steam (after asking), writes the change for CloudRedirect to upload, then starts Steam again.</value></data>
+  <data name="Tools_Saved_Live" xml:space="preserve"><value>Saved through Steam.</value></data>
+  <data name="Tools_Saved_File" xml:space="preserve"><value>Saved to Steam's files.</value></data>
+  <data name="Tools_SaveFailed" xml:space="preserve"><value>Couldn't save: {0}</value></data>
+  <data name="Tools_SteamRestartFailed" xml:space="preserve"><value>Saved, but Steam didn't start again. Start it yourself.</value></data>
+  <data name="Tools_Confirm_CloudRedirect_Title" xml:space="preserve"><value>Close Steam to lock these achievements?</value></data>
+  <data name="Tools_Confirm_CloudRedirect_Body" xml:space="preserve"><value>CloudRedirect keeps its own copy of this game's achievements. To make the lock stick, LuaTools closes Steam, writes Steam's and CloudRedirect's files, then starts Steam again. Running games are closed with it.</value></data>
+  <data name="Tools_Confirm_LiveRejected_Title" xml:space="preserve"><value>Steam didn't accept the change</value></data>
+  <data name="Tools_Confirm_LiveRejected_Body" xml:space="preserve"><value>Steam answered: {0}
+LuaTools can close Steam, write the change to its files, then start Steam again. Running games are closed with it.</value></data>
+  <data name="Tools_Confirm_Playtime_Title" xml:space="preserve"><value>Close Steam to change the playtime?</value></data>
+  <data name="Tools_Confirm_Playtime_Body" xml:space="preserve"><value>Steam rewrites its playtime file when it exits, so it has to be closed first. LuaTools closes Steam, writes the new value, then starts Steam again. Running games are closed with it.</value></data>
+  <data name="Tools_Confirm_Accept" xml:space="preserve"><value>Close Steam and save</value></data>
+  <data name="Tools_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Tools_Playtime_Hours" xml:space="preserve"><value>Hours played</value></data>
+  <data name="Tools_Playtime_Current" xml:space="preserve"><value>Steam shows {0} h for this game.</value></data>
+  <data name="Tools_Playtime_None" xml:space="preserve"><value>Steam has no playtime recorded for this game yet.</value></data>
+  <data name="Tools_Playtime_Note" xml:space="preserve"><value>Changes only what Steam shows on this PC. Steam must be closed to save; LuaTools asks before closing it. Steam's servers or a cloud sync tool may later restore a higher value.</value></data>
+  <data name="Tools_Playtime_Invalid" xml:space="preserve"><value>Enter a number of hours, 0 or more.</value></data>
+  <data name="Tools_Playtime_Save" xml:space="preserve"><value>Save playtime</value></data>
+  <data name="Tools_Err_NoSteam" xml:space="preserve"><value>Steam wasn't found.</value></data>
+  <data name="Tools_Err_NoSchema" xml:space="preserve"><value>This game's achievement list isn't available.</value></data>
+  <data name="Tools_Err_SteamRunning" xml:space="preserve"><value>Steam is running.</value></data>
+  <data name="Tools_Err_SteamStarted" xml:space="preserve"><value>Steam started during the save, so nothing was written.</value></data>
+  <data name="Tools_Err_SteamStop" xml:space="preserve"><value>Steam couldn't be closed, so nothing was written.</value></data>
+  <data name="Tools_Err_NoLocalConfig" xml:space="preserve"><value>Steam's localconfig.vdf wasn't found for this account.</value></data>
+  <data name="Tools_Err_NoAppsSection" xml:space="preserve"><value>Steam's localconfig.vdf has no games section yet.</value></data>
+  <data name="Tools_Err_CloudRedirectFile" xml:space="preserve"><value>CloudRedirect's stats file for this game couldn't be read, so nothing was written.</value></data>
+  <data name="Tools_Err_Busy" xml:space="preserve"><value>Another helper is connected to this game. Try again in a moment.</value></data>
+  <data name="Tools_Err_SteamClosed" xml:space="preserve"><value>Steam closed before the change could be sent.</value></data>
+  <data name="Tools_Err_StatsUnavailable" xml:space="preserve"><value>Steam didn't load this game's stats.</value></data>
+  <data name="Tools_Err_Refused" xml:space="preserve"><value>Steam refused {0}.</value></data>
+  <data name="Tools_Err_Store" xml:space="preserve"><value>Steam didn't store the change.</value></data>
+  <data name="Tools_Err_Timeout" xml:space="preserve"><value>Steam didn't answer in time.</value></data>
+  <data name="Tools_Err_Helper" xml:space="preserve"><value>The helper process failed.</value></data>
+  <data name="Tools_Err_SteamStartedPartial" xml:space="preserve"><value>Steam started part-way through the save: Steam's stats file was updated but CloudRedirect's files were not all written. Close Steam and save again to finish.</value></data>
+  <data name="Tools_Err_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect manages this game and would overwrite stat changes written while Steam is closed, so nothing was written. Start Steam to change stats, or discard the stat changes to save the achievements.</value></data>
+  <data name="Tools_Err_CloudRedirectStatsRejected" xml:space="preserve"><value>Steam didn't accept the stat change ({0}). CloudRedirect would overwrite a change written to Steam's files, so nothing was written.</value></data>
+  <data name="Tools_Err_CloudRedirectMixed" xml:space="preserve"><value>CloudRedirect manages this game: achievement locks need Steam closed, stat changes need Steam running. Nothing was written; save them separately.</value></data>
+  <data name="Tools_Note_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect manages this game: stat changes are only saved while Steam is running.</value></data>
 </root>

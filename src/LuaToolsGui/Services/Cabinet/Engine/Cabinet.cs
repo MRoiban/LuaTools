@@ -510,7 +510,8 @@ namespace CabinetEngine
     // ---------- Isolated Steam IPC session (never loads OnlineFix DLLs) ----------
     // Interface versions/Windows vtable order verified against SAM.API and Valve headers.
     // This is a minimal independent binding, not a copy of SAM's implementation.
-    sealed class SteamSession : IDisposable
+    // LuaTools: partial so the Tools page's achievement/stat edits (GameStats.cs) can share this binding.
+    sealed partial class SteamSession : IDisposable
     {
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
         [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] static extern IntPtr GetProcAddress(IntPtr module, string name);
@@ -725,12 +726,15 @@ namespace CabinetEngine
             if (p == IntPtr.Zero) throw new InvalidOperationException("Missing Steam export " + name);
             return (T)(object)Marshal.GetDelegateForFunctionPointer(p, typeof(T));
         }
-        public SteamSession(string id, Action<string> logger)
+        public SteamSession(string id, Action<string> logger) : this(id, logger, null) { }
+        // LuaTools: steamRoot = the Steam install the Tools page edits (validated by its caller); null keeps
+        // Cabinet's registry SteamPath.
+        public SteamSession(string id, Action<string> logger, string steamRoot)
         {
             appId = id; log = logger;
             Environment.SetEnvironmentVariable("SteamAppId", id);
             Environment.SetEnvironmentVariable("SteamGameId", id);
-            var module = LoadLibraryEx(Path.Combine(Syncer.SteamPath(), IntPtr.Size == 8 ? "steamclient64.dll" : "steamclient.dll"), IntPtr.Zero, 8);
+            var module = LoadLibraryEx(Path.Combine(steamRoot ?? Syncer.SteamPath(), IntPtr.Size == 8 ? "steamclient64.dll" : "steamclient.dll"), IntPtr.Zero, 8);
             if (module == IntPtr.Zero) throw new InvalidOperationException("Load steamclient failed: " + Marshal.GetLastWin32Error());
             try
             {
@@ -765,6 +769,7 @@ namespace CabinetEngine
                         log("shadow " + appId + ": callback " + c.Id + " app=" + Marshal.ReadInt64(c.Data) + " result=" + Marshal.ReadInt32(c.Data, 8));
                         if (c.Id == 1101 && Marshal.ReadInt64(c.Data) == long.Parse(appId)) StatsReceivedResult = Marshal.ReadInt32(c.Data, 8);
                         if (c.Id == 1102 && Marshal.ReadInt64(c.Data) == long.Parse(appId) && Marshal.ReadInt32(c.Data, 8) != 1) pendingStore = true;
+                        if (c.Id == 1102 && Marshal.ReadInt64(c.Data) == long.Parse(appId)) StatsStoredResult = Marshal.ReadInt32(c.Data, 8); // LuaTools: Tools page edits
                     }
                 }
                 finally { freeCallback(pipe); }

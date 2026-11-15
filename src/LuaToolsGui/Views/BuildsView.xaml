@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:res="clr-namespace:LuaToolsGui.Resources"
+    xmlns:services="clr-namespace:LuaToolsGui.Services"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:vm="clr-namespace:LuaToolsGui.ViewModels"
     d:DataContext="{d:DesignInstance Type=vm:BuildsViewModel}"
@@ -254,6 +255,167 @@
                 </Border>
             </Grid>
         </DataTemplate>
+
+        <!-- Tools page: one achievement. Icon (colour when unlocked), name, description, state, progress; the
+             switch only stages the change, Save writes it. -->
+        <DataTemplate x:Key="AchievementRowTemplate" DataType="{x:Type vm:AchievementRowViewModel}">
+            <Border
+                Margin="0,0,0,6"
+                Padding="10,8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Width="44"
+                        Height="44"
+                        VerticalAlignment="Top"
+                        Background="#14FFFFFF"
+                        CornerRadius="4">
+                        <Image services:SafeImageLoader.Source="{Binding IconPath}" Stretch="UniformToFill" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="10,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                FontSize="12.5"
+                                FontWeight="SemiBold"
+                                Text="{Binding Info.Name}"
+                                TextTrimming="CharacterEllipsis" />
+                            <Border
+                                Margin="6,0,0,0"
+                                Padding="5,1"
+                                VerticalAlignment="Center"
+                                Background="#2a2440"
+                                CornerRadius="4"
+                                Visibility="{Binding Info.Hidden, Converter={StaticResource BoolToVis}}">
+                                <TextBlock
+                                    FontSize="9.5"
+                                    FontWeight="SemiBold"
+                                    Foreground="#c4b5fd"
+                                    Text="{x:Static res:Strings.Tools_Hidden}" />
+                            </Border>
+                            <TextBlock
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="#f0b48b"
+                                Text="●"
+                                Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="0,1,0,0"
+                            FontSize="11.5"
+                            Foreground="#9ca3af"
+                            Text="{Binding Info.Description}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,3,0,0"
+                            FontSize="10.5"
+                            Foreground="#6b7280"
+                            Text="{Binding StatusText}" />
+                        <StackPanel
+                            Margin="0,4,0,0"
+                            Orientation="Horizontal"
+                            Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVis}}">
+                            <ProgressBar
+                                Width="160"
+                                Height="4"
+                                VerticalAlignment="Center"
+                                Maximum="{Binding ProgressMax, Mode=OneWay}"
+                                Minimum="{Binding ProgressMin, Mode=OneWay}"
+                                Value="{Binding ProgressValue, Mode=OneWay}" />
+                            <TextBlock
+                                Margin="8,0,0,0"
+                                FontSize="10.5"
+                                Foreground="#6b7280"
+                                Text="{Binding ProgressText}" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="0,3,0,0"
+                            FontSize="10.5"
+                            Foreground="#f0b48b"
+                            Text="{x:Static res:Strings.Tools_Protected}"
+                            Visibility="{Binding CanToggle, Converter={StaticResource InverseBoolToVis}}" />
+                    </StackPanel>
+                    <!-- The wrapper is disabled while a save runs (GameToolsViewModel.IsEditable). -->
+                    <Border
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                        <ui:ToggleSwitch IsChecked="{Binding Unlocked, Mode=TwoWay}" IsEnabled="{Binding CanToggle}" />
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- Tools page: one stat. Red outline while the text isn't a valid value for the stat's type. -->
+        <DataTemplate x:Key="StatRowTemplate" DataType="{x:Type vm:StatRowViewModel}">
+            <Border
+                Margin="0,0,0,6"
+                Padding="10,8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                CornerRadius="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="180" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                FontSize="12.5"
+                                FontWeight="SemiBold"
+                                Text="{Binding Info.Name}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="11"
+                                Foreground="#f0b48b"
+                                Text="●"
+                                Visibility="{Binding IsDirty, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="10.5"
+                            Foreground="#6b7280"
+                            Text="{Binding Info.ApiName}" />
+                        <TextBlock
+                            FontSize="10.5"
+                            Foreground="#6b7280"
+                            Text="{x:Static res:Strings.Tools_IncrementOnly}"
+                            Visibility="{Binding Info.IncrementOnly, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock
+                            FontSize="10.5"
+                            Foreground="#f0b48b"
+                            Text="{x:Static res:Strings.Tools_Protected}"
+                            Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                    <Border
+                        Grid.Column="1"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="BorderBrush" Value="Transparent" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                        <Setter Property="BorderBrush" Value="#f87171" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <ui:TextBox
+                            IsReadOnly="{Binding IsReadOnly}"
+                            Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid x:Name="Root" Margin="8,16,16,8">
@@ -272,12 +434,12 @@
                 <TextBlock
                     FontSize="22"
                     FontWeight="Bold"
-                    Text="{x:Static res:Strings.Builds_Title}" />
+                    Text="{x:Static res:Strings.Tools_Title}" />
                 <TextBlock
                     Margin="0,2,0,0"
                     FontSize="11.5"
                     Foreground="#9ca3af"
-                    Text="{x:Static res:Strings.Builds_Subtitle}"
+                    Text="{x:Static res:Strings.Tools_Subtitle}"
                     TextWrapping="Wrap" />
             </StackPanel>
             <!-- Save lives up here rather than in a banner over the depot list: it only appears mid-edit,
@@ -370,6 +532,7 @@
                         Background="Transparent"
                         BorderThickness="0"
                         ItemTemplate="{StaticResource GameRowTemplate}"
+                        IsEnabled="{Binding CanSwitchGame}"
                         ItemsSource="{Binding Items}"
                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                         SelectedItem="{Binding SelectedGame}">
@@ -444,13 +607,12 @@
                         HorizontalAlignment="Center"
                         FontSize="13"
                         Foreground="#6b7280"
-                        Text="{x:Static res:Strings.Builds_NoSelection}"
+                        Text="{x:Static res:Strings.Tools_NoSelection}"
                         TextWrapping="Wrap" />
                 </StackPanel>
 
                 <Grid Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -479,10 +641,23 @@
                         Text="{Binding LatestBuildLabel}"
                         Visibility="{Binding LatestBuildLabel, Converter={StaticResource NullToCollapsed}}" />
 
+                    <!-- Tools tabs (upstream LuaTools 1.3.3's layout): the depot presets stay the first tab;
+                         Achievements, Stats and Playtime bind to Tools (GameToolsViewModel). -->
+                    <TabControl
+                        Grid.Row="1"
+                        Margin="0,10,0,0"
+                        SelectedIndex="{Binding SelectedToolsTab}">
+                    <TabItem Header="{x:Static res:Strings.Tools_Tab_Depots}">
+                    <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
                     <!-- Switcher + actions -->
                     <Border
-                        Grid.Row="1"
-                        Margin="0,12,0,0"
+                        Grid.Row="0"
+                        Margin="0,10,0,0"
                         Padding="12"
                         Background="#0DFFFFFF"
                         BorderBrush="#1FFFFFFF"
@@ -582,7 +757,7 @@
                     </Border>
 
                     <!-- Editor (replaces the depot table while open) -->
-                    <Grid Grid.Row="2" Margin="0,12,0,0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
+                    <Grid Grid.Row="1" Margin="0,12,0,0" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
@@ -629,7 +804,7 @@
                     <!-- Depot/DLC breakdown for the SELECTED variant (moved here from the Manage flyout).
                          The search box is OUTSIDE the ScrollViewer so it stays put on a long list. -->
                     <Grid
-                        Grid.Row="2"
+                        Grid.Row="1"
                         Margin="0,12,0,0"
                         Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVis}}">
                         <Grid.RowDefinitions>
@@ -976,8 +1151,286 @@
                         </StackPanel>
                     </Grid>
                     </Grid>
+                    </Grid>
+                    </TabItem>
+
+                    <!-- ── Achievements ─────────────────────────────────── -->
+                    <TabItem Header="{x:Static res:Strings.Tools_Tab_Achievements}">
+                        <Grid Margin="0,10,0,0" DataContext="{Binding Tools}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox
+                                    Margin="0,0,12,0"
+                                    Icon="{ui:SymbolIcon Search24}"
+                                    PlaceholderText="{x:Static res:Strings.Tools_SearchAchievements}"
+                                    Text="{Binding AchievementSearchText, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <ui:Button
+                                        Command="{Binding UnlockAllCommand}"
+                                        Content="{x:Static res:Strings.Tools_UnlockAll}"
+                                        Icon="{ui:SymbolIcon LockOpen24}"
+                                        ToolTip="{x:Static res:Strings.Tools_BulkHint}" />
+                                    <ui:Button
+                                        Margin="8,0,12,0"
+                                        Command="{Binding LockAllCommand}"
+                                        Content="{x:Static res:Strings.Tools_LockAll}"
+                                        Icon="{ui:SymbolIcon LockClosed24}"
+                                        ToolTip="{x:Static res:Strings.Tools_BulkHint}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <StackPanel Grid.Row="1" Margin="2,8,12,0">
+                                <TextBlock FontSize="11.5" Foreground="#9ca3af">
+                                    <Run Text="{Binding Summary, Mode=OneWay}" />
+                                    <Run Text="  ·  " />
+                                    <Run Text="{Binding SteamStateText, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock
+                                    Margin="0,6,0,0"
+                                    FontSize="11.5"
+                                    Foreground="#f0b48b"
+                                    Text="{x:Static res:Strings.Tools_Note_Cabinet}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ShowCabinetNote, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock
+                                    Margin="0,6,0,0"
+                                    FontSize="11.5"
+                                    Foreground="#f0b48b"
+                                    Text="{x:Static res:Strings.Tools_Note_CloudRedirect}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ShowCloudRedirectNote, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+
+                            <ui:ProgressRing
+                                Grid.Row="2"
+                                Margin="0,24,0,0"
+                                VerticalAlignment="Top"
+                                IsIndeterminate="True"
+                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock
+                                Grid.Row="2"
+                                Margin="2,12,12,0"
+                                VerticalAlignment="Top"
+                                FontSize="12"
+                                Foreground="#6b7280"
+                                Text="{Binding AchievementsMessage}"
+                                TextWrapping="Wrap"
+                                Visibility="{Binding AchievementsMessage, Converter={StaticResource NullToCollapsed}}" />
+                            <TextBlock
+                                Grid.Row="2"
+                                Margin="2,12,12,0"
+                                VerticalAlignment="Top"
+                                FontSize="12"
+                                Foreground="#6b7280"
+                                Text="{x:Static res:Strings.Tools_NoMatch}"
+                                Visibility="{Binding HasNoMatches, Converter={StaticResource BoolToVis}}" />
+                            <!-- Virtualized: some games list hundreds of achievements. -->
+                            <ItemsControl
+                                Grid.Row="2"
+                                Margin="0,10,0,0"
+                                ItemTemplate="{StaticResource AchievementRowTemplate}"
+                                ItemsSource="{Binding AchievementsView}"
+                                ScrollViewer.CanContentScroll="True"
+                                VirtualizingPanel.ScrollUnit="Pixel"
+                                VirtualizingPanel.IsVirtualizing="True"
+                                VirtualizingPanel.VirtualizationMode="Recycling">
+                                <ItemsControl.Template>
+                                    <ControlTemplate TargetType="ItemsControl">
+                                        <ScrollViewer Focusable="False" VerticalScrollBarVisibility="Auto">
+                                            <ItemsPresenter Margin="0,0,12,0" />
+                                        </ScrollViewer>
+                                    </ControlTemplate>
+                                </ItemsControl.Template>
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <VirtualizingStackPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <StackPanel
+                                Grid.Row="3"
+                                Margin="0,10,12,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal">
+                                <ui:Button Command="{Binding DiscardCommand}" Content="{x:Static res:Strings.Tools_Discard}" />
+                                <ui:Button
+                                    Margin="8,0,0,0"
+                                    Appearance="Primary"
+                                    Command="{Binding SaveCommand}"
+                                    Content="{x:Static res:Strings.Tools_Save}"
+                                    Icon="{ui:SymbolIcon Save24}" />
+                            </StackPanel>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- ── Stats ────────────────────────────────────────── -->
+                    <TabItem Header="{x:Static res:Strings.Tools_Tab_Stats}">
+                        <Grid Margin="0,10,0,0" DataContext="{Binding Tools}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Margin="2,0,12,0">
+                                <TextBlock
+                                    FontSize="11.5"
+                                    Foreground="#9ca3af"
+                                    Text="{Binding SteamStateText}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Margin="0,6,0,0"
+                                    FontSize="11.5"
+                                    Foreground="#f0b48b"
+                                    Text="{x:Static res:Strings.Tools_Note_CloudRedirectStats}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ShowCloudRedirectStatsNote, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                            <ui:ProgressRing
+                                Grid.Row="1"
+                                Margin="0,24,0,0"
+                                VerticalAlignment="Top"
+                                IsIndeterminate="True"
+                                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock
+                                Grid.Row="1"
+                                Margin="2,12,12,0"
+                                VerticalAlignment="Top"
+                                FontSize="12"
+                                Foreground="#6b7280"
+                                Text="{Binding StatsMessage}"
+                                TextWrapping="Wrap"
+                                Visibility="{Binding StatsMessage, Converter={StaticResource NullToCollapsed}}" />
+                            <ScrollViewer
+                                Grid.Row="1"
+                                Margin="0,10,0,0"
+                                VerticalScrollBarVisibility="Auto">
+                                <ItemsControl
+                                    Margin="0,0,12,0"
+                                    ItemTemplate="{StaticResource StatRowTemplate}"
+                                    ItemsSource="{Binding Stats}" />
+                            </ScrollViewer>
+                            <StackPanel
+                                Grid.Row="2"
+                                Margin="0,10,12,0"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal">
+                                <ui:Button Command="{Binding DiscardCommand}" Content="{x:Static res:Strings.Tools_Discard}" />
+                                <ui:Button
+                                    Margin="8,0,0,0"
+                                    Appearance="Primary"
+                                    Command="{Binding SaveCommand}"
+                                    Content="{x:Static res:Strings.Tools_Save}"
+                                    Icon="{ui:SymbolIcon Save24}" />
+                            </StackPanel>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- ── Playtime (localconfig.vdf, Steam closed) ─────── -->
+                    <TabItem Header="{x:Static res:Strings.Tools_Tab_Playtime}">
+                        <StackPanel
+                            MaxWidth="520"
+                            Margin="0,14,12,0"
+                            HorizontalAlignment="Left"
+                            DataContext="{Binding Tools}">
+                            <TextBlock
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="#d1d5db"
+                                Text="{x:Static res:Strings.Tools_Playtime_Hours}" />
+                            <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
+                                <ui:TextBox
+                                    Width="160"
+                                    Text="{Binding PlaytimeHours, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:Button
+                                    Margin="8,0,0,0"
+                                    Appearance="Primary"
+                                    Command="{Binding SavePlaytimeCommand}"
+                                    Content="{x:Static res:Strings.Tools_Playtime_Save}"
+                                    Icon="{ui:SymbolIcon Save24}" />
+                            </StackPanel>
+                            <TextBlock
+                                Margin="0,6,0,0"
+                                FontSize="11.5"
+                                Foreground="#f87171"
+                                Text="{x:Static res:Strings.Tools_Playtime_Invalid}"
+                                Visibility="{Binding PlaytimeInvalid, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock
+                                Margin="0,10,0,0"
+                                FontSize="12"
+                                Foreground="#9ca3af"
+                                Text="{Binding PlaytimeMessage}"
+                                TextWrapping="Wrap"
+                                Visibility="{Binding PlaytimeMessage, Converter={StaticResource NullToCollapsed}}" />
+                            <TextBlock
+                                Margin="0,10,0,0"
+                                FontSize="11.5"
+                                Foreground="#6b7280"
+                                Text="{x:Static res:Strings.Tools_Playtime_Note}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </TabItem>
+                    </TabControl>
                 </Grid>
             </Grid>
+        </Grid>
+        <!-- Steam-shutdown confirmation for the Tools tabs (same in-window overlay as the Mode page's). Nothing
+             is written, and Steam keeps running, unless the user accepts. -->
+        <Grid
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Margin="-8,-16,-16,-8"
+            Background="#99000000"
+            DataContext="{Binding Tools}"
+            Visibility="{Binding IsConfirming, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+            <Border
+                MaxWidth="460"
+                Margin="8"
+                Padding="20"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="#1c1c22"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="1"
+                CornerRadius="12">
+                <StackPanel>
+                    <TextBlock
+                        FontSize="16"
+                        FontWeight="Bold"
+                        Text="{Binding ConfirmTitle}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Margin="0,8,0,0"
+                        FontSize="12.5"
+                        Foreground="#9ca3af"
+                        Text="{Binding ConfirmBody}"
+                        TextWrapping="Wrap" />
+                    <StackPanel
+                        Margin="0,16,0,0"
+                        HorizontalAlignment="Right"
+                        Orientation="Horizontal">
+                        <ui:Button
+                            Margin="0,0,8,0"
+                            Command="{Binding CancelConfirmCommand}"
+                            Content="{x:Static res:Strings.Tools_Cancel}" />
+                        <ui:Button
+                            Appearance="Primary"
+                            Command="{Binding AcceptConfirmCommand}"
+                            Content="{x:Static res:Strings.Tools_Confirm_Accept}"
+                            Icon="{ui:SymbolIcon Power24}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

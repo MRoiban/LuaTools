@@ -196,9 +196,14 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     public BuildsViewModel(SteamService steam, LuaVault vault, SteamAppListCache appList,
         SteamAppInfoCache appInfo, CoverCache covers, SteamDepotInfo depotInfo, ToastService toast,
         SettingsService settings, DepotDownloaderService depotTool, DownloadQueue queue,
-        ManifestJobFactory jobs, System.Windows.Threading.Dispatcher? dispatcher = null)
+        ManifestJobFactory jobs, System.Windows.Threading.Dispatcher? dispatcher = null,
+        GameToolsViewModel? tools = null)
     {
         _dispatcher = dispatcher;
+        Tools = tools;
+        // A Tools save is for the game it started on: the game list stays locked until it finishes.
+        if (tools is not null)
+            tools.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GameToolsViewModel.IsSaving)) OnPropertyChanged(nameof(CanSwitchGame)); };
         _depotTool = depotTool;
         _queue = queue;
         _jobs = jobs;
@@ -267,6 +272,7 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
 
     partial void OnActiveGameChanged(LuaTileViewModel? value)
     {
+        Tools?.SetGame(value?.AppId);
         CancelEdit();
         IsRenaming = false;
         // A filter carried over from the previous game would show the new one's table as empty or
@@ -441,7 +447,29 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     private Task Refresh()
     {
         if (ActiveGame is { } game) _depotInfo.Invalidate(game.AppId);
+        if (Tools is { IsVisible: true } tools) _ = tools.Reload();
         return LoadAsync();
+    }
+
+    // ── Tools tabs (Depots / Achievements / Stats / Playtime) ───────
+
+    /// <summary>Achievements, stats and playtime for <see cref="ActiveGame"/>. Null only in tests that
+    /// build this page without them.</summary>
+    public GameToolsViewModel? Tools { get; }
+
+    /// <summary>0 = Depots (this view model's own content); 1-3 are <see cref="Tools"/>' tabs.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDepotsTab))]
+    private int _selectedToolsTab;
+
+    public bool IsDepotsTab => SelectedToolsTab == 0;
+
+    /// <summary>False while the Tools tabs are saving (the left-hand game list is disabled).</summary>
+    public bool CanSwitchGame => Tools?.IsSaving != true;
+
+    partial void OnSelectedToolsTabChanged(int value)
+    {
+        if (Tools is not null) Tools.IsVisible = value != 0;
     }
 
     // ── Variants (right) ────────────────────────────────────────────
@@ -916,6 +944,7 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
         // The header button is already gated on HasSelection; this is the belt-and-braces read, and it
         // gives us the appid the default destination is built from.
         if (ActiveGame is not { } game) return;
+        SelectedToolsTab = 0; // the picker lives on the Depots tab
 
         foreach (var old in DepotPicks) old.PropertyChanged -= OnPickChanged;
 

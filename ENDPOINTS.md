@@ -122,11 +122,12 @@ Sources: `Services/HubcapService.cs`, `Models/ApiModels.cs`, Add/plugin source c
 | `1.1.1.1/dns-query` | HTTPS GET; escaped `name={host}`, `type=A` | None | DNS JSON `Answer` address/TTL records | `DohResolver`; original Auto/Always modes require manual selection. Default uses system DNS. TLS keeps original hostname; dedicated client prevents recursion. |
 | `cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg` | GET | None | Image bytes | `SteamAppInfoCache.HeaderUrl` fallback -> `CoverCache` / Home/Manage. |
 | `cdn.cloudflare.steamstatic.com/steam/apps/{appid}/capsule_sm_120.jpg` | GET | None | Image bytes | `SearchAsync` fallback tiny image -> Add results. |
+| `shared.akamai.steamstatic.com/community_assets/images/apps/{appid}/{icon}` | GET; `icon` is a bare file name from the game's local achievement schema (path characters refused) | None | JPEG/PNG bytes, decoded before caching | `AchievementIconCache`; Tools page Achievements tab, cached under the app data folder per app ID. |
 | **Response-provided image host/path** | GET of `tiny_image`, `large_capsule_image`, `header_image`, Markdown image URL, or `avatar_url` | No account header in image client | Bounded decoded raster | `SafeImageLoader` / `CoverCache`; Steam art, Fixes Markdown and account avatar. OAuth `avatar_url` does not provide a hardcoded CDN hostname in source. |
 
 All rows are source-derived. Response-provided artwork, Markdown images, and account avatars use an isolated data-only HTTPS client scoped to their supplied public origin, with checked public DNS addresses pinned at connection, no app credentials, no redirects, and bounded decoding. No R2 bucket or Discord avatar hostname is fabricated. Fastly Steam artwork is also represented in the exact-host policy after public evidence identified it. WPF receives decoded in-memory images rather than network URLs; Markdown links permit absolute credential-free HTTPS browser navigation only.
 
-Sources: `AppConfig.cs`, `Services/SteamAppListCache.cs`, `Services/SteamAppInfoCache.cs`, `Services/SteamDepotInfo.cs`, `Services/HardwareAppIdService.cs`, `Services/DohResolver.cs`, `Services/CoverCache.cs`, `Services/SafeImageLoader.cs`, `Services/SafeMarkdown.cs`, and `Models/ApiModels.cs`.
+Sources: `AppConfig.cs`, `Services/GameTools/AchievementIconCache.cs`, `Services/SteamAppListCache.cs`, `Services/SteamAppInfoCache.cs`, `Services/SteamDepotInfo.cs`, `Services/HardwareAppIdService.cs`, `Services/DohResolver.cs`, `Services/CoverCache.cs`, `Services/SafeImageLoader.cs`, `Services/SafeMarkdown.cs`, and `Models/ApiModels.cs`.
 
 ## Release metadata and executable dependency acquisition
 
