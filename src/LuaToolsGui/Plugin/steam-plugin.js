@@ -21,7 +21,7 @@
   const sourceRows = data => (Array.isArray(data.sources) ? data.sources : []).filter(s => s && typeof s === 'object').slice(0, 32).map(s => ({
     name: clean(s.name, 128), displayName: clean(s.displayName || s.name, 128), status: clean(s.status, 40),
     canDownload: s.canDownload === true, locked: s.locked === true, needsKey: s.needsKey === true,
-    stats: clean(s.stats, 64), downloading: s.downloading === true, indeterminate: s.indeterminate === true,
+    stats: clean(s.stats, 64), detail: clean(s.detail, 160), downloading: s.downloading === true, indeterminate: s.indeterminate === true,
     progress: Math.max(0, Math.min(100, Math.floor(Number(s.progress) || 0)))
   }));
   function classify(data) {
@@ -160,7 +160,7 @@
       const titles = { idle: addTitle, checking: addTitle, pick: t('Choose a source for {game}', { game: c.name }), downloading: t('Adding {game}', { game: c.name }), added: t('{game} added', { game: c.name }), failed: addTitle, error: addTitle, cancelled: t('Cancelled'), removed: t('{game} removed', { game: c.name }), offline: t('LuaTools unavailable'), disabled: t('LuaTools disabled') };
       area.append(el('h2', '', titles[state] || 'LuaTools'), moon(true));
       const sub = el('div', `lt-sub${['failed','error','offline','disabled'].includes(state) ? ' lt-error' : ''}`);
-      const copy = { idle: t('Not added'), checking: t('Checking availability…'), pick: '', downloading: downloading ? t('Downloading from {source}…', { source: downloading.displayName }) : t('Starting download…'), added: clean(data.installStatus, 1000) || t('Added via LuaTools'), cancelled: '', removed: t('Restart Steam to apply changes') };
+      const copy = { idle: t('Not added'), checking: t('Checking availability…'), pick: '', downloading: downloading ? downloading.detail || t('Downloading from {source}…', { source: downloading.displayName }) : t('Starting download…'), added: clean(data.installStatus, 1000) || t('Added via LuaTools'), cancelled: '', removed: t('Restart Steam to apply changes') };
       sub.append(document.createTextNode(c.error || copy[state] || '')); denuvo(sub); area.append(sub);
       if (['pick', 'failed', 'error'].includes(state) && sources.length) {
         const list = el('div', 'lt-sources');

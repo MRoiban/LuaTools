@@ -36,6 +36,8 @@ public class PluginAddService(
         public bool Downloading { get; set; }
         public double Progress { get; set; }
         public bool Indeterminate { get; set; }
+        /// <summary>The queue item's sub-line while downloading, e.g. the Cabinet relay's queue position.</summary>
+        public string? Detail { get; set; }
         public bool Available => Status == "available";
         public string[] DisabledReasons { get; set; } = [];
         public bool IsSupporter { get; set; }
@@ -234,6 +236,7 @@ public class PluginAddService(
                     row.Indeterminate = item.IsIndeterminate;
                     row.Progress = item.Percent;
                     row.Downloading = item.IsActive;
+                    row.Detail = item.IsActive ? item.Detail : null;
                 }
             }
             item.PropertyChanged += OnChanged;
@@ -281,6 +284,7 @@ public class PluginAddService(
             {
                 row.Downloading = false;
                 row.Indeterminate = false;
+                row.Detail = null;
                 state.Busy = false;
             }
         }

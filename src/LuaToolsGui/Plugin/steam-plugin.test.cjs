@@ -12,6 +12,10 @@ test('app IDs, remote names and progress are bounded', () => {
   assert.equal(sourceRows({ sources: Array.from({ length: 50 }, () => ({ progress: 120, name: 'x'.repeat(500) })) }).length, 32);
   assert.equal(sourceRows({ sources: [{ progress: -10 }, { progress: 12.9 }, { progress: Infinity }] })[1].progress, 12);
   assert.equal(sourceRows({ sources: [{ name: 'x'.repeat(500) }] })[0].name.length, 128);
+  // The app's already-localized queue line (the Cabinet source), as plain bounded text.
+  assert.equal(sourceRows({ sources: [{ name: 'Cabinet', detail: 'Queued on Cabinet (position 2)' }] })[0].detail, 'Queued on Cabinet (position 2)');
+  assert.equal(sourceRows({ sources: [{ detail: 'a\nb'.repeat(200) }] })[0].detail.length, 160);
+  assert.equal(sourceRows({ sources: [{}] })[0].detail, '');
 });
 test('manual, FastFetch, failure, checking and installed status mapping', () => {
   assert.equal(classify({}), 'checking');

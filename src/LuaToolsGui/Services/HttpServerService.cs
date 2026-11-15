@@ -173,6 +173,7 @@ public class HttpServerService : IHostedService
             downloading = s.Downloading,
             progress = s.Progress,
             indeterminate = s.Indeterminate,
+            detail = s.Detail,
         }).ToList();
 
         return (200, Json(new
