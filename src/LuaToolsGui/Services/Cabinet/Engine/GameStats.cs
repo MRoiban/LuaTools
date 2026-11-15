@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -96,10 +97,12 @@ namespace CabinetEngine
         }
     }
 
-    // --game-stats <appid> <parent pid> <parent start ticks> <stop event>
-    // Reads one JSON request line from stdin and writes one JSON response line to stdout.
+    // --game-stats <appid> <parent pid> <parent start ticks> <stop event> <steam folder>
+    // Reads one JSON request from stdin and writes one reply line, ReplyPrefix + JSON, to stdout. steamclient
+    // may print its own lines to the same stdout, so the parent looks for the prefix rather than line one.
     static class GameStatsHelper
     {
+        internal const string ReplyPrefix = "LUATOOLS-GAME-STATS-REPLY ";
         internal sealed class StatValue { public double Value { get; set; } public bool Float { get; set; } }
         internal sealed class Request
         {
@@ -130,6 +133,7 @@ namespace CabinetEngine
                 uint parsed;
                 if (!uint.TryParse(args[1], out parsed) || parsed == 0) throw new ArgumentException("Invalid app id");
                 int parent = int.Parse(args[2]); long started = long.Parse(args[3]);
+                string steamRoot = SteamRoot(args[5]);
                 string line;
                 using (var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false)))
                 {
@@ -142,18 +146,38 @@ namespace CabinetEngine
                 var request = JsonSerializer.Deserialize<Request>(line, Json);
                 if (request == null) throw new InvalidDataException("Empty request");
                 using (var stop = EventWaitHandle.OpenExisting(args[4]))
-                    response = Apply(args[1], request, delegate { return !App.ParentAlive(parent, started) || stop.WaitOne(0); });
+                    response = Apply(args[1], steamRoot, request, delegate { return !App.ParentAlive(parent, started) || stop.WaitOne(0); });
             }
             catch (Exception ex) { App.Log("game stats failed: " + ex.Message); response = Fail("exception: " + ex.Message, 0); }
             using (var output = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)))
             {
-                output.WriteLine(JsonSerializer.Serialize(response, Json));
+                // Leading newline: a line steamclient left unterminated must not swallow the prefix.
+                output.Write("\n" + ReplyPrefix + JsonSerializer.Serialize(response, Json) + "\n");
                 output.Flush();
             }
             Environment.ExitCode = response.Ok ? 0 : 1;
         }
 
-        static Response Apply(string id, Request request, Func<bool> cancelled)
+        /// <summary>The Steam install the GUI selected: an absolute folder holding steam.exe and steamclient.
+        /// The DLL is only ever loaded from this folder.</summary>
+        internal static string SteamRoot(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)) throw new ArgumentException("Invalid Steam folder");
+            string root = Path.GetFullPath(path);
+            if (!File.Exists(Path.Combine(root, "steam.exe")) || !File.Exists(Path.Combine(root, IntPtr.Size == 8 ? "steamclient64.dll" : "steamclient.dll")))
+                throw new ArgumentException("Not a Steam folder: " + root);
+            return root;
+        }
+
+        /// <summary>True when that install's steam.exe runs in this Windows session (the GUI's own check).</summary>
+        static bool SteamRunning(string steamRoot)
+        {
+            using (var self = System.Diagnostics.Process.GetCurrentProcess())
+                return LuaToolsGui.Services.SteamProcessControl.IsRunning(Path.Combine(steamRoot, "steam.exe"), self.SessionId,
+                    System.Diagnostics.Process.GetProcessesByName("steam").Select(p => (LuaToolsGui.Services.ISteamProcess)new LuaToolsGui.Services.SystemSteamProcess(p)));
+        }
+
+        static Response Apply(string id, string steamRoot, Request request, Func<bool> cancelled)
         {
             bool created;
             // Same per-app mutex as the Cabinet shadow and schema helpers: one Steam IPC writer per game.
@@ -161,8 +185,8 @@ namespace CabinetEngine
             {
                 if (!created) return Fail("busy", 0);
                 if (cancelled()) return Fail("cancelled", 0);
-                if (!Playtime.SteamRunning()) return Fail("steam-closed", 0);
-                using (var session = new SteamSession(id, App.Log))
+                if (!SteamRunning(steamRoot)) return Fail("steam-closed", 0);
+                using (var session = new SteamSession(id, App.Log, steamRoot))
                     return session.ApplyGameStats(request, cancelled);
             }
         }

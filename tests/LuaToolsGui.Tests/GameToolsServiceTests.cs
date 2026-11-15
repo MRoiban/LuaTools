@@ -27,6 +27,7 @@ public sealed class GameToolsServiceTests : IDisposable
     private Func<bool>? _runningOverride;
     private StatsSaveResult _live = new(StatsSaveOutcome.SavedLive);
     private Action? _onLive;
+    private string? _liveSteam;
     private readonly GameToolsService _service;
 
     public GameToolsServiceTests()
@@ -40,7 +41,7 @@ public sealed class GameToolsServiceTests : IDisposable
             () => { _stops++; _running = false; },
             () => { _starts++; _running = true; return true; },
             _ => Account,
-            (_, _, _, _) => { _liveCalls++; _onLive?.Invoke(); return Task.FromResult(_live); },
+            (steam, _, _, _, _) => { _liveCalls++; _liveSteam = steam; _onLive?.Invoke(); return Task.FromResult(_live); },
             (_, _) => Task.CompletedTask,
             (_, _) => true,
             () => "english",
@@ -91,6 +92,7 @@ public sealed class GameToolsServiceTests : IDisposable
         var result = await _service.SaveAsync(App, Edit(new() { ["ACH_A"] = false }));
         Assert.Equal(StatsSaveOutcome.SavedLive, result.Outcome);
         Assert.Equal(1, _liveCalls);
+        Assert.Equal(Steam, _liveSteam);                              // the helper is bound to the selected install
         Assert.Equal(before, File.ReadAllBytes(StatsFile));
         Assert.Equal(0, _stops);
     }
@@ -185,11 +187,62 @@ public sealed class GameToolsServiceTests : IDisposable
         Assert.Equal(GameToolsService.ErrNoSchema, (await _service.SaveAsync(App, Edit(new() { ["ACH_A"] = true }))).Error);
 
         var noAccount = new GameToolsService(() => Steam, () => false, () => { }, () => true, _ => null,
-            (_, _, _, _) => Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)), (_, _) => Task.CompletedTask,
+            (_, _, _, _, _) => Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)), (_, _) => Task.CompletedTask,
             (_, _) => false, () => "english", () => DateTimeOffset.UtcNow, Backup);
         Assert.Null(noAccount.Load(App).AccountId);
         Assert.Equal(GameToolsService.ErrNoAccount, noAccount.SaveOffline(App, Edit(new() { ["ACH_A"] = true })).Error);
         Assert.Null(noAccount.GetPlaytimeMinutes(App));
+    }
+
+    [Fact]
+    public async Task CloudRedirectStats_AreNeverWrittenWithSteamClosed()
+    {
+        ManagedByCloudRedirect();
+        var before = File.ReadAllBytes(StatsFile);
+        string crBefore = File.ReadAllText(CrFile);
+
+        // Steam closed: refused outright, even together with an achievement edit.
+        Assert.Equal(new StatsSaveResult(StatsSaveOutcome.Failed, GameToolsService.ErrCloudRedirectStats),
+            await _service.SaveAsync(App, Edit(new() { ["ACH_B"] = true }, new() { ["kills"] = 3 })));
+        Assert.Equal(GameToolsService.ErrCloudRedirectStats, _service.SaveOffline(App, Edit(s: new() { ["kills"] = 3 })).Error);
+        Assert.Equal(before, File.ReadAllBytes(StatsFile));
+        Assert.Equal(crBefore, File.ReadAllText(CrFile));
+        Assert.False(File.Exists(PendingFile));
+
+        // Steam running: stats go live; a rejection is final (no close-Steam offer, nothing written).
+        _running = true;
+        Assert.Equal(StatsSaveOutcome.SavedLive, (await _service.SaveAsync(App, Edit(s: new() { ["kills"] = 3 }))).Outcome);
+        _live = new(StatsSaveOutcome.LiveRejected, "store-failed:8");
+        Assert.Equal(new StatsSaveResult(StatsSaveOutcome.Failed, GameToolsService.ErrCloudRedirectStatsRejected + ":store-failed:8"),
+            await _service.SaveAsync(App, Edit(s: new() { ["kills"] = 4 })));
+
+        // Locks (Steam closed) and stats (Steam running) can't share one save.
+        int calls = _liveCalls;
+        Assert.Equal(new StatsSaveResult(StatsSaveOutcome.Failed, GameToolsService.ErrCloudRedirectMixed),
+            await _service.SaveAsync(App, Edit(new() { ["ACH_A"] = false }, new() { ["kills"] = 5 })));
+        Assert.Equal(calls, _liveCalls);
+        Assert.Equal(0, _stops);
+        Assert.Equal(before, File.ReadAllBytes(StatsFile));
+    }
+
+    [Fact]
+    public void SteamStartingBetweenFilesIsReportedAsAPartialWrite()
+    {
+        ManagedByCloudRedirect();
+        var before = File.ReadAllBytes(StatsFile);
+        string crBefore = File.ReadAllText(CrFile);
+        int checks = 0;
+        _runningOverride = () => ++checks > 3;           // the stats file commits, CloudRedirect's doesn't
+        var result = _service.SaveOffline(App, Edit(new() { ["ACH_A"] = false }));
+        Assert.Equal(new StatsSaveResult(StatsSaveOutcome.Failed, GameToolsService.ErrSteamStartedPartial), result);
+        Assert.NotEqual(before, File.ReadAllBytes(StatsFile));
+        Assert.Equal(crBefore, File.ReadAllText(CrFile));
+
+        // Saving again with Steam closed finishes the CloudRedirect half.
+        _runningOverride = null;
+        Assert.Equal(StatsSaveOutcome.SavedToFile, _service.SaveOffline(App, Edit(new() { ["ACH_A"] = false })).Outcome);
+        Assert.NotEqual(crBefore, File.ReadAllText(CrFile));
+        Assert.True(File.Exists(PendingFile));
     }
 
     private void WriteLocalConfig(bool bom)
@@ -232,7 +285,7 @@ public sealed class GameToolsServiceTests : IDisposable
         WriteLocalConfig(bom: false);
         var original = File.ReadAllBytes(LocalConfig);
         var stubborn = new GameToolsService(() => Steam, () => true, () => throw new InvalidOperationException("no"), () => true,
-            _ => Account, (_, _, _, _) => Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)), (_, _) => Task.CompletedTask,
+            _ => Account, (_, _, _, _, _) => Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)), (_, _) => Task.CompletedTask,
             (_, _) => false, () => "english", () => DateTimeOffset.UtcNow, Backup);
         var run = await stubborn.SetPlaytimeWithSteamClosedAsync(App, 5);
         Assert.Equal(GameToolsService.ErrSteamStop, run.Result);

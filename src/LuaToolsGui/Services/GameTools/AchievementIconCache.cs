@@ -27,10 +27,14 @@ public class AchievementIconCache
     {
         if (LocalPath(url) is not { } path) return Task.FromResult<string?>(null);
         if (File.Exists(path)) return Task.FromResult<string?>(path);
-        var task = _inFlight.GetOrAdd(path, _ => DownloadAsync(new Uri(url!), path, ct));
+        // The shared download has its own lifetime (bounded by DownloadLimit); a caller's token only ends that
+        // caller's wait, so a cancelled page load can't leave the next one awaiting a cancelled download.
+        var task = _inFlight.GetOrAdd(path, _ => DownloadAsync(new Uri(url!), path));
         if (task.IsCompleted) _inFlight.TryRemove(path, out _);
-        return task;
+        return task.WaitAsync(ct);
     }
+
+    internal static readonly TimeSpan DownloadLimit = TimeSpan.FromSeconds(60);
 
     /// <summary>&lt;root&gt;\&lt;appid&gt;\&lt;file&gt; for a URL under the icon base, else null.</summary>
     internal string? LocalPath(string? url)
@@ -44,9 +48,12 @@ public class AchievementIconCache
         return Path.Combine(_root, parts[0], file);
     }
 
-    private async Task<string?> DownloadAsync(Uri uri, string path, CancellationToken ct)
+    private async Task<string?> DownloadAsync(Uri uri, string path)
     {
-        await _downloads.WaitAsync(ct).ConfigureAwait(false);
+        using var limit = new CancellationTokenSource(DownloadLimit);
+        var ct = limit.Token;
+        try { await _downloads.WaitAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { _inFlight.TryRemove(path, out _); return null; }
         try
         {
             if (File.Exists(path)) return path;
@@ -55,8 +62,7 @@ public class AchievementIconCache
             await CatalogDataPolicy.WriteAsync(path, bytes, ct).ConfigureAwait(false);
             return path;
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch { return null; } // 404, offline, policy refusal or write error: the row shows no icon
+        catch { return null; } // time limit, 404, offline, policy refusal or write error: the row shows no icon
         finally
         {
             _downloads.Release();

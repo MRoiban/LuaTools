@@ -201,6 +201,9 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     {
         _dispatcher = dispatcher;
         Tools = tools;
+        // A Tools save is for the game it started on: the game list stays locked until it finishes.
+        if (tools is not null)
+            tools.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GameToolsViewModel.IsSaving)) OnPropertyChanged(nameof(CanSwitchGame)); };
         _depotTool = depotTool;
         _queue = queue;
         _jobs = jobs;
@@ -460,6 +463,9 @@ public partial class BuildsViewModel : PagedListViewModel<LuaTileViewModel>
     private int _selectedToolsTab;
 
     public bool IsDepotsTab => SelectedToolsTab == 0;
+
+    /// <summary>False while the Tools tabs are saving (the left-hand game list is disabled).</summary>
+    public bool CanSwitchGame => Tools?.IsSaving != true;
 
     partial void OnSelectedToolsTabChanged(int value)
     {

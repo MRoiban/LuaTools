@@ -952,4 +952,9 @@ LuaTools can close Steam, write the change to its files, then start Steam again.
   <data name="Tools_Err_Store" xml:space="preserve"><value>Steam didn't store the change.</value></data>
   <data name="Tools_Err_Timeout" xml:space="preserve"><value>Steam didn't answer in time.</value></data>
   <data name="Tools_Err_Helper" xml:space="preserve"><value>The helper process failed.</value></data>
+  <data name="Tools_Err_SteamStartedPartial" xml:space="preserve"><value>Steam started part-way through the save: Steam's stats file was updated but CloudRedirect's files were not all written. Close Steam and save again to finish.</value></data>
+  <data name="Tools_Err_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect manages this game and would overwrite stat changes written while Steam is closed, so nothing was written. Start Steam to change stats, or discard the stat changes to save the achievements.</value></data>
+  <data name="Tools_Err_CloudRedirectStatsRejected" xml:space="preserve"><value>Steam didn't accept the stat change ({0}). CloudRedirect would overwrite a change written to Steam's files, so nothing was written.</value></data>
+  <data name="Tools_Err_CloudRedirectMixed" xml:space="preserve"><value>CloudRedirect manages this game: achievement locks need Steam closed, stat changes need Steam running. Nothing was written; save them separately.</value></data>
+  <data name="Tools_Note_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect manages this game: stat changes are only saved while Steam is running.</value></data>
 </root>

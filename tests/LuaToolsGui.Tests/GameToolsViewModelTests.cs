@@ -22,6 +22,7 @@ public sealed class GameToolsViewModelTests : IDisposable
     private string LocalConfig => Path.Combine(Steam, "userdata", "42", "config", "localconfig.vdf");
     private bool _running, _cabinet;
     private int _stops, _starts, _live;
+    private TaskCompletionSource<StatsSaveResult>? _liveGate;
 
     public GameToolsViewModelTests()
     {
@@ -35,7 +36,7 @@ public sealed class GameToolsViewModelTests : IDisposable
     private GameToolsViewModel NewViewModel()
     {
         var service = new GameToolsService(() => Steam, () => _running, () => { _stops++; _running = false; }, () => { _starts++; _running = true; return true; },
-            _ => 42, (_, _, _, _) => { _live++; return Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)); },
+            _ => 42, (_, _, _, _, _) => { _live++; return _liveGate?.Task ?? Task.FromResult(new StatsSaveResult(StatsSaveOutcome.SavedLive)); },
             (_, _) => Task.CompletedTask, (_, _) => _cabinet, () => "english", () => DateTimeOffset.FromUnixTimeSeconds(1_700_000_000),
             Path.Combine(_root, "backup"));
         var icons = new AchievementIconCache(new HttpClient(new NotFound()), Path.Combine(_root, "icons"));
@@ -167,6 +168,59 @@ public sealed class GameToolsViewModelTests : IDisposable
     });
 
     [Fact]
+    public Task ALiveSaveCommitsOnlyWhatItSubmitted() => OnUi(async () =>
+    {
+        _running = true;
+        var vm = NewViewModel();
+        await vm.Reload();
+        _liveGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.Achievements[0].Unlocked = false;
+        var save = vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.IsEditable);                                    // toggles and the game list are locked
+        vm.Achievements[1].Unlocked = true;                             // changed while the save ran
+        _liveGate.SetResult(new StatsSaveResult(StatsSaveOutcome.SavedLive));
+        await save;
+        Assert.True(vm.IsEditable);
+        Assert.False(vm.Achievements[0].IsDirty);                       // submitted and accepted
+        Assert.True(vm.Achievements[1].IsDirty);                        // not submitted: still pending
+        Assert.True(vm.HasChanges);
+    });
+
+    [Fact]
+    public Task ALateRejectionNeverPromptsOverAnotherGame() => OnUi(async () =>
+    {
+        _running = true;
+        var vm = NewViewModel();
+        await vm.Reload();
+        _liveGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.Achievements[0].Unlocked = false;
+        var save = vm.SaveCommand.ExecuteAsync(null);
+        vm.SetGame(888);                                                // the user moved on
+        _liveGate.SetResult(new StatsSaveResult(StatsSaveOutcome.LiveRejected, "store-failed:8"));
+        await save;
+        Assert.False(vm.IsConfirming);
+        Assert.Equal(0, _stops);
+    });
+
+    [Fact]
+    public Task CloudRedirectStatsWithSteamClosedAreRefusedWithoutAPrompt() => OnUi(async () =>
+    {
+        string cr = Path.Combine(Steam, "cloud_redirect", "stats", "42", $"{App}.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(cr)!);
+        File.WriteAllText(cr, """{"stats":[{"id":2,"value":7}],"achievements":[]}""");
+        var vm = NewViewModel();
+        await vm.Reload();
+        Assert.True(vm.ShowCloudRedirectStatsNote);
+        var before = File.ReadAllBytes(StatsFile);
+        vm.Stats[0].Text = "20";
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.False(vm.IsConfirming);
+        Assert.Equal(before, File.ReadAllBytes(StatsFile));
+        Assert.True(vm.Stats[0].IsDirty);                               // kept for a save with Steam running
+        Assert.Equal(0, _stops + _live);
+    });
+
+    [Fact]
     public void ParsesHoursAndLocalizesErrorCodes()
     {
         Assert.Equal(90, GameToolsViewModel.ParseHours("1.5"));
@@ -178,5 +232,8 @@ public sealed class GameToolsViewModelTests : IDisposable
         Assert.Equal(LuaToolsGui.Resources.Strings.Tools_Err_Store + " (8)", GameToolsViewModel.Describe("store-failed:8"));
         Assert.Equal("Access to the path 'C:\\x' is denied.", GameToolsViewModel.Describe("Access to the path 'C:\\x' is denied."));
         Assert.Equal("boom", GameToolsViewModel.Describe("exception: boom"));
+        Assert.Equal(string.Format(LuaToolsGui.Resources.Strings.Tools_Err_CloudRedirectStatsRejected, LuaToolsGui.Resources.Strings.Tools_Err_Store + " (8)"),
+            GameToolsViewModel.Describe(GameToolsService.ErrCloudRedirectStatsRejected + ":store-failed:8"));
+        Assert.Equal(LuaToolsGui.Resources.Strings.Tools_Err_SteamStartedPartial, GameToolsViewModel.Describe(GameToolsService.ErrSteamStartedPartial));
     }
 }

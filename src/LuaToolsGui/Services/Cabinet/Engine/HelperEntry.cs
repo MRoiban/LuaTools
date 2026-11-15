@@ -37,7 +37,7 @@ namespace CabinetEngine
             // LuaTools: one live achievement/stat edit for the Tools page (GameStats.cs).
             if (args.Length > 0 && args[0] == "--game-stats")
             {
-                try { if (args.Length != 5) throw new ArgumentException("Invalid game stats arguments"); GameStatsHelper.Run(args); }
+                try { if (args.Length != 6) throw new ArgumentException("Invalid game stats arguments"); GameStatsHelper.Run(args); }
                 catch (Exception ex) { App.Log("game stats failed: " + ex.Message); Environment.ExitCode = 1; }
                 return true;
             }

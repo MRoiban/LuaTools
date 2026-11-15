@@ -279,6 +279,45 @@ public sealed class GameToolsFilesTests
     }
 
     [Fact]
+    public async Task HelperReplyIsFoundAmongSteamclientsOwnOutput()
+    {
+        string reply = """{"Ok":true,"SteamResult":1}""";
+        var noisy = new StringReader("Setting breakpad minidump AppID = 777\nSteam_SetMinidumpSteamID:  Caching Steam ID:  76561197960265770 [API loaded no]\n"
+            + "partial line without newline" + GameStatsHelper.ReplyPrefix + reply + "\nlater noise\n");
+        Assert.Equal(reply, await GameStatsHelperClient.ReadReplyAsync(noisy, CancellationToken.None));
+        Assert.Null(await GameStatsHelperClient.ReadReplyAsync(new StringReader("only noise\n{\"Ok\":true}\n"), CancellationToken.None));
+        Assert.Equal(new StatsSaveResult(StatsSaveOutcome.LiveRejected, "helper-failed"), GameStatsHelperClient.ParseResponse(""));
+    }
+
+    [Fact]
+    public async Task ACancelledIconWaitDoesNotCancelTheSharedDownload()
+    {
+        var gate = new TaskCompletionSource();
+        var handler = new GatedNotFound(gate.Task);
+        var cache = new AchievementIconCache(new System.Net.Http.HttpClient(handler), Path.Combine(Path.GetTempPath(), "icons-" + Guid.NewGuid().ToString("N")));
+        string url = GameStatsFiles.IconBase + "777/a.jpg";
+        using var first = new CancellationTokenSource();
+        var cancelled = cache.GetAsync(url, first.Token);
+        first.Cancel();                                                   // e.g. Discard or switching games
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+        var next = cache.GetAsync(url);                                  // the reload joins the same download
+        gate.SetResult();
+        Assert.Null(await next);                                         // completes (404), not cancelled
+        Assert.Equal(1, handler.Requests);
+    }
+
+    private sealed class GatedNotFound(Task gate) : System.Net.Http.HttpMessageHandler
+    {
+        public int Requests;
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Requests);
+            await gate.WaitAsync(ct);
+            return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        }
+    }
+
+    [Fact]
     public void IconCacheOnlyAcceptsFilesUnderTheAppsIconFolder()
     {
         string root = Path.Combine(Path.GetTempPath(), "icons-" + Guid.NewGuid().ToString("N"));

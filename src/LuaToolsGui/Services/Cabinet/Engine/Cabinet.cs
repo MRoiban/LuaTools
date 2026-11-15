@@ -726,12 +726,15 @@ namespace CabinetEngine
             if (p == IntPtr.Zero) throw new InvalidOperationException("Missing Steam export " + name);
             return (T)(object)Marshal.GetDelegateForFunctionPointer(p, typeof(T));
         }
-        public SteamSession(string id, Action<string> logger)
+        public SteamSession(string id, Action<string> logger) : this(id, logger, null) { }
+        // LuaTools: steamRoot = the Steam install the Tools page edits (validated by its caller); null keeps
+        // Cabinet's registry SteamPath.
+        public SteamSession(string id, Action<string> logger, string steamRoot)
         {
             appId = id; log = logger;
             Environment.SetEnvironmentVariable("SteamAppId", id);
             Environment.SetEnvironmentVariable("SteamGameId", id);
-            var module = LoadLibraryEx(Path.Combine(Syncer.SteamPath(), IntPtr.Size == 8 ? "steamclient64.dll" : "steamclient.dll"), IntPtr.Zero, 8);
+            var module = LoadLibraryEx(Path.Combine(steamRoot ?? Syncer.SteamPath(), IntPtr.Size == 8 ? "steamclient64.dll" : "steamclient.dll"), IntPtr.Zero, 8);
             if (module == IntPtr.Zero) throw new InvalidOperationException("Load steamclient failed: " + Marshal.GetLastWin32Error());
             try
             {

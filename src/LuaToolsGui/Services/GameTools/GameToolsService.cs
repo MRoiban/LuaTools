@@ -26,14 +26,18 @@ public class GameToolsService
     // Error codes the view model localizes. Anything else is a raw exception message.
     public const string ErrNoSteam = "no-steam", ErrNoAccount = "no-account", ErrNoSchema = "no-schema",
         ErrSteamRunning = "steam-running", ErrSteamStarted = "steam-started", ErrSteamStop = "steam-stop-failed",
-        ErrNoLocalConfig = "no-localconfig", ErrNoAppsSection = "no-apps-section", ErrCloudRedirectFile = "cr-malformed";
+        ErrNoLocalConfig = "no-localconfig", ErrNoAppsSection = "no-apps-section", ErrCloudRedirectFile = "cr-malformed",
+        ErrSteamStartedPartial = "steam-started-partial",
+        // CloudRedirect merges its cloud copy over stats written while Steam is closed (only locks are replayed
+        // by pending_edits.json), so its games' stats are only ever changed live.
+        ErrCloudRedirectStats = "cr-stats", ErrCloudRedirectStatsRejected = "cr-stats-rejected", ErrCloudRedirectMixed = "cr-mixed";
 
     private readonly Func<string?> _steamPath;
     private readonly Func<bool> _steamRunning;
     private readonly Action _stopSteam;
     private readonly Func<bool> _startSteam;
     private readonly Func<string, uint?> _account;
-    private readonly Func<long, GameStatsEdit, GameStatsSchema, CancellationToken, Task<StatsSaveResult>> _saveLive;
+    private readonly Func<string, long, GameStatsEdit, GameStatsSchema, CancellationToken, Task<StatsSaveResult>> _saveLive;
     private readonly Func<long, CancellationToken, Task> _fetchSchema;
     private readonly Func<long, string, bool> _cabinetSyncs;
     private readonly Func<string> _language;
@@ -68,7 +72,7 @@ public class GameToolsService
     internal GameToolsService(
         Func<string?> steamPath, Func<bool> steamRunning, Action stopSteam, Func<bool> startSteam,
         Func<string, uint?> account,
-        Func<long, GameStatsEdit, GameStatsSchema, CancellationToken, Task<StatsSaveResult>> saveLive,
+        Func<string, long, GameStatsEdit, GameStatsSchema, CancellationToken, Task<StatsSaveResult>> saveLive,
         Func<long, CancellationToken, Task> fetchSchema,
         Func<long, string, bool> cabinetSyncs, Func<string> language, Func<DateTimeOffset> now,
         string backupDir, ILogger? log = null, TimeSpan? confirmDelay = null)
@@ -150,13 +154,14 @@ public class GameToolsService
         if (steam is null) return new(StatsSaveOutcome.Failed, ErrNoSteam);
         if (!_steamRunning()) return await Task.Run(() => SaveOffline(appId, edit), ct).ConfigureAwait(false);
 
-        uint? account = _account(steam);
-        if (edit.LocksAny && account is { } a && File.Exists(CloudRedirectStatsPath(steam, a, appId)))
-            return new(StatsSaveOutcome.NeedsSteamClosed);
+        bool cloudRedirect = _account(steam) is { } a && File.Exists(CloudRedirectStatsPath(steam, a, appId));
+        if (cloudRedirect && edit.LocksAny)
+            // Locks need Steam closed (pending_edits.json); stats must not be written with Steam closed.
+            return edit.Stats.Count > 0 ? new(StatsSaveOutcome.Failed, ErrCloudRedirectMixed) : new(StatsSaveOutcome.NeedsSteamClosed);
         var schema = ReadSchema(steam, appId);
         if (schema is null) return new(StatsSaveOutcome.Failed, ErrNoSchema);
 
-        var live = await _saveLive(appId, edit, schema, ct).ConfigureAwait(false);
+        var live = await _saveLive(steam, appId, edit, schema, ct).ConfigureAwait(false);
         if (live.Outcome == StatsSaveOutcome.SavedLive)
         {
             _log.LogInformation("Tools: saved {Count} change(s) for app {AppId} through Steam", edit.Achievements.Count + edit.Stats.Count, appId);
@@ -169,6 +174,9 @@ public class GameToolsService
             if (GameStatsFiles.IsApplied(Load(appId), edit)) return new(StatsSaveOutcome.SavedLive);
         }
         _log.LogWarning("Tools: Steam did not accept the change for app {AppId}: {Error}", appId, live.Error);
+        // A file write can't stand in for a rejected stat change in a CloudRedirect game: don't offer one.
+        if (cloudRedirect && edit.Stats.Count > 0)
+            return new(StatsSaveOutcome.Failed, ErrCloudRedirectStatsRejected + ":" + (live.Error ?? ""));
         return live.Outcome == StatsSaveOutcome.Failed ? live : new(StatsSaveOutcome.LiveRejected, live.Error);
     }
 
@@ -180,12 +188,15 @@ public class GameToolsService
     internal StatsSaveResult SaveOffline(long appId, GameStatsEdit edit)
     {
         _writes.Wait();
+        int committed = 0; // files already replaced, so a later failure is reported as partial
         try
         {
             string? steam = _steamPath();
             if (steam is null) return new(StatsSaveOutcome.Failed, ErrNoSteam);
             if (_steamRunning()) return new(StatsSaveOutcome.Failed, ErrSteamRunning);
             if (_account(steam) is not { } account) return new(StatsSaveOutcome.Failed, ErrNoAccount);
+            string crPath = CloudRedirectStatsPath(steam, account, appId), pendingPath = PendingEditsPath(steam);
+            if (edit.Stats.Count > 0 && File.Exists(crPath)) return new(StatsSaveOutcome.Failed, ErrCloudRedirectStats);
             var schema = ReadSchema(steam, appId);
             if (schema is null) return new(StatsSaveOutcome.Failed, ErrNoSchema);
 
@@ -194,7 +205,6 @@ public class GameToolsService
             byte[]? statsFile = GameStatsFiles.ApplyEdit(GameStatsFiles.ReadShared(userPath), schema, edit, now);
 
             // Prepare CloudRedirect's files first: a malformed one aborts before anything is written.
-            string crPath = CloudRedirectStatsPath(steam, account, appId), pendingPath = PendingEditsPath(steam);
             string? crJson = null, pending = null;
             if (File.Exists(crPath))
             {
@@ -209,18 +219,24 @@ public class GameToolsService
             {
                 SteamFileWriter.BackupOnce(userPath, _backupDir, Path.GetFileName(userPath));
                 SteamFileWriter.WriteAtomic(userPath, statsFile, _steamRunning);
+                committed++;
             }
             if (crJson is not null && pending is not null)
             {
                 SteamFileWriter.BackupOnce(crPath, _backupDir, $"cloud_redirect_{Id(account)}_{Id(appId)}.json");
                 SteamFileWriter.WriteAtomic(crPath, new UTF8Encoding(false).GetBytes(crJson), _steamRunning);
+                committed++;
                 SteamFileWriter.WriteAtomic(pendingPath, new UTF8Encoding(false).GetBytes(pending), _steamRunning);
             }
             _log.LogInformation("Tools: wrote {Count} change(s) for app {AppId} to Steam's files{CloudRedirect}",
                 edit.Achievements.Count + edit.Stats.Count, appId, crJson is null ? "" : " and CloudRedirect's");
             return new(StatsSaveOutcome.SavedToFile);
         }
-        catch (SteamStartedException) { return new(StatsSaveOutcome.Failed, ErrSteamStarted); }
+        catch (SteamStartedException)
+        {
+            if (committed > 0) _log.LogWarning("Tools: Steam started part-way through writing app {AppId}; {Count} file(s) were already replaced", appId, committed);
+            return new(StatsSaveOutcome.Failed, committed > 0 ? ErrSteamStartedPartial : ErrSteamStarted);
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             _log.LogWarning(ex, "Tools: writing stats for app {AppId} failed", appId);

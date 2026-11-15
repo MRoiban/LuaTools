@@ -44,12 +44,25 @@ internal static class GameStatsHelperClient
         return new(StatsSaveOutcome.LiveRejected, error);
     }
 
-    internal static async Task<StatsSaveResult> SaveLiveAsync(long appId, GameStatsEdit edit, GameStatsSchema schema, CancellationToken ct)
+    /// <summary>The helper's reply: the text after <see cref="GameStatsHelper.ReplyPrefix"/> on the first line
+    /// carrying it. Other lines (steamclient's own console output) are skipped. Null at end of output.</summary>
+    internal static async Task<string?> ReadReplyAsync(TextReader output, CancellationToken ct)
+    {
+        while (await output.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+        {
+            int at = line.IndexOf(GameStatsHelper.ReplyPrefix, StringComparison.Ordinal);
+            if (at >= 0) return line[(at + GameStatsHelper.ReplyPrefix.Length)..];
+        }
+        return null;
+    }
+
+    /// <summary>Live edit through the helper, bound to the Steam install at <paramref name="steamPath"/>.</summary>
+    internal static async Task<StatsSaveResult> SaveLiveAsync(string steamPath, long appId, GameStatsEdit edit, GameStatsSchema schema, CancellationToken ct)
     {
         string request = BuildRequest(edit, schema);
         try
         {
-            return await RunAsync("--game-stats", appId, LiveTimeout, request, ct).ConfigureAwait(false) is { } line
+            return await RunAsync("--game-stats", appId, LiveTimeout, request, ct, steamPath).ConfigureAwait(false) is { } line
                 ? ParseResponse(line)
                 : new(StatsSaveOutcome.LiveRejected, "timeout");
         }
@@ -62,8 +75,8 @@ internal static class GameStatsHelperClient
     internal static async Task FetchSchemaAsync(long appId, CancellationToken ct) =>
         await RunAsync("--schema", appId, SchemaTimeout, null, ct).ConfigureAwait(false);
 
-    /// <summary>Returns the helper's first stdout line (null on timeout or for helpers that write none).</summary>
-    private static async Task<string?> RunAsync(string mode, long appId, TimeSpan timeout, string? stdin, CancellationToken ct)
+    /// <summary>Returns the helper's reply (null on timeout or for helpers that write none).</summary>
+    private static async Task<string?> RunAsync(string mode, long appId, TimeSpan timeout, string? stdin, CancellationToken ct, string? steamPath = null)
     {
         string exe = Environment.ProcessPath ?? throw new InvalidOperationException("LuaTools.exe not found");
         string stopName = "Local\\LuaTools-game-tools-" + Guid.NewGuid().ToString("N");
@@ -82,6 +95,7 @@ internal static class GameStatsHelperClient
         foreach (string arg in new[] { mode, appId.ToString(CultureInfo.InvariantCulture), self.Id.ToString(CultureInfo.InvariantCulture),
                      self.StartTime.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture), stopName })
             info.ArgumentList.Add(arg);
+        if (steamPath is not null) info.ArgumentList.Add(Path.GetFullPath(steamPath));
 
         using var process = Process.Start(info) ?? throw new InvalidOperationException("helper did not start");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -93,7 +107,7 @@ internal static class GameStatsHelperClient
             {
                 await process.StandardInput.WriteAsync(stdin.AsMemory(), deadline.Token).ConfigureAwait(false);
                 process.StandardInput.Close();
-                line = await process.StandardOutput.ReadLineAsync(deadline.Token).ConfigureAwait(false);
+                line = await ReadReplyAsync(process.StandardOutput, deadline.Token).ConfigureAwait(false) ?? ""; // ended without a reply
             }
             await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
             return line;

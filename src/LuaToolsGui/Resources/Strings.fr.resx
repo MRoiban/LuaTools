@@ -917,4 +917,9 @@ LuaTools peut fermer Steam, écrire la modification dans ses fichiers, puis rela
   <data name="Tools_Err_Store" xml:space="preserve"><value>Steam n’a pas enregistré la modification.</value></data>
   <data name="Tools_Err_Timeout" xml:space="preserve"><value>Steam n’a pas répondu à temps.</value></data>
   <data name="Tools_Err_Helper" xml:space="preserve"><value>Le processus assistant a échoué.</value></data>
+  <data name="Tools_Err_SteamStartedPartial" xml:space="preserve"><value>Steam a démarré pendant l’enregistrement : le fichier de statistiques de Steam a été mis à jour, mais pas tous les fichiers de CloudRedirect. Fermez Steam et enregistrez à nouveau pour terminer.</value></data>
+  <data name="Tools_Err_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect gère ce jeu et écraserait les statistiques écrites pendant que Steam est fermé : rien n’a été écrit. Lancez Steam pour modifier les statistiques, ou annulez-les pour enregistrer les succès.</value></data>
+  <data name="Tools_Err_CloudRedirectStatsRejected" xml:space="preserve"><value>Steam n’a pas accepté la modification des statistiques ({0}). CloudRedirect écraserait une modification écrite dans les fichiers de Steam : rien n’a été écrit.</value></data>
+  <data name="Tools_Err_CloudRedirectMixed" xml:space="preserve"><value>CloudRedirect gère ce jeu : verrouiller des succès nécessite que Steam soit fermé, modifier des statistiques qu’il soit lancé. Rien n’a été écrit ; enregistrez-les séparément.</value></data>
+  <data name="Tools_Note_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect gère ce jeu : les statistiques ne sont enregistrées que lorsque Steam est lancé.</value></data>
 </root>

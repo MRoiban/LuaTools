@@ -73,8 +73,12 @@ public partial class GameToolsViewModel : ObservableObject
     [ObservableProperty] private string? _summary;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditable))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(DiscardCommand), nameof(UnlockAllCommand), nameof(LockAllCommand), nameof(SavePlaytimeCommand))]
     private bool _isSaving;
+
+    /// <summary>Toggles, stat boxes and the game list are locked while a save runs, so nothing changes under it.</summary>
+    public bool IsEditable => !IsSaving;
 
     [ObservableProperty] private string _achievementSearchText = "";
     partial void OnAchievementSearchTextChanged(string value)
@@ -95,11 +99,14 @@ public partial class GameToolsViewModel : ObservableObject
     /// <summary>A lock in a CloudRedirect game with Steam running will ask to close Steam.</summary>
     public bool ShowCloudRedirectNote => _snapshot?.CloudRedirectManaged == true && LocksPending;
 
+    /// <summary>CloudRedirect would overwrite stats written with Steam closed, so they are only saved live.</summary>
+    public bool ShowCloudRedirectStatsNote => _snapshot?.CloudRedirectManaged == true && HasStats;
+
     public string SteamStateText => SteamRunning ? Resources.Strings.Tools_SteamRunning : Resources.Strings.Tools_SteamClosed;
     partial void OnSteamRunningChanged(bool value) => OnPropertyChanged(nameof(SteamStateText));
 
     [RelayCommand]
-    public Task Reload() => AppId is null ? Task.CompletedTask : LoadAsync();
+    public Task Reload() => AppId is null || IsSaving ? Task.CompletedTask : LoadAsync();
 
     private void Clear()
     {
@@ -209,6 +216,7 @@ public partial class GameToolsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasChanges));
         OnPropertyChanged(nameof(ShowCabinetNote));
         OnPropertyChanged(nameof(ShowCloudRedirectNote));
+        OnPropertyChanged(nameof(ShowCloudRedirectStatsNote));
         SaveCommand.NotifyCanExecuteChanged();
         DiscardCommand.NotifyCanExecuteChanged();
         UnlockAllCommand.NotifyCanExecuteChanged();
@@ -256,15 +264,28 @@ public partial class GameToolsViewModel : ObservableObject
         switch (result.Outcome)
         {
             case StatsSaveOutcome.SavedLive:
-                // Steam may write its cache file later; keep what it accepted instead of re-reading it.
-                foreach (var a in Achievements) a.Commit();
-                foreach (var s in Stats) s.Commit();
-                RowsChanged();
+                // Steam may write its cache file later; record what it accepted instead of re-reading it. Only
+                // the submitted rows, and only while that game is still shown.
+                if (AppId == app)
+                {
+                    foreach (var a in Achievements)
+                        if (edit.Achievements.TryGetValue(a.Info.ApiName, out bool unlocked)) a.CommitSaved(unlocked);
+                    foreach (var s in Stats)
+                        if (edit.Stats.TryGetValue(s.Info.ApiName, out double value)) s.CommitSaved(value);
+                    RowsChanged();
+                }
                 _toast.Show(Resources.Strings.Tools_Title, Resources.Strings.Tools_Saved_Live);
                 break;
             case StatsSaveOutcome.SavedToFile:
                 _toast.Show(Resources.Strings.Tools_Title, Resources.Strings.Tools_Saved_File);
                 if (AppId == app) await LoadAsync();
+                break;
+            case StatsSaveOutcome.NeedsSteamClosed when AppId != app:
+                // Another game is shown now: never raise a close-Steam prompt over it.
+                Failed(Describe(GameToolsService.ErrSteamRunning));
+                break;
+            case StatsSaveOutcome.LiveRejected when AppId != app:
+                Failed(Describe(result.Error));
                 break;
             case StatsSaveOutcome.NeedsSteamClosed:
                 Ask(Resources.Strings.Tools_Confirm_CloudRedirect_Title, Resources.Strings.Tools_Confirm_CloudRedirect_Body,
@@ -336,6 +357,7 @@ public partial class GameToolsViewModel : ObservableObject
         try
         {
             bool running = await Task.Run(_service.IsSteamRunning);
+            if (AppId != app) return; // never prompt over another game
             SteamRunning = running;
             if (running)
             {
@@ -422,6 +444,10 @@ public partial class GameToolsViewModel : ObservableObject
             GameToolsService.ErrNoLocalConfig => Resources.Strings.Tools_Err_NoLocalConfig,
             GameToolsService.ErrNoAppsSection => Resources.Strings.Tools_Err_NoAppsSection,
             GameToolsService.ErrCloudRedirectFile => Resources.Strings.Tools_Err_CloudRedirectFile,
+            GameToolsService.ErrSteamStartedPartial => Resources.Strings.Tools_Err_SteamStartedPartial,
+            GameToolsService.ErrCloudRedirectStats => Resources.Strings.Tools_Err_CloudRedirectStats,
+            GameToolsService.ErrCloudRedirectStatsRejected => string.Format(Resources.Strings.Tools_Err_CloudRedirectStatsRejected, Describe(detail)),
+            GameToolsService.ErrCloudRedirectMixed => Resources.Strings.Tools_Err_CloudRedirectMixed,
             "busy" => Resources.Strings.Tools_Err_Busy,
             "steam-closed" => Resources.Strings.Tools_Err_SteamClosed,
             "stats-unavailable" => Resources.Strings.Tools_Err_StatsUnavailable + Suffix(detail),

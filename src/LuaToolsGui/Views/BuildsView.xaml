@@ -341,11 +341,13 @@
                             Text="{x:Static res:Strings.Tools_Protected}"
                             Visibility="{Binding CanToggle, Converter={StaticResource InverseBoolToVis}}" />
                     </StackPanel>
-                    <ui:ToggleSwitch
+                    <!-- The wrapper is disabled while a save runs (GameToolsViewModel.IsEditable). -->
+                    <Border
                         Grid.Column="2"
                         VerticalAlignment="Center"
-                        IsChecked="{Binding Unlocked, Mode=TwoWay}"
-                        IsEnabled="{Binding CanToggle}" />
+                        IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
+                        <ui:ToggleSwitch IsChecked="{Binding Unlocked, Mode=TwoWay}" IsEnabled="{Binding CanToggle}" />
+                    </Border>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -392,7 +394,11 @@
                             Text="{x:Static res:Strings.Tools_Protected}"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
-                    <Border Grid.Column="1" BorderThickness="1" CornerRadius="6">
+                    <Border
+                        Grid.Column="1"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=ItemsControl}}">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="BorderBrush" Value="Transparent" />
@@ -526,6 +532,7 @@
                         Background="Transparent"
                         BorderThickness="0"
                         ItemTemplate="{StaticResource GameRowTemplate}"
+                        IsEnabled="{Binding CanSwitchGame}"
                         ItemsSource="{Binding Items}"
                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                         SelectedItem="{Binding SelectedGame}">
@@ -1275,12 +1282,20 @@
                                 <RowDefinition Height="*" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <TextBlock
-                                Margin="2,0,12,0"
-                                FontSize="11.5"
-                                Foreground="#9ca3af"
-                                Text="{Binding SteamStateText}"
-                                TextWrapping="Wrap" />
+                            <StackPanel Margin="2,0,12,0">
+                                <TextBlock
+                                    FontSize="11.5"
+                                    Foreground="#9ca3af"
+                                    Text="{Binding SteamStateText}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Margin="0,6,0,0"
+                                    FontSize="11.5"
+                                    Foreground="#f0b48b"
+                                    Text="{x:Static res:Strings.Tools_Note_CloudRedirectStats}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ShowCloudRedirectStatsNote, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
                             <ui:ProgressRing
                                 Grid.Row="1"
                                 Margin="0,24,0,0"

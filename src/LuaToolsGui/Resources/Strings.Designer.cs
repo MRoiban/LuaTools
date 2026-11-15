@@ -896,4 +896,9 @@ public static class Strings
     public static string Tools_Err_Store => Get(nameof(Tools_Err_Store));
     public static string Tools_Err_Timeout => Get(nameof(Tools_Err_Timeout));
     public static string Tools_Err_Helper => Get(nameof(Tools_Err_Helper));
+    public static string Tools_Err_SteamStartedPartial => Get(nameof(Tools_Err_SteamStartedPartial));
+    public static string Tools_Err_CloudRedirectStats => Get(nameof(Tools_Err_CloudRedirectStats));
+    public static string Tools_Err_CloudRedirectStatsRejected => Get(nameof(Tools_Err_CloudRedirectStatsRejected));
+    public static string Tools_Err_CloudRedirectMixed => Get(nameof(Tools_Err_CloudRedirectMixed));
+    public static string Tools_Note_CloudRedirectStats => Get(nameof(Tools_Note_CloudRedirectStats));
 }

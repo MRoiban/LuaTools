@@ -51,10 +51,11 @@ public partial class AchievementRowViewModel : ObservableObject
             || Info.ApiName.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>The staged state is now what Steam has (after a live save).</summary>
-    public void Commit()
+    /// <summary>Steam now has <paramref name="saved"/> (after a live save). Only that value is recorded, so a
+    /// row changed again meanwhile stays dirty.</summary>
+    public void CommitSaved(bool saved)
     {
-        _original = Unlocked;
+        _original = saved;
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(StatusText));
     }
@@ -94,9 +95,10 @@ public partial class StatRowViewModel : ObservableObject
         }
     }
 
-    public void Commit()
+    /// <summary>Steam now has <paramref name="saved"/> (after a live save).</summary>
+    public void CommitSaved(double saved)
     {
-        _original = Parsed ?? _original;
+        _original = saved;
         OnPropertyChanged(nameof(IsDirty));
     }
 
