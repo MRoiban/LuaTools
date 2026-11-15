@@ -26,7 +26,7 @@ public partial class SourceRowViewModel : ObservableObject
     public bool IsAvailable => Status == "available";
     public string StatusLabel => Status.ToUpperInvariant();
     /// <summary>The name's tooltip: explains the Cabinet source (Hubcap through the server's keys); none for others.</summary>
-    public string? Tip => AcquisitionCoordinator.IsCabinet(Name) ? Resources.Strings.Add_CabinetSource_Tip : null;
+    public string? Tip => Name == Services.Cabinet.CabinetHubcapRelay.SourceName ? Resources.Strings.Add_CabinetSource_Tip : null;
 
     /// <summary>Hide the status badge when availability is unknown (e.g. a Hubcap row with no key set.
     /// We can't check, so we don't show a misleading badge; the "needs key" hint covers it instead).</summary>
@@ -625,7 +625,7 @@ public partial class DownloadViewModel : ObservableObject
         // configured can download without signing in. SteamML is public; lua.tools sources need an account.
         // The Cabinet source authenticates with the Cabinet connection, not lua.tools.
         bool hubcapWithKey = source.NeedsKey && !string.IsNullOrEmpty(_settings.HubcapApiKey);
-        if (source.Name != SteamMlService.SourceName && source.Name != DexLuaService.SourceName && !AcquisitionCoordinator.IsCabinet(source.Name)
+        if (source.Name != SteamMlService.SourceName && source.Name != DexLuaService.SourceName && source.Name != Services.Cabinet.CabinetHubcapRelay.SourceName
             && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
 
         Error = null;
