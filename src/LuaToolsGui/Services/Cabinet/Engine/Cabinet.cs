@@ -510,7 +510,8 @@ namespace CabinetEngine
     // ---------- Isolated Steam IPC session (never loads OnlineFix DLLs) ----------
     // Interface versions/Windows vtable order verified against SAM.API and Valve headers.
     // This is a minimal independent binding, not a copy of SAM's implementation.
-    sealed class SteamSession : IDisposable
+    // LuaTools: partial so the Tools page's achievement/stat edits (GameStats.cs) can share this binding.
+    sealed partial class SteamSession : IDisposable
     {
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
         [DllImport("kernel32.dll", CharSet = CharSet.Ansi)] static extern IntPtr GetProcAddress(IntPtr module, string name);
@@ -765,6 +766,7 @@ namespace CabinetEngine
                         log("shadow " + appId + ": callback " + c.Id + " app=" + Marshal.ReadInt64(c.Data) + " result=" + Marshal.ReadInt32(c.Data, 8));
                         if (c.Id == 1101 && Marshal.ReadInt64(c.Data) == long.Parse(appId)) StatsReceivedResult = Marshal.ReadInt32(c.Data, 8);
                         if (c.Id == 1102 && Marshal.ReadInt64(c.Data) == long.Parse(appId) && Marshal.ReadInt32(c.Data, 8) != 1) pendingStore = true;
+                        if (c.Id == 1102 && Marshal.ReadInt64(c.Data) == long.Parse(appId)) StatsStoredResult = Marshal.ReadInt32(c.Data, 8); // LuaTools: Tools page edits
                     }
                 }
                 finally { freeCallback(pipe); }
