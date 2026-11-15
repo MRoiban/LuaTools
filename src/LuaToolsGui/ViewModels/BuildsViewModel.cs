@@ -102,7 +102,7 @@ public record DepotRow(
     /// <summary>Shown only when this lua is pinned to something OTHER than what Steam ships now.
     /// That's the whole point of picking an older build, so it's worth calling out.</summary>
     public string? OutdatedLabel =>
-        ManifestId is not null && PublicManifestId is not null && ManifestId != PublicManifestId
+        ManifestPins.IsBehind(ManifestId, PublicManifestId)
             ? string.Format(Resources.Strings.Builds_ManifestLatest, PublicManifestId)
             : null;
 
