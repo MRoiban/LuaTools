@@ -433,7 +433,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Manage_AboutHeader" xml:space="preserve"><value>À propos</value></data>
   <data name="Manage_Info_Developer" xml:space="preserve"><value>Développeur</value></data>
   <data name="Manage_Info_Publisher" xml:space="preserve"><value>Éditeur</value></data>
-  <data name="Nav_Builds" xml:space="preserve"><value>Dépôts</value></data>
+  <data name="Nav_Builds" xml:space="preserve"><value>Outils</value></data>
   <data name="Builds_Title" xml:space="preserve"><value>Dépôts</value></data>
   <data name="Builds_Subtitle" xml:space="preserve"><value>Conservez plusieurs versions du lua d'un jeu et choisissez celle que Steam utilise.</value></data>
   <data name="Builds_NoSelection" xml:space="preserve"><value>Choisissez un jeu à gauche pour voir ses préréglages.</value></data>
@@ -853,4 +853,68 @@ Redémarrez Steam ensuite. Activer CloudRedirect maintenant ?</value></data>
   <data name="Agent_Doctor_Repeated" xml:space="preserve"><value>Cet avertissement ou cette erreur s’est répété au cours des dernières 24 heures.</value></data>
   <data name="Agent_Doctor_Update" xml:space="preserve"><value>Indique une mise à jour déjà préparée. Utilisez update check pour rechercher et préparer ; doctor n’applique jamais de mise à jour.</value></data>
   <data name="Agent_Doctor_Disk" xml:space="preserve"><value>Les téléchargements et la préparation nécessitent de l’espace disque. Sous 512 Mio, libérez de l’espace avant d’accepter une tâche.</value></data>
+  <data name="Tools_Title" xml:space="preserve"><value>Outils</value></data>
+  <data name="Tools_Subtitle" xml:space="preserve"><value>Dépôts, succès, statistiques et temps de jeu de chaque jeu.</value></data>
+  <data name="Tools_NoSelection" xml:space="preserve"><value>Choisissez un jeu à gauche pour gérer ses dépôts, succès, statistiques et temps de jeu.</value></data>
+  <data name="Tools_Tab_Depots" xml:space="preserve"><value>Dépôts</value></data>
+  <data name="Tools_Tab_Achievements" xml:space="preserve"><value>Succès</value></data>
+  <data name="Tools_Tab_Stats" xml:space="preserve"><value>Statistiques</value></data>
+  <data name="Tools_Tab_Playtime" xml:space="preserve"><value>Temps de jeu</value></data>
+  <data name="Tools_SearchAchievements" xml:space="preserve"><value>Rechercher un succès</value></data>
+  <data name="Tools_Summary" xml:space="preserve"><value>{0} sur {1} débloqués</value></data>
+  <data name="Tools_UnlockAll" xml:space="preserve"><value>Tout débloquer</value></data>
+  <data name="Tools_LockAll" xml:space="preserve"><value>Tout verrouiller</value></data>
+  <data name="Tools_BulkHint" xml:space="preserve"><value>Tout débloquer et Tout verrouiller s’appliquent aux succès affichés par la recherche. Rien n’est écrit avant l’enregistrement.</value></data>
+  <data name="Tools_Save" xml:space="preserve"><value>Enregistrer</value></data>
+  <data name="Tools_Discard" xml:space="preserve"><value>Annuler les modifications</value></data>
+  <data name="Tools_UnlockedAt" xml:space="preserve"><value>Débloqué le {0}</value></data>
+  <data name="Tools_Unlocked" xml:space="preserve"><value>Débloqué</value></data>
+  <data name="Tools_Locked" xml:space="preserve"><value>Verrouillé</value></data>
+  <data name="Tools_Hidden" xml:space="preserve"><value>Caché</value></data>
+  <data name="Tools_Protected" xml:space="preserve"><value>Seul le serveur du jeu peut modifier cette valeur.</value></data>
+  <data name="Tools_IncrementOnly" xml:space="preserve"><value>Ne fait qu’augmenter</value></data>
+  <data name="Tools_NoAchievements" xml:space="preserve"><value>Ce jeu n’a pas de succès.</value></data>
+  <data name="Tools_NoStats" xml:space="preserve"><value>Ce jeu n’a pas de statistiques modifiables.</value></data>
+  <data name="Tools_NoSchema" xml:space="preserve"><value>Steam n’a pas encore téléchargé la liste des succès de ce jeu. Lancez Steam puis rouvrez cet onglet.</value></data>
+  <data name="Tools_FetchingSchema" xml:space="preserve"><value>Demande de la liste des succès à Steam…</value></data>
+  <data name="Tools_NoAccount" xml:space="preserve"><value>Aucune connexion Steam n’a été trouvée sur ce PC.</value></data>
+  <data name="Tools_NoMatch" xml:space="preserve"><value>Aucun succès ne correspond à la recherche.</value></data>
+  <data name="Tools_SteamRunning" xml:space="preserve"><value>Steam est lancé : les modifications passent par Steam.</value></data>
+  <data name="Tools_SteamClosed" xml:space="preserve"><value>Steam est fermé : les modifications sont écrites dans les fichiers de Steam.</value></data>
+  <data name="Tools_Note_Cabinet" xml:space="preserve"><value>Cabinet synchronise les succès de ce jeu et ne fait qu’en ajouter : un succès verrouillé reviendra à la prochaine synchronisation.</value></data>
+  <data name="Tools_Note_CloudRedirect" xml:space="preserve"><value>CloudRedirect gère les succès de ce jeu. Enregistrer un verrouillage ferme Steam (après confirmation), écrit la modification pour que CloudRedirect l’envoie, puis relance Steam.</value></data>
+  <data name="Tools_Saved_Live" xml:space="preserve"><value>Enregistré via Steam.</value></data>
+  <data name="Tools_Saved_File" xml:space="preserve"><value>Enregistré dans les fichiers de Steam.</value></data>
+  <data name="Tools_SaveFailed" xml:space="preserve"><value>Échec de l’enregistrement : {0}</value></data>
+  <data name="Tools_SteamRestartFailed" xml:space="preserve"><value>Enregistré, mais Steam n’a pas redémarré. Lancez-le vous-même.</value></data>
+  <data name="Tools_Confirm_CloudRedirect_Title" xml:space="preserve"><value>Fermer Steam pour verrouiller ces succès ?</value></data>
+  <data name="Tools_Confirm_CloudRedirect_Body" xml:space="preserve"><value>CloudRedirect garde sa propre copie des succès de ce jeu. Pour que le verrouillage tienne, LuaTools ferme Steam, écrit les fichiers de Steam et de CloudRedirect, puis relance Steam. Les jeux en cours sont fermés avec lui.</value></data>
+  <data name="Tools_Confirm_LiveRejected_Title" xml:space="preserve"><value>Steam n’a pas accepté la modification</value></data>
+  <data name="Tools_Confirm_LiveRejected_Body" xml:space="preserve"><value>Réponse de Steam : {0}
+LuaTools peut fermer Steam, écrire la modification dans ses fichiers, puis relancer Steam. Les jeux en cours sont fermés avec lui.</value></data>
+  <data name="Tools_Confirm_Playtime_Title" xml:space="preserve"><value>Fermer Steam pour modifier le temps de jeu ?</value></data>
+  <data name="Tools_Confirm_Playtime_Body" xml:space="preserve"><value>Steam réécrit son fichier de temps de jeu en quittant : il doit donc être fermé. LuaTools ferme Steam, écrit la nouvelle valeur, puis relance Steam. Les jeux en cours sont fermés avec lui.</value></data>
+  <data name="Tools_Confirm_Accept" xml:space="preserve"><value>Fermer Steam et enregistrer</value></data>
+  <data name="Tools_Cancel" xml:space="preserve"><value>Annuler</value></data>
+  <data name="Tools_Playtime_Hours" xml:space="preserve"><value>Heures de jeu</value></data>
+  <data name="Tools_Playtime_Current" xml:space="preserve"><value>Steam affiche {0} h pour ce jeu.</value></data>
+  <data name="Tools_Playtime_None" xml:space="preserve"><value>Steam n’a encore enregistré aucun temps de jeu pour ce jeu.</value></data>
+  <data name="Tools_Playtime_Note" xml:space="preserve"><value>Ne modifie que ce que Steam affiche sur ce PC. Steam doit être fermé pour enregistrer ; LuaTools demande avant de le fermer. Les serveurs de Steam ou un outil de synchronisation peuvent rétablir une valeur plus élevée.</value></data>
+  <data name="Tools_Playtime_Invalid" xml:space="preserve"><value>Saisissez un nombre d’heures, 0 ou plus.</value></data>
+  <data name="Tools_Playtime_Save" xml:space="preserve"><value>Enregistrer le temps de jeu</value></data>
+  <data name="Tools_Err_NoSteam" xml:space="preserve"><value>Steam est introuvable.</value></data>
+  <data name="Tools_Err_NoSchema" xml:space="preserve"><value>La liste des succès de ce jeu n’est pas disponible.</value></data>
+  <data name="Tools_Err_SteamRunning" xml:space="preserve"><value>Steam est lancé.</value></data>
+  <data name="Tools_Err_SteamStarted" xml:space="preserve"><value>Steam a démarré pendant l’enregistrement : rien n’a été écrit.</value></data>
+  <data name="Tools_Err_SteamStop" xml:space="preserve"><value>Steam n’a pas pu être fermé : rien n’a été écrit.</value></data>
+  <data name="Tools_Err_NoLocalConfig" xml:space="preserve"><value>Le fichier localconfig.vdf de Steam est introuvable pour ce compte.</value></data>
+  <data name="Tools_Err_NoAppsSection" xml:space="preserve"><value>Le fichier localconfig.vdf de Steam n’a pas encore de section des jeux.</value></data>
+  <data name="Tools_Err_CloudRedirectFile" xml:space="preserve"><value>Le fichier de statistiques CloudRedirect de ce jeu est illisible : rien n’a été écrit.</value></data>
+  <data name="Tools_Err_Busy" xml:space="preserve"><value>Un autre assistant est connecté à ce jeu. Réessayez dans un instant.</value></data>
+  <data name="Tools_Err_SteamClosed" xml:space="preserve"><value>Steam s’est fermé avant l’envoi de la modification.</value></data>
+  <data name="Tools_Err_StatsUnavailable" xml:space="preserve"><value>Steam n’a pas chargé les statistiques de ce jeu.</value></data>
+  <data name="Tools_Err_Refused" xml:space="preserve"><value>Steam a refusé {0}.</value></data>
+  <data name="Tools_Err_Store" xml:space="preserve"><value>Steam n’a pas enregistré la modification.</value></data>
+  <data name="Tools_Err_Timeout" xml:space="preserve"><value>Steam n’a pas répondu à temps.</value></data>
+  <data name="Tools_Err_Helper" xml:space="preserve"><value>Le processus assistant a échoué.</value></data>
 </root>

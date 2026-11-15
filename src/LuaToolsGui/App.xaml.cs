@@ -109,6 +109,9 @@ public partial class App : Application
                 services.AddSingleton<SettingsViewModel>();
                 services.AddSingleton<ManageViewModel>();
                 services.AddSingleton<CabinetViewModel>();
+                services.AddSingleton<Services.GameTools.GameToolsService>();
+                services.AddSingleton<Services.GameTools.AchievementIconCache>();
+                services.AddSingleton<GameToolsViewModel>(); // the Tools page's Achievements/Stats/Playtime tabs
                 services.AddSingleton<BuildsViewModel>();
                 services.AddTransient<LaunchOptionsViewModel>(); // one per dialog
                 services.AddSingleton<HomeViewModel>();
