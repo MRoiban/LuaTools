@@ -558,4 +558,102 @@ public sealed class CabinetLuaCacheTests : IDisposable
                      Meta(pins: "[]"), Meta(size: "0"), Meta(size: "999999999999"), "{", "[]" })
             Assert.Throws<InvalidDataException>(() => CabinetLuaCacheClient.ParseMeta(Encoding.UTF8.GetBytes(bad), App));
     }
+
+    // ── For the Hubcap relay (CabinetHubcapRelayTests covers the flow) ──
+
+    [Fact]
+    public async Task LookupNamesTheStaleCopyAndNothingCachedSeparately()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "100"), Package = package };
+        var stale = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(new CabinetLuaCache.Lookup(null, CabinetLuaCache.Sha256(package), false), stale);
+        // Unverifiable (no depot info) counts as stale too: the relay may refresh it.
+        Assert.Equal(CabinetLuaCache.Sha256(package), (await Cache(cabinet, null).LookupAsync(App, null, CancellationToken.None)).StaleSha256);
+        var none = await Cache(new FakeCabinet(), Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(new CabinetLuaCache.Lookup(null, null, false), none);
+        var current = await Cache(cabinet, Steam("100")).LookupAsync(App, null, CancellationToken.None);
+        Assert.NotNull(current.File);
+        Assert.Null(current.StaleSha256);
+    }
+
+    [Fact]
+    public async Task LookupForTheRelayIgnoresTheBackoffButReportsServerFailures()
+    {
+        var cabinet = new FakeCabinet { Failure = new HttpRequestException("down") };
+        var cache = Cache(cabinet, Steam("111"));
+        Assert.True((await cache.LookupAsync(App, null, CancellationToken.None)).ServerFailed);
+        Assert.True(cache.BackingOff);
+        Assert.Equal(1, cabinet.MetaCalls);
+        await cache.LookupAsync(App, null, CancellationToken.None); // backing off: not asked
+        Assert.Equal(1, cabinet.MetaCalls);
+        cabinet.Failure = null;
+        Assert.Equal(new CabinetLuaCache.Lookup(null, null, false), await cache.LookupAsync(App, null, CancellationToken.None, ignoreBackoff: true));
+        Assert.Equal(2, cabinet.MetaCalls);
+    }
+
+    [Fact]
+    public async Task ExactDownloadVerifiesTheNamedVersionButNotSteamsBuild()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var meta = MetaFor(package, "100");
+        var cabinet = new FakeCabinet { Package = package };
+        var file = await Cache(cabinet, Steam("111")).DownloadExactAsync(meta, null, CancellationToken.None);
+        Assert.IsType<CabinetCachedFile>(file);
+        Assert.Equal(package, File.ReadAllBytes(file.FilePath));
+        // Other bytes than the meta names, a version no longer kept, or a package a shared copy may not be.
+        cabinet.Package = Zip(($"{App}.lua", Lua("101")));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(meta, null, CancellationToken.None));
+        cabinet.Package = null;
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(meta, null, CancellationToken.None));
+        byte[] undeclared = Zip(($"{App}.lua", "addappid(440)\n"));
+        cabinet.Package = undeclared;
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(MetaFor(undeclared, "1"), null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RelayTransportSendsTheStaleShaAndParsesStatuses()
+    {
+        var requests = new List<HttpRequestMessage>();
+        string sha = new('d', 64);
+        string meta = $"{{\"appid\":\"570\",\"sha256\":\"{sha}\",\"size\":12,\"pins\":{{}},\"source\":\"Hubcap (Cabinet)\",\"uploadedAt\":1,\"uploader\":\"Cabinet Cloud\"}}";
+        var transport = new Stub(r =>
+        {
+            requests.Add(r);
+            string path = r.RequestUri!.AbsolutePath;
+            if (path == "/api/hubcap") return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"enabled\":true}") };
+            if (r.Method == HttpMethod.Post) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"state\":\"queued\",\"position\":3}") };
+            if (path == "/api/apps/440/hubcap") return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"error\":\"not_found\"}") };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{{\"state\":\"ready\",\"meta\":{meta}}}") };
+        });
+        using var client = new CabinetLuaCacheClient(new CredentialBox(new CabinetCredentials("https://cabinet.example.test", Token, "device1")), transport);
+        Assert.True(await client.GetRelayEnabledAsync(CancellationToken.None));
+        Assert.Equal(new CabinetRelayStatus("queued", 3), await client.RequestRelayAsync(App, sha, CancellationToken.None));
+        await client.RequestRelayAsync(App, null, CancellationToken.None);
+        var ready = await client.GetRelayStatusAsync(App, CancellationToken.None);
+        Assert.Equal(("ready", sha, "Cabinet Cloud"), (ready!.State, ready.Meta!.Sha256, ready.Meta.Uploader));
+        Assert.Null(await client.GetRelayStatusAsync(440, CancellationToken.None));
+        Assert.Equal($"/api/apps/570/hubcap?stale={sha}", requests[1].RequestUri!.PathAndQuery);
+        Assert.Equal(HttpMethod.Post, requests[1].Method);
+        Assert.Equal("/api/apps/570/hubcap", requests[2].RequestUri!.PathAndQuery);
+        foreach (var request in requests)
+        {
+            Assert.Equal("Bearer " + Token, request.Headers.Authorization!.ToString());
+            Assert.Equal("https://cabinet.example.test", request.Headers.GetValues("Origin").Single());
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => client.RequestRelayAsync(App, "not-a-sha", CancellationToken.None));
+    }
+
+    [Fact]
+    public void MalformedRelayStatusesAreRefused()
+    {
+        string meta = $"{{\"appid\":\"570\",\"sha256\":\"{new string('e', 64)}\",\"size\":1,\"pins\":{{}},\"source\":\"s\",\"uploadedAt\":1,\"uploader\":\"u\"}}";
+        CabinetRelayStatus Parse(string json) => CabinetLuaCacheClient.ParseRelayStatus(Encoding.UTF8.GetBytes(json), App);
+        Assert.Equal(new CabinetRelayStatus("failed", null, "no_manifest"), Parse("{\"state\":\"failed\",\"error\":\"no_manifest\"}"));
+        Assert.Equal("upstream_not_newer", Parse($"{{\"state\":\"upstream_not_newer\",\"meta\":{meta}}}").State);
+        Assert.True(Parse("{\"state\":\"running\"}").IsPending);
+        foreach (string bad in new[] { "{\"state\":\"done\"}", "{\"state\":\"ready\"}", "{\"state\":\"queued\",\"position\":0}",
+                     "{\"state\":\"failed\",\"error\":\"<b>x</b>\"}", $"{{\"state\":\"ready\",\"meta\":{meta.Replace("\"570\"", "\"440\"")}}}", "[]", "{" })
+            Assert.Throws<InvalidDataException>(() => Parse(bad));
+    }
 }

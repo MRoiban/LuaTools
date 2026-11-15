@@ -180,29 +180,47 @@ public class CabinetLuaCache
     /// A staged copy of the server's current package for this game, or null to use the normal source.
     /// Throws only <see cref="OperationCanceledException"/> for the caller's own cancellation.
     /// </summary>
-    public async Task<CabinetCachedFile?> TryGetCurrentAsync(long appId, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    public async Task<CabinetCachedFile?> TryGetCurrentAsync(long appId, IProgress<DownloadProgress>? progress, CancellationToken ct) =>
+        (await LookupAsync(appId, progress, ct).ConfigureAwait(false)).File;
+
+    /// <summary>
+    /// What a lookup found: a current copy (<see cref="File"/>), or the SHA-256 of a cached copy that is
+    /// not usable now (<see cref="StaleSha256"/>: stale, unverifiable, or not matching its meta), or
+    /// nothing cached. <see cref="ServerFailed"/> when the server could not be asked.
+    /// </summary>
+    public sealed record Lookup(CabinetCachedFile? File, string? StaleSha256, bool ServerFailed);
+
+    /// <summary>
+    /// <see cref="TryGetCurrentAsync"/> with the reason when there is no current copy. With
+    /// <paramref name="ignoreBackoff"/> the server is asked even during the failure back-off (the Hubcap
+    /// relay must know whether a copy exists, since "nothing cached" means a different request).
+    /// Throws only <see cref="OperationCanceledException"/> for the caller's own cancellation.
+    /// </summary>
+    public async Task<Lookup> LookupAsync(long appId, IProgress<DownloadProgress>? progress, CancellationToken ct, bool ignoreBackoff = false)
     {
-        if (!_client.IsConnected || BackingOff) return null;
+        if (!_client.IsConnected) return new(null, null, true);
+        if (BackingOff && !ignoreBackoff) return new(null, null, true);
         CabinetLuaMeta? meta;
         try { meta = await _client.GetMetaAsync(appId, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { BackOff(appId, ex); return null; }
-        if (meta is null) { _log.LogDebug("Cabinet lua cache: nothing cached for {AppId}", appId); return null; }
+        catch (Exception ex) { BackOff(appId, ex); return new(null, null, true); }
+        if (meta is null) { _log.LogDebug("Cabinet lua cache: nothing cached for {AppId}", appId); return new(null, null, false); }
+        var stale = new Lookup(null, meta.Sha256, false);
 
         var depots = await DepotsAsync(appId, ct).ConfigureAwait(false);
         if (!ManifestPins.AreCurrent(meta.Pins, depots))
         {
             _log.LogInformation("Cabinet lua cache: copy of {AppId} is not current ({Reason}); using the normal source",
                 appId, depots is null ? "Steam depot info unavailable" : "older build");
-            return null;
+            return stale;
         }
 
         progress?.Report(new DownloadProgress(0, meta.Size));
         byte[]? bytes;
         try { bytes = await _client.DownloadAsync(appId, meta.Sha256, meta.Size, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { BackOff(appId, ex); return null; }
-        if (bytes is null) return null; // replaced and evicted since the meta was read
+        catch (Exception ex) { BackOff(appId, ex); return new(null, meta.Sha256, true); }
+        if (bytes is null) return stale; // replaced and evicted since the meta was read
         progress?.Report(new DownloadProgress(bytes.Length, bytes.Length));
 
         try
@@ -211,17 +229,35 @@ public class CabinetLuaCache
             if (!CabinetLuaCachePolicy.IsUsable(meta, Sha256(bytes), CabinetPackage.Read(bytes, appId), depots))
             {
                 _log.LogWarning("Cabinet lua cache: copy of {AppId} does not match its description or Steam's build; using the normal source", appId);
-                return null;
+                return stale;
             }
             var file = Stage(bytes, appId);
             _log.LogInformation("Cabinet lua cache: installing the shared copy of {AppId} from {Source}", appId, meta.Source);
-            return file;
+            return new(file, null, false);
         }
         catch (Exception ex)
         {
             _log.LogWarning("Cabinet lua cache: copy of {AppId} is unusable ({Error}); using the normal source", appId, ex.GetType().Name);
-            return null;
+            return stale;
         }
+    }
+
+    /// <summary>
+    /// Downloads exactly the version <paramref name="meta"/> describes (the Hubcap relay's answer) and stages
+    /// it after the same checks as a lookup, except Steam's build: the relay already decided freshness, and
+    /// the user confirms an older copy. Throws <see cref="InvalidDataException"/> when the version is gone,
+    /// its bytes differ from the meta, or the package is not one a shared copy may be.
+    /// </summary>
+    public async Task<CabinetCachedFile> DownloadExactAsync(CabinetLuaMeta meta, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        progress?.Report(new DownloadProgress(0, meta.Size));
+        byte[] bytes = await _client.DownloadAsync(meta.AppId, meta.Sha256, meta.Size, ct).ConfigureAwait(false)
+            ?? throw new InvalidDataException("The Cabinet copy is no longer kept.");
+        progress?.Report(new DownloadProgress(bytes.Length, bytes.Length));
+        if (!string.Equals(Sha256(bytes), meta.Sha256, StringComparison.Ordinal))
+            throw new InvalidDataException("The Cabinet copy does not match its description.");
+        CabinetPackage.Read(bytes, meta.AppId);
+        return Stage(bytes, meta.AppId);
     }
 
     /// <summary>Steam's current depot info, or null when it is unavailable or slow. Never cancels the shared fetch.</summary>
