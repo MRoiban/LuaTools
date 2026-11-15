@@ -60,6 +60,9 @@ public partial class App : Application
                 services.AddSingleton<ICabinetCloud>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
+                // The connected Cabinet server's shared lua cache, used by manifest downloads.
+                services.AddSingleton<ICabinetLuaCacheClient>(sp => new CabinetLuaCacheClient(sp.GetRequiredService<CabinetService>()));
+                services.AddSingleton<CabinetLuaCache>();
                 services.AddSingleton<UpdateService>();
                 services.AddSingleton<CacheService>();
                 services.AddSingleton<SteamService>();
