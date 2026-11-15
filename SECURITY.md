@@ -139,7 +139,10 @@ an opt-in Cabinet Cloud and Steam's local debugging port for friend labels. See
 
 The Tools page (achievements, stats, playtime for one game) reuses that engine. While Steam runs,
 edits go through a hidden `LuaTools.exe --game-stats` helper with the same steamclient binding,
-AppId check, per-game mutex and parent watchdog; the GUI process never loads steamclient. While
+AppId check, per-game mutex and parent watchdog; the GUI process never loads steamclient. The helper
+is given the Steam folder LuaTools uses (including a settings override or portable Steam), requires
+it to be an absolute path containing `steam.exe` and `steamclient64.dll`, loads the DLL only from
+there, and only talks to that install's running `steam.exe`. While
 Steam is closed it edits `UserGameStats_<account>_<app>.bin`, CloudRedirect's per-game stats JSON and
 `cloud_redirect\pending_edits.json` (current account only), and `localconfig.vdf`, each backed up
 once to `%LOCALAPPDATA%\Cabinet\backup`, replaced atomically and re-checked against a starting Steam.
