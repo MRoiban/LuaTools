@@ -951,4 +951,9 @@ Installer quand même la copie de Cabinet ?</value></data>
   <data name="Cabinet_Relay_Unverified_Declined" xml:space="preserve"><value>Non installé : la version de la copie de Cabinet n’a pas pu être vérifiée.</value></data>
   <data name="Cabinet_Relay_Prompt_Install" xml:space="preserve"><value>Installer quand même</value></data>
   <data name="Cabinet_Relay_Prompt_Skip" xml:space="preserve"><value>Ne pas installer</value></data>
+  <data name="Cabinet_Relay_LastResort_Title" xml:space="preserve"><value>Aucune copie à jour trouvée</value></data>
+  <data name="Cabinet_Relay_LastResort_Body" xml:space="preserve"><value>Aucune source n’a pu fournir de configuration Lua à jour pour {0}. Cabinet possède une copie qui peut correspondre à une ancienne version du jeu.
+
+Installer quand même la copie de Cabinet ?</value></data>
+  <data name="Cabinet_Relay_LastResort_Declined" xml:space="preserve"><value>Non installé : aucune source n’avait de copie à jour.</value></data>
 </root>

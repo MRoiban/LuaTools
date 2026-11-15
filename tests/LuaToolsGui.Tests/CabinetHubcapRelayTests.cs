@@ -393,4 +393,111 @@ public sealed class CabinetHubcapRelayTests
         }
         finally { Directory.Delete(directory, recursive: true); }
     }
+
+    // ── Cabinet first ────────────────────────────────────────────────
+
+    private static PluginAddService.SourceRow Row(string name, bool needsKey = false, bool usable = true) =>
+        new() { Name = name, DisplayName = name, NeedsKey = needsKey, Status = usable ? "available" : "unavailable" };
+
+    [Fact]
+    public void CabinetIsFirstInTheProviderOrderOnlyWhenListed()
+    {
+        // As CheckAsync assembles them: own key first, the catalogue's order, Cabinet appended.
+        var rows = new[] { Row("Ryuu"), Row(AcquisitionCoordinator.HubcapSource, needsKey: true), Row("SteamML"), Row("Cabinet") };
+        Assert.Equal(new[] { "Cabinet", AcquisitionCoordinator.HubcapSource, "Ryuu", "SteamML" },
+            AcquisitionCoordinator.Order(rows).Select(r => r.Name));
+        // Relay off: no Cabinet row, and exactly the order from before.
+        Assert.Equal(new[] { AcquisitionCoordinator.HubcapSource, "Ryuu", "SteamML" },
+            AcquisitionCoordinator.Order(rows.Where(r => r.Name != "Cabinet")).Select(r => r.Name));
+    }
+
+    [Fact]
+    public void AnAutomaticCabinetFallsBackToTheOtherUsableSourcesInOrder()
+    {
+        var rows = AcquisitionCoordinator.Order([Row("Ryuu", usable: false), Row(AcquisitionCoordinator.HubcapSource, needsKey: true), Row("SteamML"), Row("Cabinet"), Row("DexLua")]);
+        Assert.Equal(new[] { new ManifestJobFactory.FallbackSource(AcquisitionCoordinator.HubcapSource, true),
+                new ManifestJobFactory.FallbackSource("SteamML", false), new ManifestJobFactory.FallbackSource("DexLua", false) },
+            AcquisitionCoordinator.FallbacksFrom(rows));
+    }
+
+    [Fact]
+    public void TheStorePluginsSourceListPutsCabinetFirstWhileItsRelayIsOn()
+    {
+        var statuses = new Dictionary<string, string> { ["Ryuu"] = "available", ["SteamML"] = "unavailable" };
+        Assert.Equal(new[] { ("Cabinet", true), ("Ryuu", true), ("SteamML", false) }, HttpServerService.LegacySourceOrder(statuses, cabinet: true));
+        Assert.Equal(new[] { ("Ryuu", true), ("SteamML", false) }, HttpServerService.LegacySourceOrder(statuses, cabinet: false));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FastFetchPutsCabinetBeforeTheUsersOwnHubcapKey(bool relayOn)
+    {
+        var h = new Harness();
+        h.Server.Enabled = relayOn;
+        string directory = Path.Combine(Path.GetTempPath(), "CabinetHubcapRelayTests-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var hubcapHttp = new HttpClient(new FakeHubcap()) { BaseAddress = new Uri(AppConfig.HubcapBaseUrl) };
+            using var http = new HttpClient();
+            var settings = new SettingsService(new AppSettings()) { HubcapApiKey = "smm_" + new string('a', 96) };
+            var coordinator = new AcquisitionCoordinator(null!, new HubcapService(hubcapHttp), settings, new AuthService(http, Path.Combine(directory, "auth.dat")),
+                null!, null!, null, h.Relay);
+            // FastFetch with a usable own key takes its short path: Cabinet first, the own key as its fallback.
+            var sources = (await coordinator.CheckAsync(App, fastFetch: true)).Sources;
+            Assert.Equal(relayOn ? new[] { "Cabinet", AcquisitionCoordinator.HubcapSource } : new[] { AcquisitionCoordinator.HubcapSource },
+                sources.Select(r => r.Name));
+            Assert.All(sources, r => Assert.True(r.CanDownload));
+            Assert.Equal(sources[0], sources.FirstOrDefault(r => r.CanDownload)); // what FastFetch and `--source auto` pick
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private sealed class FakeHubcap : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(request.RequestUri!.AbsolutePath.Contains("/status/")
+                    ? "{\"status\":\"ok\",\"manifest_file_exists\":true}"
+                    : "{\"daily_usage\":0,\"daily_limit\":25,\"can_make_requests\":true}"),
+            });
+    }
+
+    [Fact]
+    public async Task AnAutomaticAttemptNeverAsksAndStopsWaitingAfterTwoMinutes()
+    {
+        var h = new Harness();
+        bool asked = false;
+        h.Relay.ConfirmCopy = (_, _, _, _, _) => { asked = true; return Task.FromResult(true); };
+        for (int i = 0; i < 400; i++) h.Server.Polls.Enqueue(new CabinetRelayStatus(CabinetRelayStatus.Running));
+        var attempt = await h.Relay.TryFetchAsync(App, h.Reports.Add, null, CancellationToken.None);
+        Assert.Null(attempt.File);
+        Assert.Equal("timeout", attempt.Reason);
+        Assert.Equal(CabinetHubcapRelay.AutomaticTimeout, h.Now - DateTimeOffset.UnixEpoch);
+        Assert.Equal(TimeSpan.FromMinutes(2), CabinetHubcapRelay.AutomaticTimeout);
+        Assert.Null(h.Reports.Last()); // the queue line is cleared before moving on
+        // Nothing newer: the copy is kept for the last resort, still without a question.
+        var notNewer = new Harness { Lookup = StaleLookup };
+        notNewer.Server.Answer = new(CabinetRelayStatus.NotNewer, Meta: Meta(Stale));
+        notNewer.Relay.ConfirmCopy = (_, _, _, _, _) => { asked = true; return Task.FromResult(true); };
+        var kept = await notNewer.Relay.TryFetchAsync(App, _ => { }, null, CancellationToken.None);
+        Assert.Equal((null, Stale, CabinetCopyQuestion.NoOtherSource, "upstream_not_newer"), (kept.File, kept.CachedCopy?.Sha256, kept.LastResortQuestion, kept.Reason));
+        // Unverifiable keeps its own question for the last resort.
+        var unverified = new Harness { Lookup = new(CabinetLuaCache.LookupOutcome.Unverifiable, null, Meta(Stale)) };
+        Assert.Equal(CabinetCopyQuestion.Unverified, (await unverified.Relay.TryFetchAsync(App, _ => { }, null, CancellationToken.None)).LastResortQuestion);
+        Assert.False(asked);
+        Assert.Empty(unverified.Server.Requests);
+    }
+
+    [Fact]
+    public async Task CancellingAnAutomaticAttemptIsACancelNotAFallback()
+    {
+        var h = new Harness();
+        using var cts = new CancellationTokenSource();
+        h.Server.Polls.Enqueue(new CabinetRelayStatus(CabinetRelayStatus.Queued, 1));
+        h.OnDelay = _ => { cts.Cancel(); return Task.CompletedTask; };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => h.Relay.TryFetchAsync(App, _ => { }, null, cts.Token));
+    }
 }

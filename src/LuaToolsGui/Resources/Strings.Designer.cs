@@ -928,4 +928,7 @@ public static class Strings
     public static string Cabinet_Relay_Unverified_Declined => Get(nameof(Cabinet_Relay_Unverified_Declined));
     public static string Cabinet_Relay_Prompt_Install => Get(nameof(Cabinet_Relay_Prompt_Install));
     public static string Cabinet_Relay_Prompt_Skip => Get(nameof(Cabinet_Relay_Prompt_Skip));
+    public static string Cabinet_Relay_LastResort_Title => Get(nameof(Cabinet_Relay_LastResort_Title));
+    public static string Cabinet_Relay_LastResort_Body => Get(nameof(Cabinet_Relay_LastResort_Body));
+    public static string Cabinet_Relay_LastResort_Declined => Get(nameof(Cabinet_Relay_LastResort_Declined));
 }

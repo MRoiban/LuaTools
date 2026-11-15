@@ -246,6 +246,12 @@ public class HttpServerService : IHostedService
     private (int, string) HandleDlcBatchCancel(long appId) =>
         (200, Json(new { success = _services.GetRequiredService<DlcBatchService>().Cancel(appId) }));
 
+    /// <summary>The legacy /check-sources list: Cabinet first while its relay is on, then lua.tools' sources as given.</summary>
+    internal static List<(string Name, bool Available)> LegacySourceOrder(IReadOnlyDictionary<string, string> statuses, bool cabinet) =>
+        (cabinet ? new[] { (Cabinet.CabinetHubcapRelay.SourceName, true) } : [])
+            .Concat(statuses.Where(kv => kv.Key != Cabinet.CabinetHubcapRelay.SourceName).Select(kv => (kv.Key, kv.Value == "available")))
+            .ToList();
+
     private async Task<(int, string)> HandleCheckSources(long appId)
     {
         // Dynamic source list from the app's real manifest backend (same call the app's
@@ -255,8 +261,10 @@ public class HttpServerService : IHostedService
         {
             var api = _services.GetRequiredService<LuaToolsApiClient>();
             var statuses = await api.CheckSourcesAsync(appId.ToString());
-            var results = statuses
-                .Select(kv => (object)new { name = kv.Key, available = kv.Value == "available", url = (string?)null })
+            var relay = _services.GetService<Cabinet.CabinetHubcapRelay>();
+            bool cabinet = relay is not null && await relay.IsAvailableAsync(CancellationToken.None);
+            var results = LegacySourceOrder(statuses, cabinet)
+                .Select(s => (object)new { name = s.Name, available = s.Available, url = (string?)null })
                 .ToList();
             return (200, Json(new { success = true, results }));
         }

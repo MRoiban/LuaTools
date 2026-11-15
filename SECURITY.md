@@ -141,8 +141,11 @@ downloading again. Shared copies come from other users and get no extra trust: t
 **Cabinet** source (`Services/Cabinet/CabinetHubcapRelay.cs`) asks the connected server to fetch a
 game from Hubcap with the server owner's keys, which stay on the server; LuaTools sends only the app
 id and the SHA-256 of a stale cached copy, and installs the version the server names after checking
-its SHA-256 and the same validation. Copies from Cabinet are never uploaded back, and personal Hubcap
-keys are still used only by the Hubcap source, whose downloads are never shared. See
+its SHA-256 and the same validation. While the server's relay is on, Cabinet is listed first and
+automatic adds try it before any other source, falling back (without a question) to the next usable
+source when it can't deliver a verified-current copy; such a fallback install is shared like any normal
+download. Copies from Cabinet are never uploaded back, and personal Hubcap keys are still used only by
+the Hubcap source (also as a fallback), whose downloads are never shared. See
 [ENDPOINTS.md](ENDPOINTS.md). Controller layouts, screenshot attribution, the tray, the
 `cabinet:` protocol and Cabinet's self-updater are not included.
 

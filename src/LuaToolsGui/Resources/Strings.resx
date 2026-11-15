@@ -986,4 +986,9 @@ Install Cabinet’s copy anyway?</value></data>
   <data name="Cabinet_Relay_Unverified_Declined" xml:space="preserve"><value>Not installed: the build of Cabinet’s copy couldn’t be checked.</value></data>
   <data name="Cabinet_Relay_Prompt_Install" xml:space="preserve"><value>Install anyway</value></data>
   <data name="Cabinet_Relay_Prompt_Skip" xml:space="preserve"><value>Don’t install</value></data>
+  <data name="Cabinet_Relay_LastResort_Title" xml:space="preserve"><value>No current copy found</value></data>
+  <data name="Cabinet_Relay_LastResort_Body" xml:space="preserve"><value>No source could provide a current Lua config for {0}. Cabinet has a copy that may be for an older version of the game.
+
+Install Cabinet’s copy anyway?</value></data>
+  <data name="Cabinet_Relay_LastResort_Declined" xml:space="preserve"><value>Not installed: no source had a current copy.</value></data>
 </root>

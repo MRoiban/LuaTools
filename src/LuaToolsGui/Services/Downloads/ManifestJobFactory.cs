@@ -34,6 +34,9 @@ public class ManifestJobFactory(
 {
     // ── Job builders ─────────────────────────────────────────────────
 
+    /// <summary>One source an automatic Cabinet add may fall back to, in the source list's order.</summary>
+    public sealed record FallbackSource(string Name, bool NeedsKey);
+
     /// <summary>A base-game manifest from a named source (Hubcap uses the user's own key).</summary>
     /// <remarks>
     /// When Cabinet Cloud is connected, its shared cache is asked first: a copy matching the game's
@@ -41,18 +44,24 @@ public class ManifestJobFactory(
     /// anything else falls through to that source silently. A package installed from a normal source
     /// is then shared with the server in the background when it is Steam's current build, except
     /// sources fetched with the user's own key (Hubcap, or any source the catalogue marks as needing one).
-    /// The <see cref="CabinetHubcapRelay.SourceName"/> source has no other source to fall back to: it is the
-    /// cache, else the server's Hubcap relay (<see cref="CabinetHubcapRelay"/>), and its copies are never
-    /// uploaded back since they came from Cabinet.
+    /// The <see cref="CabinetHubcapRelay.SourceName"/> source is the cache, else the server's Hubcap relay
+    /// (<see cref="CabinetHubcapRelay"/>); its copies are never uploaded back since they came from Cabinet.
+    /// Picked explicitly it asks before installing a copy not known to be current and never falls back.
+    /// Chosen automatically (<paramref name="fallbacks"/> supplied) it asks nothing: anything short of a
+    /// verified-current copy moves on to the next usable source, whose install is shared as usual, and
+    /// only when every source failed is Cabinet's own copy offered (<see cref="CabinetFirstAsync"/>).
     /// </remarks>
     public DownloadJob CreateManifestJob(
         long appId, string? gameName, string sourceName, bool needsKey,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
         Action<DownloadItem, JobResult?>? onFinished = null,
         Action? onReveal = null,
-        bool interactive = true)
+        bool interactive = true,
+        Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>>? fallbacks = null)
     {
         string title = gameName ?? appId.ToString();
+        // Where the installed bytes came from: decides sharing (a fallback source, not Cabinet, may upload).
+        var installedFrom = new FallbackSource(sourceName, needsKey);
         return installer.CaptureInstallation().Bind(new DownloadJob(
             DownloadKind.Manifest,
             $"manifest:{appId}",
@@ -62,9 +71,16 @@ public class ManifestJobFactory(
             covers.GetLocalPath(appId),
             async (item, progress, ct) =>
             {
+                installedFrom = new FallbackSource(sourceName, needsKey);
                 if (sourceName == CabinetHubcapRelay.SourceName)
                 {
-                    // The Cabinet provider: the shared cache, else the server's Hubcap relay. Never a personal key.
+                    if (fallbacks is not null)
+                    {
+                        var (file, from) = await CabinetFirstAsync(item, appId, title, gameName, interactive, fallbacks, progress, ct);
+                        installedFrom = from;
+                        return file;
+                    }
+                    // The Cabinet provider, picked explicitly: the shared cache, else the relay. Never a personal key.
                     if (hubcapRelay is null) throw new DownloadAbortedException(Resources.Strings.Cabinet_Relay_Err_NotConnected);
                     try { return await hubcapRelay.FetchAsync(appId, title, interactive, detail => OnUi(() => item.Detail = detail), progress, ct); }
                     finally { OnUi(() => item.Detail = null); }
@@ -75,14 +91,56 @@ public class ManifestJobFactory(
                     return cached;
                 }
                 OnUi(() => item.SourceOverride = null);
-                return await (needsKey
-                    ? hubcap.DownloadManifestAsync(appId.ToString(), settings.HubcapApiKey ?? "", progress, ct)
-                    : api.DownloadManifestAsync(appId.ToString(), sourceName, gameName, progress, ct));
+                return await DownloadFromSourceAsync(appId, gameName, sourceName, needsKey, progress, ct);
             },
-            (file, _, _) => Task.FromResult(InstallAndShareManifest(file, appId, title, sourceName, needsKey)),
+            (file, _, _) => Task.FromResult(InstallAndShareManifest(file, appId, title, installedFrom.Name, installedFrom.NeedsKey)),
             confirm,
             onFinished,
             onReveal));
+    }
+
+    private Task<DownloadedFile> DownloadFromSourceAsync(long appId, string? gameName, string sourceName, bool needsKey,
+        IProgress<DownloadProgress> progress, CancellationToken ct) => needsKey
+        ? hubcap.DownloadManifestAsync(appId.ToString(), settings.HubcapApiKey ?? "", progress, ct)
+        : api.DownloadManifestAsync(appId.ToString(), sourceName, gameName, progress, ct);
+
+    /// <summary>
+    /// Cabinet chosen automatically, first: a verified-current copy (cache or relay, within
+    /// <see cref="CabinetHubcapRelay.AutomaticTimeout"/>) installs; otherwise each fallback source is tried in
+    /// order without a question (the shared cache was already asked, so not again). The item shows the source
+    /// that delivered. When every fallback failed and Cabinet holds a copy, that copy is offered (interactive
+    /// adds only). Cancellation always ends the whole add.
+    /// </summary>
+    private async Task<(DownloadedFile File, FallbackSource From)> CabinetFirstAsync(DownloadItem item, long appId, string title, string? gameName,
+        bool interactive, Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>> fallbacks, IProgress<DownloadProgress> progress, CancellationToken ct)
+    {
+        var cabinet = new FallbackSource(CabinetHubcapRelay.SourceName, false);
+        CabinetHubcapRelay.CabinetAttempt attempt;
+        try
+        {
+            attempt = hubcapRelay is null
+                ? new(null, null, CabinetCopyQuestion.NoOtherSource, "not_configured", Resources.Strings.Cabinet_Relay_Err_NotConnected)
+                : await hubcapRelay.TryFetchAsync(appId, detail => OnUi(() => item.Detail = detail), progress, ct);
+        }
+        finally { OnUi(() => item.Detail = null); }
+        if (attempt.File is { } delivered) return (delivered, cabinet);
+
+        Exception? last = null;
+        foreach (var source in await fallbacks(ct))
+        {
+            if (source.Name == CabinetHubcapRelay.SourceName) continue;
+            ct.ThrowIfCancellationRequested();
+            hubcapRelay?.NoteFallback(appId, attempt.Reason, source.Name);
+            OnUi(() => item.SourceOverride = SourceMeta.Get(source.Name).DisplayName ?? source.Name);
+            try { return (await DownloadFromSourceAsync(appId, gameName, source.Name, source.NeedsKey, progress, ct), source); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { last = ex; hubcapRelay?.NoteFallbackFailed(appId, source.Name, ex); }
+        }
+        OnUi(() => item.SourceOverride = null);
+        if (attempt.CachedCopy is { } copy && hubcapRelay is not null)
+            return (await hubcapRelay.OfferAsync(appId, title, interactive, copy, attempt.LastResortQuestion, progress, ct), cabinet);
+        if (last is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(last).Throw();
+        throw new DownloadAbortedException(attempt.Message);
     }
 
     /// <summary>
@@ -624,8 +682,12 @@ public class ManifestJobFactory(
     }
 
     /// <summary>Marshal an observable-property write onto the dispatcher (this runs on a worker).</summary>
-    private static void OnUi(Action a) =>
-        System.Windows.Application.Current?.Dispatcher.InvokeAsync(a);
+    // Without a WPF application (tests, headless harnesses) the update runs inline.
+    private static void OnUi(Action a)
+    {
+        if (System.Windows.Application.Current?.Dispatcher is { } dispatcher) dispatcher.InvokeAsync(a);
+        else a();
+    }
 
     // ── Install phases ───────────────────────────────────────────────
 

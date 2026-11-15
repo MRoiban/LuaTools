@@ -31,11 +31,16 @@ public partial class App : Application
             var main = app.MainWindow as MainWindow;
             main?.RestoreFromTray();
             var owner = main is { IsVisible: true } ? main : null;
-            bool unverified = question == CabinetCopyQuestion.Unverified;
+            var (caption, body) = question switch
+            {
+                CabinetCopyQuestion.Unverified => (LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Body),
+                CabinetCopyQuestion.NoOtherSource => (LuaToolsGui.Resources.Strings.Cabinet_Relay_LastResort_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_LastResort_Body),
+                _ => (LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Body),
+            };
             var box = new Wpf.Ui.Controls.MessageBox
             {
-                Title = unverified ? LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Title : LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Title,
-                Content = string.Format(unverified ? LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Body : LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Body, title),
+                Title = caption,
+                Content = string.Format(body, title),
                 PrimaryButtonText = LuaToolsGui.Resources.Strings.Cabinet_Relay_Prompt_Install,
                 CloseButtonText = LuaToolsGui.Resources.Strings.Cabinet_Relay_Prompt_Skip,
                 Owner = owner,
