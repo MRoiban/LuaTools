@@ -133,7 +133,11 @@ The engine edits Steam's local achievement/stat cache, `localconfig.vdf` playtim
 junctions, with Cabinet's first-write backups. Hidden `LuaTools.exe --shadow/--schema/--presence-source`
 helpers load Steam's own `steamclient64.dll` to report the real game to Steam. Fork updates wait
 while helpers run. Network access matches standalone Cabinet: Workshop profiles from GitHub raw,
-an opt-in Cabinet Cloud and Steam's local debugging port for friend labels. See
+an opt-in Cabinet Cloud and Steam's local debugging port for friend labels. While Cabinet Cloud is
+connected, game Lua configs installed from a normal source (not Hubcap) are shared with every user
+of that server, and a shared copy matching the game's current Steam build is installed instead of
+downloading again. Shared copies come from other users and get no extra trust: they pass the same
+`ManifestContentPolicy` validation as any download (`Services/Cabinet/CabinetLuaCache.cs`). See
 [ENDPOINTS.md](ENDPOINTS.md). Controller layouts, screenshot attribution, the tray, the
 `cabinet:` protocol and Cabinet's self-updater are not included.
 
