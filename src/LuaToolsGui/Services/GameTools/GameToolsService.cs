@@ -53,7 +53,7 @@ public class GameToolsService
             GameStatsHelperClient.SaveLiveAsync,
             GameStatsHelperClient.FetchSchemaAsync,
             (appId, steamPath) => CabinetSyncScope.Syncs(
-                cabinetSettings.CabinetEnabled && cabinet.Status.Enabled,
+                cabinetSettings.CabinetEnabled,
                 cabinet.Status.Cloud.Connected,
                 cabinet.Status.StandaloneCabinetRunning,
                 Directory.Exists(Path.Combine(CabinetEngine.Syncer.OnlineFixDir, appId.ToString(CultureInfo.InvariantCulture))),
@@ -127,7 +127,12 @@ public class GameToolsService
         string? steam = _steamPath();
         if (steam is null || !_steamRunning()) return false;
         if (File.Exists(SchemaPath(steam, appId))) return true;
-        await _fetchSchema(appId, ct).ConfigureAwait(false);
+        try { await _fetchSchema(appId, ct).ConfigureAwait(false); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _log.LogWarning(ex, "Tools: asking Steam for the achievement list of app {AppId} failed", appId);
+            return false;
+        }
         return File.Exists(SchemaPath(steam, appId));
     }
 
