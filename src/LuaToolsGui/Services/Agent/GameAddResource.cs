@@ -64,7 +64,7 @@ public sealed partial class AgentCommandService
                         if (!await ConsentCoordinator.WaitAsync(queued.Id, diff, lifetime)) return false;
                         approvedVersion = diff.Version;
                         return AddVersion(id) == approvedVersion;
-                    }, installVersion: () => approvedVersion);
+                    }, installVersion: () => approvedVersion, interactive: false);
                 return Envelope.Success(new { id = item.Id, job_id = item.Id, state = "queued", deduplicated = activeIds.Contains(item.Id), source = row.Name });
             }, commitToken);
         });

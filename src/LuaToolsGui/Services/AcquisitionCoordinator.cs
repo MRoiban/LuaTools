@@ -8,10 +8,14 @@ namespace LuaToolsGui.Services;
 /// <summary>Shared read-only source policy and queue admission for Add, the Steam picker and agents.
 /// Provider HTTP and install logic remain in the existing services/factory.</summary>
 public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService hubcap,
-    SettingsService settings, AuthService auth, DownloadQueue queue, ManifestJobFactory jobs, LuaInstaller? installer = null)
+    SettingsService settings, AuthService auth, DownloadQueue queue, ManifestJobFactory jobs, LuaInstaller? installer = null,
+    Cabinet.CabinetHubcapRelay? relay = null)
 {
     private readonly Func<long, string?>? _readInstalled = installer is null ? null : installer.ReadInstalledLua;
     public const string HubcapSource = "Sadie (Morrenus)";
+    /// <summary>Hubcap through the connected Cabinet server's relay: listed only while it is enabled, needs no user key.</summary>
+    public const string CabinetSource = Cabinet.CabinetHubcapRelay.SourceName;
+    public static bool IsCabinet(string source) => source == CabinetSource;
     public sealed record SourceSnapshot(GameDetails? Details, List<SourceRow> SourcesList)
     {
         public List<SourceRow> Sources => SourcesList;
@@ -38,10 +42,14 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         Dictionary<string, string> statuses;
         try { statuses = await api!.CheckSourcesAsync(appId.ToString(), ct); }
         catch (ApiException) { statuses = []; }
-        var rows = statuses.Where(k => k.Key != HubcapSource).Select(k => new SourceRow
+        var rows = statuses.Where(k => k.Key != HubcapSource && !IsCabinet(k.Key)).Select(k => new SourceRow
         { Name = k.Key, DisplayName = SourceMeta.Get(k.Key).DisplayName ?? k.Key, Status = k.Value,
             NeedsKey = SourceMeta.Get(k.Key).RequiresUserKey }).ToList();
         rows.Insert(0, premium);
+        // Last on purpose: FastFetch takes the first usable row, and the relay spends the server owner's
+        // shared Hubcap quota. Picking it explicitly is always possible.
+        if (relay is not null && await relay.IsAvailableAsync(ct))
+            rows.Add(new SourceRow { Name = CabinetSource, DisplayName = SourceMeta.Get(CabinetSource).DisplayName ?? CabinetSource, Status = "available" });
         await RefreshUsageAsync(rows, ct);
         return new(details, rows.OrderByDescending(r => r.NeedsKey).ToList());
     }
@@ -61,7 +69,16 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
                 row.Stats = stats is null ? null : $"{stats.DailyUsage}/{stats.DailyLimit}";
             }
         }
-        var standard = rows.Where(r => !r.NeedsKey && !IsPublic(r.Name)).ToList();
+        foreach (var row in rows.Where(r => IsCabinet(r.Name)))
+        {
+            // No lua.tools account or usage involved: only the connection and the server's relay matter.
+            bool enabled = relay is not null && await relay.IsAvailableAsync(ct);
+            if (!enabled) row.Status = "unavailable";
+            row.DisabledReasons = enabled ? [] : ["SOURCE_UNAVAILABLE", relay?.IsConnected == true ? "CABINET_RELAY_DISABLED" : "CABINET_NOT_CONNECTED"];
+            row.Locked = false;
+            row.Stats = null;
+        }
+        var standard = rows.Where(r => !r.NeedsKey && !IsPublic(r.Name) && !IsCabinet(r.Name)).ToList();
         StandardUsage? usage = null;
         bool supporter = false;
         if (!auth.IsGuest && standard.Count > 0)
@@ -69,7 +86,7 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             try { usage = await api.GetStandardUsageAsync(ct); supporter = (await api.GetSupporterStatusAsync(ct))?.IsSupporter == true; }
             catch (ApiException) { }
         }
-        foreach (var row in rows.Where(r => !r.NeedsKey))
+        foreach (var row in rows.Where(r => !r.NeedsKey && !IsCabinet(r.Name)))
         {
             var reasons = new List<string>();
             if (row.Status != "available") reasons.Add(row.Status == "unknown" ? "SOURCE_UNKNOWN" : "SOURCE_UNAVAILABLE");
@@ -105,18 +122,18 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
     }
     public DownloadItem Enqueue(long appId, string? name, SourceRow source, string? baseAppId = null,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
-        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null)
-        => EnqueueCaptured(installer?.CaptureInstallation(), appId, name, source, baseAppId, confirm, onFinished, onReveal, installVersion);
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool interactive = true)
+        => EnqueueCaptured(installer?.CaptureInstallation(), appId, name, source, baseAppId, confirm, onFinished, onReveal, installVersion, interactive: interactive);
 
     internal DownloadItem EnqueueCaptured(InstallationBinding? installation, long appId, string? name, SourceRow source, string? baseAppId = null,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
-        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool reuseActive = false)
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool reuseActive = false, bool interactive = true)
     {
         if (installation is { IsCurrent: false }) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
         using var pinned = installation?.Pin();
         if (!source.CanDownload) throw new MutationRejectedException(source.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", 6);
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
-            : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal);
+            : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal, interactive);
         string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
         string acceptedVersion = CurrentVersion();
         job = job with { ConfirmAsync = async (file, item, ct) =>

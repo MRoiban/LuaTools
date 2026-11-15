@@ -16,6 +16,26 @@ public partial class App : Application
     private readonly IHost _host;
     private readonly SemaphoreSlim _pluginRuntimeGate = new(1, 1);
 
+    /// <summary>
+    /// The Cabinet source's question when Hubcap has nothing newer than the server's cached copy: install that
+    /// copy anyway (Yes) or cancel (No). Asked on the UI thread, owned by the main window when it is shown.
+    /// </summary>
+    private static Task<bool> ConfirmOlderCabinetCopyAsync(long appId, string title, CabinetLuaMeta meta, CancellationToken ct)
+    {
+        if (Current is not { } app || ct.IsCancellationRequested) return Task.FromResult(false);
+        return app.Dispatcher.InvokeAsync(() =>
+        {
+            if (ct.IsCancellationRequested) return false;
+            string body = string.Format(LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Body, title);
+            string caption = LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Title;
+            var owner = app.MainWindow is { IsVisible: true } main ? main : null;
+            var answer = owner is null
+                ? MessageBox.Show(body, caption, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No)
+                : MessageBox.Show(owner, body, caption, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            return answer == MessageBoxResult.Yes;
+        }).Task;
+    }
+
     private async Task SetPluginRuntimeAsync(bool activate)
     {
         await _pluginRuntimeGate.WaitAsync();
@@ -61,8 +81,14 @@ public partial class App : Application
                 services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
                 // The connected Cabinet server's shared lua cache, used by manifest downloads.
-                services.AddSingleton<ICabinetLuaCacheClient>(sp => new CabinetLuaCacheClient(sp.GetRequiredService<CabinetService>()));
+                services.AddSingleton(sp => new CabinetLuaCacheClient(sp.GetRequiredService<CabinetService>()));
+                services.AddSingleton<ICabinetLuaCacheClient>(sp => sp.GetRequiredService<CabinetLuaCacheClient>());
                 services.AddSingleton<CabinetLuaCache>();
+                // The "Cabinet" source: Hubcap through the connected server's own keys (same transport).
+                services.AddSingleton<ICabinetHubcapClient>(sp => sp.GetRequiredService<CabinetLuaCacheClient>());
+                services.AddSingleton(sp => new CabinetHubcapRelay(sp.GetRequiredService<ICabinetHubcapClient>(),
+                    sp.GetRequiredService<CabinetLuaCache>(), sp.GetRequiredService<ILogger<CabinetHubcapRelay>>())
+                { ConfirmOlderCopy = ConfirmOlderCabinetCopyAsync });
                 services.AddSingleton<UpdateService>();
                 services.AddSingleton<CacheService>();
                 services.AddSingleton<SteamService>();

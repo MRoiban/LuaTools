@@ -29,7 +29,8 @@ public class ManifestJobFactory(
     SteamAutoCrackService sac,
     AppliedFixIndexService fixIndex,
     OnlineFixMeClient onlineFixMe,
-    CabinetLuaCache? luaCache = null)
+    CabinetLuaCache? luaCache = null,
+    CabinetHubcapRelay? hubcapRelay = null)
 {
     // ── Job builders ─────────────────────────────────────────────────
 
@@ -40,12 +41,16 @@ public class ManifestJobFactory(
     /// anything else falls through to that source silently. A package installed from a normal source
     /// is then shared with the server in the background when it is Steam's current build, except
     /// sources fetched with the user's own key (Hubcap, or any source the catalogue marks as needing one).
+    /// The <see cref="CabinetHubcapRelay.SourceName"/> source has no other source to fall back to: it is the
+    /// cache, else the server's Hubcap relay (<see cref="CabinetHubcapRelay"/>), and its copies are never
+    /// uploaded back since they came from Cabinet.
     /// </remarks>
     public DownloadJob CreateManifestJob(
         long appId, string? gameName, string sourceName, bool needsKey,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
         Action<DownloadItem, JobResult?>? onFinished = null,
-        Action? onReveal = null)
+        Action? onReveal = null,
+        bool interactive = true)
     {
         string title = gameName ?? appId.ToString();
         return installer.CaptureInstallation().Bind(new DownloadJob(
@@ -57,6 +62,13 @@ public class ManifestJobFactory(
             covers.GetLocalPath(appId),
             async (item, progress, ct) =>
             {
+                if (sourceName == CabinetHubcapRelay.SourceName)
+                {
+                    // The Cabinet provider: the shared cache, else the server's Hubcap relay. Never a personal key.
+                    if (hubcapRelay is null) throw new DownloadAbortedException(Resources.Strings.Cabinet_Relay_Err_NotConnected);
+                    try { return await hubcapRelay.FetchAsync(appId, title, interactive, detail => OnUi(() => item.Detail = detail), progress, ct); }
+                    finally { OnUi(() => item.Detail = null); }
+                }
                 if (luaCache is not null && await luaCache.TryGetCurrentAsync(appId, progress, ct) is { } cached)
                 {
                     OnUi(() => item.SourceOverride = Resources.Strings.Downloads_Source_Cabinet);

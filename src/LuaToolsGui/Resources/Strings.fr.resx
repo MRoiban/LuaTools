@@ -923,4 +923,25 @@ LuaTools peut fermer Steam, écrire la modification dans ses fichiers, puis rela
   <data name="Tools_Err_CloudRedirectStatsRejected" xml:space="preserve"><value>Steam n’a pas accepté la modification des statistiques ({0}). CloudRedirect écraserait une modification écrite dans les fichiers de Steam : rien n’a été écrit.</value></data>
   <data name="Tools_Err_CloudRedirectMixed" xml:space="preserve"><value>CloudRedirect gère ce jeu : verrouiller des succès nécessite que Steam soit fermé, modifier des statistiques qu’il soit lancé. Rien n’a été écrit ; enregistrez-les séparément.</value></data>
   <data name="Tools_Note_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect gère ce jeu : les statistiques ne sont enregistrées que lorsque Steam est lancé.</value></data>
+  <data name="Cabinet_Relay_Queued" xml:space="preserve"><value>En file d’attente sur Cabinet (position {0})</value></data>
+  <data name="Cabinet_Relay_Waiting" xml:space="preserve"><value>En attente de Cabinet</value></data>
+  <data name="Cabinet_Relay_Fetching" xml:space="preserve"><value>Récupération depuis Hubcap</value></data>
+  <data name="Cabinet_Relay_Err_NoManifest" xml:space="preserve"><value>Hubcap n’a pas de configuration Lua pour ce jeu.</value></data>
+  <data name="Cabinet_Relay_Err_Quota" xml:space="preserve"><value>Les clés Hubcap du serveur Cabinet ont atteint la limite du jour. Réessayez demain ou choisissez une autre source.</value></data>
+  <data name="Cabinet_Relay_Err_KeyExpired" xml:space="preserve"><value>La clé Hubcap du serveur Cabinet a expiré. Demandez au propriétaire du serveur de la renouveler.</value></data>
+  <data name="Cabinet_Relay_Err_KeyRejected" xml:space="preserve"><value>Hubcap a refusé la clé du serveur Cabinet. Demandez au propriétaire du serveur de la vérifier.</value></data>
+  <data name="Cabinet_Relay_Err_Disabled" xml:space="preserve"><value>Le serveur Cabinet n’a aucune clé Hubcap utilisable pour le moment.</value></data>
+  <data name="Cabinet_Relay_Err_HubcapUnavailable" xml:space="preserve"><value>Le serveur Cabinet n’a pas pu joindre Hubcap. Réessayez dans quelques minutes.</value></data>
+  <data name="Cabinet_Relay_Err_InvalidPackage" xml:space="preserve"><value>Le paquet Hubcap de ce jeu a été refusé par le serveur Cabinet.</value></data>
+  <data name="Cabinet_Relay_Err_Failed" xml:space="preserve"><value>Cabinet n’a pas pu obtenir ce jeu depuis Hubcap ({0}).</value></data>
+  <data name="Cabinet_Relay_Err_Timeout" xml:space="preserve"><value>Cabinet met trop de temps. Le serveur continue ; réessayez dans quelques minutes.</value></data>
+  <data name="Cabinet_Relay_Err_Server" xml:space="preserve"><value>Cabinet Cloud est injoignable. Réessayez plus tard.</value></data>
+  <data name="Cabinet_Relay_Err_NotConnected" xml:space="preserve"><value>Connectez Cabinet Cloud dans les paramètres pour utiliser cette source.</value></data>
+  <data name="Cabinet_Relay_Err_CopyUnusable" xml:space="preserve"><value>La copie récupérée par Cabinet n’a pas pu être vérifiée ; elle n’a pas été installée.</value></data>
+  <data name="Cabinet_Relay_NotNewer_Title" xml:space="preserve"><value>Pas de version plus récente sur Hubcap</value></data>
+  <data name="Cabinet_Relay_NotNewer_Body" xml:space="preserve"><value>Hubcap n’a pas encore de version plus récente de {0}.
+
+Installer quand même la copie que Cabinet possède déjà ? Elle peut correspondre à une ancienne version du jeu.</value></data>
+  <data name="Cabinet_Relay_NotNewer_Declined" xml:space="preserve"><value>Non installé : Hubcap n’a pas encore de version plus récente.</value></data>
+  <data name="Add_CabinetSource_Tip" xml:space="preserve"><value>Configurations Hubcap récupérées par votre serveur Cabinet. Aucune clé nécessaire.</value></data>
 </root>

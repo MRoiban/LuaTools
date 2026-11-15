@@ -459,7 +459,8 @@
                                         <TextBlock
                                             FontSize="13.5"
                                             FontWeight="Medium"
-                                            Text="{Binding DisplayName}" />
+                                            Text="{Binding DisplayName}"
+                                            ToolTip="{Binding Tip}" />
                                         <ui:SymbolIcon
                                             Margin="6,0,0,0"
                                             FontSize="15"

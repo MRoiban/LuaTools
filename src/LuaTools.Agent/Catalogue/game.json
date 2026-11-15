@@ -715,7 +715,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Acquire Lua from the selected source (or a current Cabinet shared copy), possibly consuming quota; queue installation; share with Cabinet."
+      "Acquire Lua from the selected source (or a current Cabinet shared copy), possibly consuming quota; queue installation; share with Cabinet. Source Cabinet (listed while Cabinet Cloud is connected and its Hubcap relay is enabled) asks the server to fetch from Hubcap with the server owner's keys and waits up to 10 minutes; when Hubcap has nothing newer, an agent-started add is not installed."
     ],
     "flags": [
       {
