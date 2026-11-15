@@ -37,9 +37,11 @@ public sealed class CabinetLuaCacheTests : IDisposable
             if (Failure is not null) throw Failure;
             return Task.FromResult(Meta);
         }
-        public Task<byte[]?> DownloadAsync(long appId, string sha256, CancellationToken ct)
+        public Exception? DownloadFailure;
+        public Task<byte[]?> DownloadAsync(long appId, string sha256, long size, CancellationToken ct)
         {
             DownloadCalls++;
+            if (DownloadFailure is not null) throw DownloadFailure;
             return Task.FromResult(Package);
         }
         public Task UploadAsync(long appId, byte[] package, string sha256, string source, CancellationToken ct)
@@ -124,13 +126,64 @@ public sealed class CabinetLuaCacheTests : IDisposable
         Assert.False(ManifestPins.IsBehind("1", null));
     }
 
+    [Theory]
+    [InlineData("Sadie (Morrenus)", false, true)] // the catalogue marks it as the user's own key
+    [InlineData("Hubcap", true, true)]
+    [InlineData("Ryuu", false, false)]
+    [InlineData("SomethingNew", false, false)]
+    public void PersonalKeySourcesAreRecognisedWhateverPathRequestedThem(string source, bool needsKey, bool expected) =>
+        Assert.Equal(expected, CabinetLuaCachePolicy.UsesPersonalKey(source, needsKey));
+
     [Fact]
-    public void ActivePinsWinOverCommentedOnes()
+    public void PinsAreReadOnlyFromActiveFullLineDeclarations()
     {
-        var lua = LuaFileParser.ParseText("addappid(1)\n-- setManifestid(2, \"1\")\nsetManifestid(2, \"5\")\n-- setManifestid(3, \"7\")\n", 1)!;
-        var pins = ManifestPins.Of(lua);
-        Assert.Equal("5", pins[2]);
-        Assert.Equal("7", pins[3]);
+        // Both quote styles, an optional size, ';' and a trailing comment, as ManifestContentPolicy allows.
+        var pins = CabinetPackage.ReadPins($"addappid({App}) -- Alpha\nsetManifestid({Depot}, '111', 5); -- note\nsetManifestid(572, \"222\")\n-- setManifestid(573, \"9\")\n", App);
+        Assert.Equal(new Dictionary<long, string> { [Depot] = "111", [572] = "222" }, pins);
+    }
+
+    [Theory]
+    // A single-quoted stale pin with a "current" pin hidden in its trailing comment.
+    [InlineData("addappid(570)\nsetManifestid(571,'100') -- setManifestid(571,\"111\")\n")]
+    // A stale pin followed by a commented-out "current" one.
+    [InlineData("addappid(570)\nsetManifestid(571, '100')\n-- setManifestid(571, \"111\")\n")]
+    public void HiddenPinsCannotVouchForAStalePin(string lua)
+    {
+        Assert.Equal("100", CabinetPackage.ReadPins(lua, App)[Depot]);
+        Assert.False(new CabinetPackage(CabinetPackage.ReadPins(lua, App), []).IsCurrent(Steam("111")));
+    }
+
+    [Theory]
+    [InlineData("addappid(570)\nsetManifestid(571, \"111\")\nsetManifestid(571, \"100\")\n")] // pinned twice
+    [InlineData("addappid(570)\nsetManifestid(571, \"111\")\nsetManifestid(571, \"111\")\n")] // even identically
+    [InlineData("-- addappid(570)\naddappid(571, 1, \"aa\")\n")]                              // app only commented out
+    [InlineData("addappid(440)\n")]                                                              // another app
+    public void AmbiguousOrUndeclaredLuasAreRefused(string lua) =>
+        Assert.Throws<InvalidDataException>(() => CabinetPackage.ReadPins(lua, App));
+
+    [Fact]
+    public void ManifestFilesMustAlsoBeCurrent()
+    {
+        // A pin-less lua follows Steam's latest build, unless it carries a stale manifest file.
+        byte[] pinless = Zip(($"{App}.lua", $"addappid({App})\naddappid({Depot}, 1, \"{Key}\")\n"), ($"{Depot}_100.manifest", Manifest(Depot, 100)));
+        var package = CabinetPackage.Read(pinless, App);
+        Assert.Empty(package.Pins);
+        Assert.False(package.IsCurrent(Steam("111")));
+        Assert.True(package.IsCurrent(Steam("100")));
+        Assert.True(CabinetPackage.Read(Zip(($"{App}.lua", $"addappid({App})\n")), App).IsCurrent(Steam("111")));
+        Assert.False(CabinetPackage.Read(Zip(($"{App}.lua", $"addappid({App})\n")), App).IsCurrent(null));
+        // A current pin with a stale manifest file next to it.
+        byte[] mixed = Zip(($"{App}.lua", Lua("111")), ($"{Depot}_100.manifest", Manifest(Depot, 100)));
+        Assert.False(CabinetPackage.Read(mixed, App).IsCurrent(Steam("111")));
+    }
+
+    [Fact]
+    public void TransferDeadlineGrowsWithSizeWithinBounds()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(10), CabinetLuaCachePolicy.TransferDeadline(1));
+        Assert.Equal(TimeSpan.FromSeconds(14), CabinetLuaCachePolicy.TransferDeadline(1024 * 1024));
+        Assert.Equal(TimeSpan.FromSeconds(120), CabinetLuaCachePolicy.TransferDeadline(CabinetLuaCacheClient.MaxPackageBytes));
+        Assert.Equal(TimeSpan.FromSeconds(3), CabinetLuaCacheClient.MetaTimeout);
     }
 
     // ── Lookup ───────────────────────────────────────────────────────
@@ -195,6 +248,9 @@ public sealed class CabinetLuaCacheTests : IDisposable
             ("an executable inside", Zip(($"{App}.lua", Lua("111")), ("setup.exe", "MZ")), MetaFor(Zip(($"{App}.lua", Lua("111")), ("setup.exe", "MZ")), "111")),
             ("another game's lua", Zip(("440.lua", "addappid(440)\n")), MetaFor(Zip(("440.lua", "addappid(440)\n")), "111")),
             ("not a zip", Encoding.UTF8.GetBytes(Lua("111")), MetaFor(Encoding.UTF8.GetBytes(Lua("111")), "111")),
+            ("spoofed pin in a comment", Spoof, MetaFor(Spoof, "111")),
+            ("stale manifest file", StaleManifest, MetaFor(StaleManifest, "111")),
+            ("app only commented out", Commented, MetaFor(Commented, "111")),
         };
         foreach (var (why, package, meta) in cases)
         {
@@ -205,6 +261,41 @@ public sealed class CabinetLuaCacheTests : IDisposable
         // Evicted between meta and download.
         var gone = new FakeCabinet { Meta = MetaFor(good, "111"), Package = null };
         Assert.Null(await Cache(gone, Steam("111")).TryGetCurrentAsync(App, null, CancellationToken.None));
+    }
+
+    private static readonly byte[] Spoof = Zip(($"{App}.lua", $"addappid({App})\naddappid({Depot}, 1, \"{Key}\")\nsetManifestid({Depot},'100') -- setManifestid({Depot},\"111\")\n"));
+    private static readonly byte[] StaleManifest = Zip(($"{App}.lua", Lua("111")), ($"{Depot}_100.manifest", Manifest(Depot, 100)));
+    private static readonly byte[] Commented = Zip(($"{App}.lua", $"-- addappid({App})\naddappid({Depot}, 1, \"{Key}\")\nsetManifestid({Depot}, \"111\")\n"));
+
+    [Fact]
+    public async Task ServerFailuresSkipTheCacheForFiveMinutes()
+    {
+        var now = new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc);
+        byte[] package = Zip(($"{App}.lua", Lua("111")));
+        var cabinet = new FakeCabinet { Failure = new TimeoutException("slow"), Meta = MetaFor(package, "111"), Package = package };
+        var cache = new CabinetLuaCache(cabinet, (_, _) => Task.FromResult<AppDepotInfo?>(Steam("111")), stagingFolder: Path.Combine(_root, "staging"))
+            { UtcNow = () => now };
+        Assert.Null(await cache.TryGetCurrentAsync(App, null, CancellationToken.None));
+        Assert.True(cache.BackingOff);
+        cabinet.Failure = null;
+        // Within the window: no request at all, for any game, and no uploads either.
+        now += CabinetLuaCache.FailureBackoff - TimeSpan.FromSeconds(1);
+        Assert.Null(await cache.TryGetCurrentAsync(440, null, CancellationToken.None));
+        await cache.ShareAsync(App, package, "Ryuu", CancellationToken.None);
+        Assert.Equal(1, cabinet.MetaCalls);
+        Assert.Empty(cabinet.Uploads);
+        // After it, the cache is used again.
+        now += TimeSpan.FromSeconds(2);
+        Assert.NotNull(await cache.TryGetCurrentAsync(App, null, CancellationToken.None));
+        Assert.Equal(2, cabinet.MetaCalls);
+
+        // A stalled blob transfer trips the window too; "nothing cached" and stale copies do not.
+        cabinet.DownloadFailure = new TimeoutException("stalled");
+        Assert.Null(await cache.TryGetCurrentAsync(App, null, CancellationToken.None));
+        Assert.True(cache.BackingOff);
+        var quiet = new CabinetLuaCache(new FakeCabinet(), (_, _) => Task.FromResult<AppDepotInfo?>(Steam("111")), stagingFolder: Path.Combine(_root, "staging"));
+        Assert.Null(await quiet.TryGetCurrentAsync(App, null, CancellationToken.None));
+        Assert.False(quiet.BackingOff);
     }
 
     [Fact]
@@ -257,6 +348,24 @@ public sealed class CabinetLuaCacheTests : IDisposable
         Assert.Equal("Morrenus", upload.Source);
         cabinet.IsConnected = false;
         await Cache(cabinet, Steam("111")).ShareAsync(App, zip, "Morrenus", CancellationToken.None);
+        Assert.Single(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task OnlyCurrentPackagesAreShared()
+    {
+        var cabinet = new FakeCabinet();
+        // An older build, Steam's build unknown, a stale manifest file, a spoofed pin, an undeclared app.
+        await Cache(cabinet, Steam("222")).ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), "Ryuu", CancellationToken.None);
+        await Cache(cabinet, null).ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), "Ryuu", CancellationToken.None);
+        foreach (byte[] bad in new[] { StaleManifest, Spoof, Commented })
+            await Cache(cabinet, Steam("111")).ShareAsync(App, bad, "Ryuu", CancellationToken.None);
+        Assert.Empty(cabinet.Uploads);
+        // Slow depot info counts as unavailable rather than holding the upload.
+        var slow = new CabinetLuaCache(cabinet, (_, _) => new TaskCompletionSource<AppDepotInfo?>().Task, stagingFolder: Path.Combine(_root, "staging"));
+        await slow.ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), "Ryuu", CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+        Assert.Empty(cabinet.Uploads);
+        await Cache(cabinet, Steam("111")).ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), "Ryuu", CancellationToken.None);
         Assert.Single(cabinet.Uploads);
     }
 
@@ -315,7 +424,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
         await cabinet.Uploaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
         var upload = Assert.Single(cabinet.Uploads);
         Assert.Equal(DexLuaService.SourceName, upload.Source);
-        Assert.Equal("111", Assert.Single(CabinetLuaCache.PackagePins(upload.Package, App)).Value);
+        Assert.Equal("111", Assert.Single(CabinetPackage.Read(upload.Package, App).Pins).Value);
     }
 
     [Fact]
@@ -346,7 +455,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
         Assert.Equal(1, f.DexLua.Calls);
         Assert.Equal(0, cabinet.DownloadCalls);
         await cabinet.Uploaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal("111", CabinetLuaCache.PackagePins(Assert.Single(cabinet.Uploads).Package, App)[Depot]);
+        Assert.Equal("111", CabinetPackage.Read(Assert.Single(cabinet.Uploads).Package, App).Pins[Depot]);
     }
 
     [Fact]
@@ -405,7 +514,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
             if (r.Method == HttpMethod.Get) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
         });
-        var credentials = new CredentialBox(new CabinetCredentials("https://cabinet.example.test", Token, "device1"));
+        var credentials = new CredentialBox(new CabinetCredentials("https://Cabinet.Example.test:443/", Token, "device1")); // normalized like the engine
         using var client = new CabinetLuaCacheClient(credentials, transport);
 
         var meta = await client.GetMetaAsync(App, CancellationToken.None);
@@ -413,7 +522,9 @@ public sealed class CabinetLuaCacheTests : IDisposable
         Assert.Equal("111", meta.Pins[Depot]);
         Assert.Equal("Alex", meta.Uploader);
         Assert.Null(await client.GetMetaAsync(440, CancellationToken.None));
-        Assert.Equal(new byte[] { 1, 2, 3 }, await client.DownloadAsync(App, sha, CancellationToken.None));
+        Assert.Equal(new byte[] { 1, 2, 3 }, await client.DownloadAsync(App, sha, 3, CancellationToken.None));
+        // A blob larger than its meta said is refused.
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.DownloadAsync(App, sha, 2, CancellationToken.None));
         await client.UploadAsync(App, [9, 9], sha, "Ryuu\n", CancellationToken.None);
 
         foreach (var (request, _) in requests)
@@ -423,7 +534,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
             Assert.Equal("cabinet.example.test", request.RequestUri!.Host);
         }
         Assert.Equal($"/api/apps/570/lua?sha256={sha}", requests[2].Request.RequestUri!.PathAndQuery);
-        var put = requests[3];
+        var put = requests[4];
         Assert.Equal(HttpMethod.Put, put.Request.Method);
         Assert.Equal($"/api/apps/570/lua?sha256={sha}&source=Ryuu&deviceId=device1", put.Request.RequestUri!.PathAndQuery);
         Assert.Equal("application/zip", put.Request.Content!.Headers.ContentType!.MediaType);
