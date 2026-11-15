@@ -38,7 +38,8 @@ public class ManifestJobFactory(
     /// When Cabinet Cloud is connected, its shared cache is asked first: a copy matching the game's
     /// current Steam build stands in for the chosen source (see <see cref="CabinetLuaCache"/>), and
     /// anything else falls through to that source silently. A package installed from a normal source
-    /// is then shared with the server in the background, except Hubcap downloads (the user's own key).
+    /// is then shared with the server in the background when it is Steam's current build, except
+    /// sources fetched with the user's own key (Hubcap, or any source the catalogue marks as needing one).
     /// </remarks>
     public DownloadJob CreateManifestJob(
         long appId, string? gameName, string sourceName, bool needsKey,
@@ -80,7 +81,8 @@ public class ManifestJobFactory(
     private JobResult InstallAndShareManifest(DownloadedFile file, long appId, string title, string sourceName, bool needsKey)
     {
         byte[]? package = luaCache is not null
-            && CabinetLuaCachePolicy.ShouldUpload(luaCache.IsConnected, needsKey, file is CabinetCachedFile)
+            && CabinetLuaCachePolicy.ShouldUpload(luaCache.IsConnected,
+                CabinetLuaCachePolicy.UsesPersonalKey(sourceName, needsKey), file is CabinetCachedFile)
             ? luaCache.ReadPackage(file.FilePath, appId) : null;
         var result = InstallManifest(file, appId, title);
         if (result.Ok && package is not null) _ = luaCache!.ShareInBackground(appId, package, sourceName);

@@ -15,17 +15,6 @@ public static class ManifestPins
         pin is not null && publicManifestId is not null && pin != publicManifestId;
 
     /// <summary>
-    /// Every depot the lua pins, active or commented out ("Auto Update Apps" comments pins out, but the
-    /// line still names the build the file was made for). An active pin wins over a commented one.
-    /// </summary>
-    public static IReadOnlyDictionary<long, string> Of(LuaContents lua)
-    {
-        var pins = new Dictionary<long, string>(lua.CommentedPins);
-        foreach (var (depot, manifest) in lua.ActivePins) pins[depot] = manifest;
-        return pins;
-    }
-
-    /// <summary>
     /// True when every pinned depot that Steam reports a public manifest for is pinned to exactly that
     /// manifest. Depots Steam reports no public manifest for (shared redistributables, token-gated
     /// depots) cannot be compared and do not count against it. Without depot info at all, nothing can

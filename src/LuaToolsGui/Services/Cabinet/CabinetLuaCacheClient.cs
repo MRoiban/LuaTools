@@ -41,8 +41,11 @@ public interface ICabinetLuaCacheClient
     bool IsConnected { get; }
     /// <summary>The current cached package's meta, or null when the server holds none. Throws when unreachable.</summary>
     Task<CabinetLuaMeta?> GetMetaAsync(long appId, CancellationToken ct);
-    /// <summary>The kept package with this SHA-256, or null when it is no longer kept. Not verified here.</summary>
-    Task<byte[]?> DownloadAsync(long appId, string sha256, CancellationToken ct);
+    /// <summary>
+    /// The kept package with this SHA-256, or null when it is no longer kept. Not verified here; bounded
+    /// by <paramref name="size"/> (from its meta) and a deadline derived from it.
+    /// </summary>
+    Task<byte[]?> DownloadAsync(long appId, string sha256, long size, CancellationToken ct);
     /// <summary>Share a package. The server keeps it for every user; the same package again is a no-op.</summary>
     Task UploadAsync(long appId, byte[] package, string sha256, string source, CancellationToken ct);
 }
@@ -58,8 +61,9 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
     /// <summary>The server's upload ceiling, and so the largest package worth downloading.</summary>
     public const int MaxPackageBytes = 90 * 1024 * 1024;
     private const int MaxMetaBytes = 256 * 1024;
-    private static readonly TimeSpan MetaTimeout = TimeSpan.FromSeconds(8);
-    private static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(2);
+    /// <summary>Short on purpose: every base-game download waits for this answer first.</summary>
+    internal static readonly TimeSpan MetaTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan UploadTimeout = TimeSpan.FromMinutes(2);
 
     private readonly ICabinetCredentialSource _credentials;
     private readonly HttpClient _http;
@@ -85,15 +89,16 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
         return (CabinetLuaMeta?)ParseMeta(await ReadAsync(response, MaxMetaBytes, token).ConfigureAwait(false), appId);
     });
 
-    public Task<byte[]?> DownloadAsync(long appId, string sha256, CancellationToken ct)
+    public Task<byte[]?> DownloadAsync(long appId, string sha256, long size, CancellationToken ct)
     {
         if (!IsSha256(sha256)) throw new ArgumentException("Invalid SHA-256.", nameof(sha256));
-        return WithDeadline(TransferTimeout, ct, async token =>
+        if (size <= 0 || size > MaxPackageBytes) throw new ArgumentOutOfRangeException(nameof(size));
+        return WithDeadline(CabinetLuaCachePolicy.TransferDeadline(size), ct, async token =>
         {
             using var response = await SendAsync(HttpMethod.Get, $"/api/apps/{Id(appId)}/lua?sha256={sha256}", null, token).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound) return null;
             Ensure(response);
-            return (byte[]?)await ReadAsync(response, MaxPackageBytes, token).ConfigureAwait(false);
+            return (byte[]?)await ReadAsync(response, (int)size, token).ConfigureAwait(false);
         });
     }
 
@@ -103,7 +108,7 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
         if (package.Length == 0 || package.Length > MaxPackageBytes) throw new ArgumentException("Package size is out of range.", nameof(package));
         var credentials = _credentials.Credentials ?? throw new InvalidOperationException("Cabinet Cloud is not connected.");
         string query = $"sha256={sha256}&source={Uri.EscapeDataString(SourceLabel(source))}&deviceId={Uri.EscapeDataString(credentials.DeviceId)}";
-        return WithDeadline(TransferTimeout, ct, async token =>
+        return WithDeadline(UploadTimeout, ct, async token =>
         {
             var content = new ByteArrayContent(package);
             content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
@@ -138,12 +143,16 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
         CancellationToken ct, CabinetCredentials? credentials = null)
     {
         credentials ??= _credentials.Credentials ?? throw new InvalidOperationException("Cabinet Cloud is not connected.");
-        var request = new HttpRequestMessage(method, credentials.Server + path) { Content = content };
+        string origin = Origin(credentials.Server);
+        var request = new HttpRequestMessage(method, origin + path) { Content = content };
         request.Headers.UserAgent.ParseAdd("LuaTools/" + typeof(AppConfig).Assembly.GetName().Version?.ToString(3) + " (Windows)");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credentials.Token);
-        request.Headers.Add("Origin", credentials.Server);
+        request.Headers.Add("Origin", origin);
         return _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
     }
+
+    /// <summary>The server's origin, normalized exactly as the engine does for its own Origin header (Engine/Cloud.cs).</summary>
+    internal static string Origin(string server) => new Uri(server).GetLeftPart(UriPartial.Authority);
 
     // The status alone: an error body is the server's, and is not worth carrying into a log line.
     private static void Ensure(HttpResponseMessage response)
