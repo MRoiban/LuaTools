@@ -1,6 +1,7 @@
 using System.IO;
 using System.IO.Compression;
 using LuaToolsGui.Models;
+using LuaToolsGui.Services.Cabinet;
 using LuaToolsGui.Services.OnlineFixMe;
 
 namespace LuaToolsGui.Services.Downloads;
@@ -27,11 +28,18 @@ public class ManifestJobFactory(
     SteamDepotInfo depotInfo,
     SteamAutoCrackService sac,
     AppliedFixIndexService fixIndex,
-    OnlineFixMeClient onlineFixMe)
+    OnlineFixMeClient onlineFixMe,
+    CabinetLuaCache? luaCache = null)
 {
     // ── Job builders ─────────────────────────────────────────────────
 
     /// <summary>A base-game manifest from a named source (Hubcap uses the user's own key).</summary>
+    /// <remarks>
+    /// When Cabinet Cloud is connected, its shared cache is asked first: a copy matching the game's
+    /// current Steam build stands in for the chosen source (see <see cref="CabinetLuaCache"/>), and
+    /// anything else falls through to that source silently. A package installed from a normal source
+    /// is then shared with the server in the background, except Hubcap downloads (the user's own key).
+    /// </remarks>
     public DownloadJob CreateManifestJob(
         long appId, string? gameName, string sourceName, bool needsKey,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
@@ -46,13 +54,37 @@ public class ManifestJobFactory(
             title,
             SourceMeta.Get(sourceName).DisplayName ?? sourceName,
             covers.GetLocalPath(appId),
-            (_, progress, ct) => needsKey
-                ? hubcap.DownloadManifestAsync(appId.ToString(), settings.HubcapApiKey ?? "", progress, ct)
-                : api.DownloadManifestAsync(appId.ToString(), sourceName, gameName, progress, ct),
-            (file, _, _) => Task.FromResult(InstallManifest(file, appId, title)),
+            async (item, progress, ct) =>
+            {
+                if (luaCache is not null && await luaCache.TryGetCurrentAsync(appId, progress, ct) is { } cached)
+                {
+                    OnUi(() => item.SourceOverride = Resources.Strings.Downloads_Source_Cabinet);
+                    return cached;
+                }
+                OnUi(() => item.SourceOverride = null);
+                return await (needsKey
+                    ? hubcap.DownloadManifestAsync(appId.ToString(), settings.HubcapApiKey ?? "", progress, ct)
+                    : api.DownloadManifestAsync(appId.ToString(), sourceName, gameName, progress, ct));
+            },
+            (file, _, _) => Task.FromResult(InstallAndShareManifest(file, appId, title, sourceName, needsKey)),
             confirm,
             onFinished,
             onReveal));
+    }
+
+    /// <summary>
+    /// <see cref="InstallManifest"/>, then share the package with Cabinet when
+    /// <see cref="CabinetLuaCachePolicy.ShouldUpload"/> allows it. The bytes are read first because the
+    /// install deletes the staged file; the upload runs in the background and cannot fail this job.
+    /// </summary>
+    private JobResult InstallAndShareManifest(DownloadedFile file, long appId, string title, string sourceName, bool needsKey)
+    {
+        byte[]? package = luaCache is not null
+            && CabinetLuaCachePolicy.ShouldUpload(luaCache.IsConnected, needsKey, file is CabinetCachedFile)
+            ? luaCache.ReadPackage(file.FilePath, appId) : null;
+        var result = InstallManifest(file, appId, title);
+        if (result.Ok && package is not null) _ = luaCache!.ShareInBackground(appId, package, sourceName);
+        return result;
     }
 
     /// <summary>DLC unlock lua. Installed silently: it's an unlock, so there's nothing to confirm.</summary>
