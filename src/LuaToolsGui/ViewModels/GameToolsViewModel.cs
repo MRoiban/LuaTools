@@ -246,7 +246,7 @@ public partial class GameToolsViewModel : ObservableObject
         var edit = BuildEdit();
         if (edit.IsEmpty) return;
         IsSaving = true;
-        try { await HandleSaveAsync(app, edit, await _service.SaveAsync(app, edit)); }
+        try { await HandleSaveAsync(app, edit, await Task.Run(() => _service.SaveAsync(app, edit))); }
         catch (Exception ex) { Failed(ex.Message, ex); }
         finally { IsSaving = false; }
     }
