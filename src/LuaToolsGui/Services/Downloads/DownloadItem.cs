@@ -97,7 +97,15 @@ public partial class DownloadItem : ObservableObject
     public Task<JobResult?> Completion => _completion.Task;
 
     public string Title => Job.Title;
-    public string SubTitle => Job.SubTitle;
+    public string SubTitle => SourceOverride ?? Job.SubTitle;
+
+    /// <summary>
+    /// Where the bytes actually came from, when that differs from the job's source: a manifest served
+    /// from the connected Cabinet server's shared cache. Shown in the list and kept in the history row.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SubTitle))]
+    private string? _sourceOverride;
     public string? CoverPath => Job.CoverPath;
     public long AppId => Job.AppId;
 

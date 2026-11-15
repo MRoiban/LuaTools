@@ -57,6 +57,7 @@ namespace CabinetEngine
         internal static string UserName { get { return Client.Connected ? Client.UserName : null; } }
         internal static string Server { get { return Client.Server; } }
         internal static string Token { get { return Client.Token; } }
+        internal static string DeviceId { get { return Client.Device; } } // LuaTools: shared lua cache uploads.
         internal static int ConnectionVersion { get { return Client.ConnectionVersion; } }
         internal static bool Busy { get { return busy; } }
         internal static void QueueConnect(string input) { ValidateConnect(input); connects.Enqueue(input.Trim()); }

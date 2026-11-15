@@ -22,6 +22,9 @@ Connect Cabinet in Settings with the 12-character code from the Connect page at 
 (existing connect links still work). The optional advanced server must be an HTTPS origin.
 With the CloudRedirect add-on enabled on the Mode page, Steam Cloud saves automatically go to
 Cabinet, including games without a Steam license. Restart Steam to pick up configuration changes.
+While connected, each game Lua config you add from a normal source (not Hubcap) is shared with the
+other users of your Cabinet server, and adding a game someone already shared installs that copy when
+it matches the game's current Steam build; the Downloads list then shows the source as Cabinet.
 
 ## Dependencies and updates
 

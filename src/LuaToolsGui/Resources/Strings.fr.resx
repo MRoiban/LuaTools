@@ -566,6 +566,7 @@ Cela supprime les fichiers .lua de Steam\config\stplug-in.</value></data>
   <data name="Downloads_ActionRequired" xml:space="preserve"><value>Action requise</value></data>
   <data name="Downloads_Err_Interrupted" xml:space="preserve"><value>Interrompu à la fermeture de l'application.</value></data>
   <data name="Downloads_Kind_Dlc" xml:space="preserve"><value>Déblocage de DLC</value></data>
+  <data name="Downloads_Source_Cabinet" xml:space="preserve"><value>Cabinet (copie partagée)</value></data>
   <data name="Fixes_NotInstalled_Hint" xml:space="preserve"><value>Installez d'abord le jeu pour appliquer un fix.</value></data>
   <data name="Downloads_Status_Paused" xml:space="preserve"><value>En pause</value></data>
   <data name="Downloads_Status_Verifying" xml:space="preserve"><value>Vérification…</value></data>

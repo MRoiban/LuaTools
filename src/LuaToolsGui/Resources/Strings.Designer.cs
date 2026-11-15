@@ -574,6 +574,7 @@ public static class Strings
     public static string Downloads_ActionRequired => Get(nameof(Downloads_ActionRequired));
     public static string Downloads_Err_Interrupted => Get(nameof(Downloads_Err_Interrupted));
     public static string Downloads_Kind_Dlc => Get(nameof(Downloads_Kind_Dlc));
+    public static string Downloads_Source_Cabinet => Get(nameof(Downloads_Source_Cabinet));
     public static string Fixes_NotInstalled_Hint => Get(nameof(Fixes_NotInstalled_Hint));
 
     // ── Depot downloading ──

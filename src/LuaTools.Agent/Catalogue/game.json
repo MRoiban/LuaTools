@@ -715,7 +715,7 @@
     "destructive": true,
     "reversible": false,
     "side_effects": [
-      "Acquire Lua from the selected source, possibly consuming quota; queue installation with overwrite decisions."
+      "Acquire Lua from the selected source (or a current Cabinet shared copy), possibly consuming quota; queue installation; share with Cabinet."
     ],
     "flags": [
       {

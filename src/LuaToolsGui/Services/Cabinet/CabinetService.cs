@@ -13,7 +13,7 @@ namespace LuaToolsGui.Services.Cabinet;
 /// never run the engine at the same time. All engine calls happen on one dedicated thread, as they
 /// did on Cabinet's UI timer thread.
 /// </summary>
-public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedService, IDisposable
+public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCredentialSource, IHostedService, IDisposable
 {
     private readonly ICabinetSettings _settings;
     private readonly UnlockerService? _unlocker;
@@ -130,8 +130,16 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, IHostedServ
     {
         string? server = CloudSync.Server;
         string? host = Uri.TryCreate(server, UriKind.Absolute, out var uri) ? uri.Host : server;
+        // Snapshot for the lua cache (any thread), taken here on the engine thread with the status it matches.
+        Volatile.Write(ref _credentials, CloudSync.Connected && server is not null
+            ? new CabinetCredentials(server, CloudSync.Token, CloudSync.DeviceId) : null);
         return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
     }
+
+    // ── ICabinetCredentialSource: the shared lua cache's view of the connection ──
+    private CabinetCredentials? _credentials;
+    // Only while the published status says connected: disabling Cabinet publishes Off without a re-read.
+    CabinetCredentials? ICabinetCredentialSource.Credentials => Status.Cloud.Connected ? Volatile.Read(ref _credentials) : null;
 
     private void PublishCloudSnapshot()
     {
