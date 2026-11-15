@@ -555,7 +555,7 @@
                                         Foreground="#a78bfa"
                                         Text="{x:Static res:Strings.Add_NeedsHubcapKey}"
                                         ToolTip="{x:Static res:Strings.Add_NeedsHubcapKey_Tip}"
-                                        Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}" />
+                                        Visibility="{Binding ShowLockHint, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
 
                                 <!--  Progress is owned by the shared download queue; this row is just a view onto it.  -->

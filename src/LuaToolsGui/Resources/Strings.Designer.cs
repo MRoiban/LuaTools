@@ -923,4 +923,9 @@ public static class Strings
     public static string Cabinet_Relay_NotNewer_Body => Get(nameof(Cabinet_Relay_NotNewer_Body));
     public static string Cabinet_Relay_NotNewer_Declined => Get(nameof(Cabinet_Relay_NotNewer_Declined));
     public static string Add_CabinetSource_Tip => Get(nameof(Add_CabinetSource_Tip));
+    public static string Cabinet_Relay_Unverified_Title => Get(nameof(Cabinet_Relay_Unverified_Title));
+    public static string Cabinet_Relay_Unverified_Body => Get(nameof(Cabinet_Relay_Unverified_Body));
+    public static string Cabinet_Relay_Unverified_Declined => Get(nameof(Cabinet_Relay_Unverified_Declined));
+    public static string Cabinet_Relay_Prompt_Install => Get(nameof(Cabinet_Relay_Prompt_Install));
+    public static string Cabinet_Relay_Prompt_Skip => Get(nameof(Cabinet_Relay_Prompt_Skip));
 }

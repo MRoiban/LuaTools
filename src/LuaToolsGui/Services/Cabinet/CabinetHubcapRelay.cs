@@ -17,6 +17,15 @@ namespace LuaToolsGui.Services.Cabinet;
 /// from Cabinet is never uploaded back (it is a <see cref="CabinetCachedFile"/>). Cancelling or timing out
 /// only stops this client: the server finishes the job for whoever else asked.
 /// </remarks>
+/// <summary>Why a cached copy needs the user's go-ahead before it is installed.</summary>
+public enum CabinetCopyQuestion
+{
+    /// <summary>Hubcap has nothing newer than the copy, which is behind Steam's current build.</summary>
+    NothingNewer,
+    /// <summary>Steam's depot info is unavailable, so the copy's build can't be checked.</summary>
+    Unverified,
+}
+
 public sealed class CabinetHubcapRelay
 {
     /// <summary>The source name in the providers list, the agent catalogue and the store-page plugin.</summary>
@@ -31,20 +40,24 @@ public sealed class CabinetHubcapRelay
     private readonly ICabinetHubcapClient _client;
     private readonly Func<long, IProgress<DownloadProgress>?, CancellationToken, Task<CabinetLuaCache.Lookup>> _lookup;
     private readonly Func<CabinetLuaMeta, IProgress<DownloadProgress>?, CancellationToken, Task<CabinetCachedFile>> _download;
+    private readonly Func<CabinetLuaMeta, CancellationToken, Task<CabinetLuaCache.BuildCheck>> _checkBuild;
     private readonly ILogger _log;
     private readonly object _gate = new();
     private (bool Enabled, DateTimeOffset Until)? _availability;
 
     public CabinetHubcapRelay(ICabinetHubcapClient client, CabinetLuaCache cache, ILogger<CabinetHubcapRelay> log)
-        : this(client, (appId, progress, ct) => cache.LookupAsync(appId, progress, ct, ignoreBackoff: true), cache.DownloadExactAsync, log) { }
+        : this(client, (appId, progress, ct) => cache.LookupAsync(appId, progress, ct, ignoreBackoff: true), cache.DownloadExactAsync,
+            cache.CheckBuildAsync, log) { }
 
     internal CabinetHubcapRelay(ICabinetHubcapClient client,
         Func<long, IProgress<DownloadProgress>?, CancellationToken, Task<CabinetLuaCache.Lookup>> lookup,
-        Func<CabinetLuaMeta, IProgress<DownloadProgress>?, CancellationToken, Task<CabinetCachedFile>> download, ILogger? log = null)
+        Func<CabinetLuaMeta, IProgress<DownloadProgress>?, CancellationToken, Task<CabinetCachedFile>> download,
+        Func<CabinetLuaMeta, CancellationToken, Task<CabinetLuaCache.BuildCheck>> checkBuild, ILogger? log = null)
     {
         _client = client;
         _lookup = lookup;
         _download = download;
+        _checkBuild = checkBuild;
         _log = log ?? NullLogger.Instance;
     }
 
@@ -53,10 +66,11 @@ public sealed class CabinetHubcapRelay
     internal Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
 
     /// <summary>
-    /// Asks the user whether to install the server's cached copy although Hubcap has nothing newer
-    /// (arguments: app id, game title, the copy). Null (headless) declines. Set by the app at startup.
+    /// Asks the user whether to install a cached copy that is not known to be Steam's current build
+    /// (arguments: app id, game title, the copy, why). Null (headless) declines. Set by the app at startup;
+    /// the token is the download's own, so cancelling the download dismisses the question.
     /// </summary>
-    public Func<long, string, CabinetLuaMeta, CancellationToken, Task<bool>>? ConfirmOlderCopy { get; set; }
+    public Func<long, string, CabinetLuaMeta, CabinetCopyQuestion, CancellationToken, Task<bool>>? ConfirmCopy { get; set; }
 
     public bool IsConnected => _client.IsConnected;
 
@@ -80,6 +94,14 @@ public sealed class CabinetHubcapRelay
         return enabled;
     }
 
+    /// <summary>
+    /// Whether a download by source name may start: any other source is not this class's call, while the
+    /// Cabinet source needs a connected server whose relay is enabled (the check the source lists apply).
+    /// </summary>
+    public static async Task<bool> AdmitsAsync(string source, CabinetHubcapRelay? relay, CancellationToken ct) =>
+        !string.Equals(source, SourceName, StringComparison.OrdinalIgnoreCase)
+        || (relay is not null && await relay.IsAvailableAsync(ct).ConfigureAwait(false));
+
     /// <summary>Forget the cached availability (after a failure that says the relay is off).</summary>
     public void InvalidateAvailability() { lock (_gate) _availability = null; }
 
@@ -97,13 +119,20 @@ public sealed class CabinetHubcapRelay
 
         // 1. A current cached copy needs no relay at all.
         var lookup = await _lookup(appId, progress, ct).ConfigureAwait(false);
-        if (lookup.File is { } current)
+        switch (lookup.Outcome)
         {
-            _log.LogInformation("Cabinet Hubcap relay: {AppId} is current in the shared cache", appId);
-            return current;
+            case CabinetLuaCache.LookupOutcome.Current:
+                _log.LogInformation("Cabinet Hubcap relay: {AppId} is current in the shared cache", appId);
+                return lookup.File!;
+            // Without knowing what the server holds (or with a copy it can't deliver), any request would be a
+            // guess: "nothing cached" or "stale" would ask Hubcap for something it may not need to fetch.
+            case CabinetLuaCache.LookupOutcome.Failed:
+                throw new DownloadAbortedException(Resources.Strings.Cabinet_Relay_Err_Server);
+            // A copy whose build can't be checked is not reported stale (a refetch would spend shared quota on
+            // what may be current): the user decides whether to install it unchecked.
+            case CabinetLuaCache.LookupOutcome.Unverifiable:
+                return await OfferAsync(appId, title, interactive, lookup.Meta!, CabinetCopyQuestion.Unverified, progress, ct).ConfigureAwait(false);
         }
-        // Without knowing whether a copy exists, "nothing cached" would ask the server for the wrong thing.
-        if (lookup.ServerFailed && lookup.StaleSha256 is null) throw new DownloadAbortedException(Resources.Strings.Cabinet_Relay_Err_Server);
 
         // 2. Ask the server; 3. poll while queued or running.
         CabinetRelayStatus status;
@@ -143,16 +172,35 @@ public sealed class CabinetHubcapRelay
         switch (status.State)
         {
             case CabinetRelayStatus.Ready:
-                return await DownloadAsync(status.Meta!, progress, ct).ConfigureAwait(false);
+                // "Ready" is the server's word that this is the newest copy it has, not that it matches Steam:
+                // Hubcap may still be behind, or someone may have shared an older build.
+                var build = await _checkBuild(status.Meta!, ct).ConfigureAwait(false);
+                if (build == CabinetLuaCache.BuildCheck.Current) return await DownloadAsync(status.Meta!, progress, ct).ConfigureAwait(false);
+                _log.LogInformation("Cabinet Hubcap relay: {AppId} ready but {Build}", appId, build);
+                return await OfferAsync(appId, title, interactive, status.Meta!,
+                    build == CabinetLuaCache.BuildCheck.Stale ? CabinetCopyQuestion.NothingNewer : CabinetCopyQuestion.Unverified, progress, ct).ConfigureAwait(false);
             case CabinetRelayStatus.NotNewer:
-                var confirm = interactive ? ConfirmOlderCopy : null;
-                if (confirm is null || !await confirm(appId, title, status.Meta!, ct).ConfigureAwait(false))
-                    throw new DownloadAbortedException(Resources.Strings.Cabinet_Relay_NotNewer_Declined, isCancellation: true);
-                return await DownloadAsync(status.Meta!, progress, ct).ConfigureAwait(false);
+                return await OfferAsync(appId, title, interactive, status.Meta!, CabinetCopyQuestion.NothingNewer, progress, ct).ConfigureAwait(false);
             default:
                 if (status.Error is "relay_disabled" or "quota_exhausted" or "key_expired" or "key_rejected") InvalidateAvailability();
                 throw new DownloadAbortedException(ErrorMessage(status.Error));
         }
+    }
+
+    /// <summary>
+    /// Installs a copy not known to be current only when the user agrees. Agent-started adds (not
+    /// <paramref name="interactive"/>) are never asked and don't install; a declined copy is a cancellation.
+    /// </summary>
+    private async Task<CabinetCachedFile> OfferAsync(long appId, string title, bool interactive, CabinetLuaMeta meta,
+        CabinetCopyQuestion question, IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        var confirm = interactive ? ConfirmCopy : null;
+        bool accepted = confirm is not null && await confirm(appId, title, meta, question, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested(); // a question dismissed by cancelling is a cancel, not a "no"
+        if (!accepted)
+            throw new DownloadAbortedException(question == CabinetCopyQuestion.Unverified
+                ? Resources.Strings.Cabinet_Relay_Unverified_Declined : Resources.Strings.Cabinet_Relay_NotNewer_Declined, isCancellation: true);
+        return await DownloadAsync(meta, progress, ct).ConfigureAwait(false);
     }
 
     private async Task<CabinetCachedFile> DownloadAsync(CabinetLuaMeta meta, IProgress<DownloadProgress>? progress, CancellationToken ct)

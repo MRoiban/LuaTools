@@ -979,4 +979,11 @@ LuaTools can close Steam, write the change to its files, then start Steam again.
 Install the copy Cabinet already has anyway? It may be for an older version of the game.</value></data>
   <data name="Cabinet_Relay_NotNewer_Declined" xml:space="preserve"><value>Not installed: Hubcap doesn’t have a newer build yet.</value></data>
   <data name="Add_CabinetSource_Tip" xml:space="preserve"><value>Hubcap configs fetched by your Cabinet server. No key needed.</value></data>
+  <data name="Cabinet_Relay_Unverified_Title" xml:space="preserve"><value>Build can’t be checked</value></data>
+  <data name="Cabinet_Relay_Unverified_Body" xml:space="preserve"><value>Steam’s build information for {0} isn’t available right now, so LuaTools can’t tell whether Cabinet’s copy is for the current version of the game.
+
+Install Cabinet’s copy anyway?</value></data>
+  <data name="Cabinet_Relay_Unverified_Declined" xml:space="preserve"><value>Not installed: the build of Cabinet’s copy couldn’t be checked.</value></data>
+  <data name="Cabinet_Relay_Prompt_Install" xml:space="preserve"><value>Install anyway</value></data>
+  <data name="Cabinet_Relay_Prompt_Skip" xml:space="preserve"><value>Don’t install</value></data>
 </root>

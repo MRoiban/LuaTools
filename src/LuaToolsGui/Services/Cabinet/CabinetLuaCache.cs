@@ -183,12 +183,40 @@ public class CabinetLuaCache
     public async Task<CabinetCachedFile?> TryGetCurrentAsync(long appId, IProgress<DownloadProgress>? progress, CancellationToken ct) =>
         (await LookupAsync(appId, progress, ct).ConfigureAwait(false)).File;
 
+    /// <summary>What a lookup concluded about the server's cached copy of a game.</summary>
+    public enum LookupOutcome
+    {
+        /// <summary>A copy matching Steam's current build, staged in <see cref="Lookup.File"/>.</summary>
+        Current,
+        /// <summary>The server holds no copy.</summary>
+        NotCached,
+        /// <summary>The copy is behind Steam's current build, or not a package a shared copy may be.</summary>
+        Stale,
+        /// <summary>Steam's depot info is unavailable or slow, so the copy's build can't be checked either way.</summary>
+        Unverifiable,
+        /// <summary>The server could not be asked, or its copy could not be downloaded as described.</summary>
+        Failed,
+    }
+
     /// <summary>
-    /// What a lookup found: a current copy (<see cref="File"/>), or the SHA-256 of a cached copy that is
-    /// not usable now (<see cref="StaleSha256"/>: stale, unverifiable, or not matching its meta), or
-    /// nothing cached. <see cref="ServerFailed"/> when the server could not be asked.
+    /// What a lookup found. <see cref="Meta"/> describes the cached copy whenever one was read (also for
+    /// <see cref="LookupOutcome.Failed"/> after the meta was read).
     /// </summary>
-    public sealed record Lookup(CabinetCachedFile? File, string? StaleSha256, bool ServerFailed);
+    public sealed record Lookup(LookupOutcome Outcome, CabinetCachedFile? File = null, CabinetLuaMeta? Meta = null)
+    {
+        /// <summary>The copy's SHA-256 when it is verifiably stale: the only case a refetch may name it.</summary>
+        public string? StaleSha256 => Outcome == LookupOutcome.Stale ? Meta?.Sha256 : null;
+    }
+
+    /// <summary>Whether a copy's pins match Steam's current build, by the lookup's rule.</summary>
+    public enum BuildCheck { Current, Stale, Unverifiable }
+
+    /// <summary>Checks a copy the relay named (from its meta's pins) against Steam's current build.</summary>
+    public async Task<BuildCheck> CheckBuildAsync(CabinetLuaMeta meta, CancellationToken ct)
+    {
+        var depots = await DepotsAsync(meta.AppId, ct).ConfigureAwait(false);
+        return depots is null ? BuildCheck.Unverifiable : ManifestPins.AreCurrent(meta.Pins, depots) ? BuildCheck.Current : BuildCheck.Stale;
+    }
 
     /// <summary>
     /// <see cref="TryGetCurrentAsync"/> with the reason when there is no current copy. With
@@ -198,48 +226,62 @@ public class CabinetLuaCache
     /// </summary>
     public async Task<Lookup> LookupAsync(long appId, IProgress<DownloadProgress>? progress, CancellationToken ct, bool ignoreBackoff = false)
     {
-        if (!_client.IsConnected) return new(null, null, true);
-        if (BackingOff && !ignoreBackoff) return new(null, null, true);
-        CabinetLuaMeta? meta;
-        try { meta = await _client.GetMetaAsync(appId, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { BackOff(appId, ex); return new(null, null, true); }
-        if (meta is null) { _log.LogDebug("Cabinet lua cache: nothing cached for {AppId}", appId); return new(null, null, false); }
-        var stale = new Lookup(null, meta.Sha256, false);
-
-        var depots = await DepotsAsync(appId, ct).ConfigureAwait(false);
-        if (!ManifestPins.AreCurrent(meta.Pins, depots))
+        if (!_client.IsConnected) return new(LookupOutcome.Failed);
+        if (BackingOff && !ignoreBackoff) return new(LookupOutcome.Failed);
+        // Two rounds: a copy replaced (and evicted) between reading its meta and its bytes is read again.
+        for (int round = 0; round < 2; round++)
         {
-            _log.LogInformation("Cabinet lua cache: copy of {AppId} is not current ({Reason}); using the normal source",
-                appId, depots is null ? "Steam depot info unavailable" : "older build");
-            return stale;
-        }
+            CabinetLuaMeta? meta;
+            try { meta = await _client.GetMetaAsync(appId, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex) { BackOff(appId, ex); return new(LookupOutcome.Failed); }
+            if (meta is null) { _log.LogDebug("Cabinet lua cache: nothing cached for {AppId}", appId); return new(LookupOutcome.NotCached); }
 
-        progress?.Report(new DownloadProgress(0, meta.Size));
-        byte[]? bytes;
-        try { bytes = await _client.DownloadAsync(appId, meta.Sha256, meta.Size, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) { BackOff(appId, ex); return new(null, meta.Sha256, true); }
-        if (bytes is null) return stale; // replaced and evicted since the meta was read
-        progress?.Report(new DownloadProgress(bytes.Length, bytes.Length));
-
-        try
-        {
-            // The meta is the server's word; the bytes and their own contents are what get installed.
-            if (!CabinetLuaCachePolicy.IsUsable(meta, Sha256(bytes), CabinetPackage.Read(bytes, appId), depots))
+            var depots = await DepotsAsync(appId, ct).ConfigureAwait(false);
+            if (depots is null)
             {
-                _log.LogWarning("Cabinet lua cache: copy of {AppId} does not match its description or Steam's build; using the normal source", appId);
-                return stale;
+                _log.LogInformation("Cabinet lua cache: copy of {AppId} can't be checked (Steam depot info unavailable); using the normal source", appId);
+                return new(LookupOutcome.Unverifiable, null, meta);
             }
-            var file = Stage(bytes, appId);
-            _log.LogInformation("Cabinet lua cache: installing the shared copy of {AppId} from {Source}", appId, meta.Source);
-            return new(file, null, false);
+            if (!ManifestPins.AreCurrent(meta.Pins, depots))
+            {
+                _log.LogInformation("Cabinet lua cache: copy of {AppId} is not current (older build); using the normal source", appId);
+                return new(LookupOutcome.Stale, null, meta);
+            }
+
+            progress?.Report(new DownloadProgress(0, meta.Size));
+            byte[]? bytes;
+            try { bytes = await _client.DownloadAsync(appId, meta.Sha256, meta.Size, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            // A copy that can't be downloaded says nothing about its build: it is not stale.
+            catch (Exception ex) { BackOff(appId, ex); return new(LookupOutcome.Failed, null, meta); }
+            if (bytes is null) continue; // replaced and evicted since the meta was read
+            progress?.Report(new DownloadProgress(bytes.Length, bytes.Length));
+
+            // The meta is the server's word; the bytes and their own contents are what get installed.
+            if (!string.Equals(Sha256(bytes), meta.Sha256, StringComparison.Ordinal))
+            {
+                _log.LogWarning("Cabinet lua cache: copy of {AppId} does not match its description; using the normal source", appId);
+                return new(LookupOutcome.Failed, null, meta);
+            }
+            try
+            {
+                if (!CabinetLuaCachePolicy.IsUsable(meta, meta.Sha256, CabinetPackage.Read(bytes, appId), depots))
+                {
+                    _log.LogInformation("Cabinet lua cache: copy of {AppId} carries an older manifest; using the normal source", appId);
+                    return new(LookupOutcome.Stale, null, meta);
+                }
+                var file = Stage(bytes, appId);
+                _log.LogInformation("Cabinet lua cache: installing the shared copy of {AppId} from {Source}", appId, meta.Source);
+                return new(LookupOutcome.Current, file, meta);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning("Cabinet lua cache: copy of {AppId} is unusable ({Error}); using the normal source", appId, ex.GetType().Name);
+                return new(LookupOutcome.Stale, null, meta);
+            }
         }
-        catch (Exception ex)
-        {
-            _log.LogWarning("Cabinet lua cache: copy of {AppId} is unusable ({Error}); using the normal source", appId, ex.GetType().Name);
-            return stale;
-        }
+        return new(LookupOutcome.Failed);
     }
 
     /// <summary>

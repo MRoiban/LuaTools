@@ -49,7 +49,9 @@ public sealed class CabinetHubcapRelayTests
     private sealed class Harness
     {
         public readonly FakeServer Server = new();
-        public CabinetLuaCache.Lookup Lookup = new(null, null, false);
+        public CabinetLuaCache.Lookup Lookup = new(CabinetLuaCache.LookupOutcome.NotCached);
+        public CabinetLuaCache.BuildCheck Build = CabinetLuaCache.BuildCheck.Current;
+        public readonly List<string> Checked = [];
         public readonly List<string> Downloads = [];
         public Exception? DownloadFailure;
         public readonly List<string?> Reports = [];
@@ -64,7 +66,7 @@ public sealed class CabinetHubcapRelayTests
             {
                 Downloads.Add(meta.Sha256);
                 return DownloadFailure is null ? Task.FromResult(Staged) : Task.FromException<CabinetCachedFile>(DownloadFailure);
-            })
+            }, (meta, _) => { Checked.Add(meta.Sha256); return Task.FromResult(Build); })
             {
                 UtcNow = () => Now,
                 Delay = async (span, ct) => { Delays.Add(span); Now += span; if (OnDelay is not null) await OnDelay(ct); ct.ThrowIfCancellationRequested(); },
@@ -78,7 +80,7 @@ public sealed class CabinetHubcapRelayTests
     [Fact]
     public async Task ACurrentCachedCopyIsInstalledWithoutAskingTheRelay()
     {
-        var h = new Harness { Lookup = new(Staged, null, false) };
+        var h = new Harness { Lookup = new(CabinetLuaCache.LookupOutcome.Current, Staged) };
         Assert.Same(Staged, await h.Fetch());
         Assert.Empty(h.Server.Requests);
         Assert.Empty(h.Downloads);
@@ -87,7 +89,7 @@ public sealed class CabinetHubcapRelayTests
     [Fact]
     public async Task AStaleCopyIsNamedAndTheQueueIsPolledUntilReady()
     {
-        var h = new Harness { Lookup = new(null, Stale, false) };
+        var h = new Harness { Lookup = StaleLookup };
         h.Server.Answer = new(CabinetRelayStatus.Queued, 2);
         h.Server.Polls.Enqueue(new CabinetRelayStatus(CabinetRelayStatus.Queued, 1));
         h.Server.Polls.Enqueue(new CabinetRelayStatus(CabinetRelayStatus.Running));
@@ -111,19 +113,94 @@ public sealed class CabinetHubcapRelayTests
         Assert.Equal(new[] { Fresh }, h.Downloads);
     }
 
+    private static readonly CabinetLuaCache.Lookup StaleLookup = new(CabinetLuaCache.LookupOutcome.Stale, null, Meta(Stale));
+
     [Fact]
     public async Task AnUnknownCacheStateDoesNotAskTheRelay()
     {
         // "Nothing cached" would ask the server for a different thing than "my copy is stale".
-        var h = new Harness { Lookup = new(null, null, true) };
+        var h = new Harness { Lookup = new(CabinetLuaCache.LookupOutcome.Failed) };
         var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch());
         Assert.Equal(Strings.Cabinet_Relay_Err_Server, ex.Message);
         Assert.Empty(h.Server.Requests);
-        // A stale copy whose bytes failed to download is still a known stale copy.
-        h.Lookup = new(null, Stale, true);
+        // A current copy whose bytes failed to download is a server failure, never reported as stale.
+        h.Lookup = new(CabinetLuaCache.LookupOutcome.Failed, null, Meta(Fresh));
+        Assert.Equal(Strings.Cabinet_Relay_Err_Server, (await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch())).Message);
+        Assert.Empty(h.Server.Requests);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task AnUnverifiableCopyIsOfferedWithoutAskingTheRelay(bool answer, bool installs)
+    {
+        // Steam's depot info is unavailable: no stale= refetch (shared quota), the user decides instead.
+        var h = new Harness { Lookup = new(CabinetLuaCache.LookupOutcome.Unverifiable, null, Meta(Stale)) };
+        CabinetCopyQuestion? asked = null;
+        h.Relay.ConfirmCopy = (_, _, _, question, _) => { asked = question; return Task.FromResult(answer); };
+        if (installs) Assert.Same(Staged, await h.Fetch());
+        else
+        {
+            var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch());
+            Assert.True(ex.IsCancellation);
+            Assert.Equal(Strings.Cabinet_Relay_Unverified_Declined, ex.Message);
+        }
+        Assert.Equal(CabinetCopyQuestion.Unverified, asked);
+        Assert.Empty(h.Server.Requests);
+        Assert.Equal(installs ? new[] { Stale } : Array.Empty<string>(), h.Downloads);
+        // Agent-started adds are never asked and don't install it.
+        bool prompted = false;
+        h.Relay.ConfirmCopy = (_, _, _, _, _) => { prompted = true; return Task.FromResult(true); };
+        Assert.True((await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch(interactive: false))).IsCancellation);
+        Assert.False(prompted);
+    }
+
+    [Theory]
+    [InlineData(CabinetLuaCache.BuildCheck.Stale, CabinetCopyQuestion.NothingNewer)]
+    [InlineData(CabinetLuaCache.BuildCheck.Unverifiable, CabinetCopyQuestion.Unverified)]
+    public async Task AReadyCopyStillBehindSteamIsOnlyInstalledAfterAsking(CabinetLuaCache.BuildCheck build, CabinetCopyQuestion expected)
+    {
+        var h = new Harness { Build = build };
         h.Server.Answer = new(CabinetRelayStatus.Ready, Meta: Meta(Fresh));
-        await h.Fetch();
-        Assert.Equal(new string?[] { Stale }, h.Server.Requests);
+        CabinetCopyQuestion? asked = null;
+        h.Relay.ConfirmCopy = (_, _, _, question, _) => { asked = question; return Task.FromResult(false); };
+        Assert.True((await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch())).IsCancellation);
+        Assert.Equal(expected, asked);
+        Assert.Equal(new[] { Fresh }, h.Checked);
+        Assert.Empty(h.Downloads);
+        // A ready copy matching Steam installs without a question.
+        h.Build = CabinetLuaCache.BuildCheck.Current;
+        asked = null;
+        Assert.Same(Staged, await h.Fetch());
+        Assert.Null(asked);
+    }
+
+    [Fact]
+    public async Task CancellingWhileTheQuestionIsOpenIsACancelNotADecline()
+    {
+        var h = new Harness();
+        h.Server.Answer = new(CabinetRelayStatus.NotNewer, Meta: Meta(Stale));
+        using var cts = new CancellationTokenSource();
+        // The app's dialog closes when the token fires and reports "no"; the download must end as cancelled.
+        h.Relay.ConfirmCopy = (_, _, _, _, ct) => { cts.Cancel(); return Task.FromResult(!ct.IsCancellationRequested); };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => h.Fetch(ct: cts.Token));
+        Assert.Empty(h.Downloads);
+    }
+
+    [Fact]
+    public async Task ThePluginDownloadRouteAdmitsTheCabinetSourceOnlyWhileTheRelayIsOn()
+    {
+        var h = new Harness();
+        Assert.True(await CabinetHubcapRelay.AdmitsAsync("Ryuu", null, CancellationToken.None));
+        Assert.False(await CabinetHubcapRelay.AdmitsAsync("Cabinet", null, CancellationToken.None));
+        h.Server.Enabled = false;
+        Assert.False(await CabinetHubcapRelay.AdmitsAsync("cabinet", h.Relay, CancellationToken.None));
+        h.Relay.InvalidateAvailability();
+        h.Server.Enabled = true;
+        Assert.True(await CabinetHubcapRelay.AdmitsAsync("Cabinet", h.Relay, CancellationToken.None));
+        h.Server.IsConnected = false;
+        h.Relay.InvalidateAvailability();
+        Assert.False(await CabinetHubcapRelay.AdmitsAsync("Cabinet", h.Relay, CancellationToken.None));
     }
 
     [Fact]
@@ -142,10 +219,10 @@ public sealed class CabinetHubcapRelayTests
     [InlineData(false, false)]
     public async Task NothingNewerOnHubcapAsksBeforeInstallingTheCachedCopy(bool answer, bool installs)
     {
-        var h = new Harness { Lookup = new(null, Stale, false) };
+        var h = new Harness { Lookup = StaleLookup };
         h.Server.Answer = new(CabinetRelayStatus.NotNewer, Meta: Meta(Stale));
         CabinetLuaMeta? asked = null;
-        h.Relay.ConfirmOlderCopy = (appId, title, meta, _) => { asked = meta; Assert.Equal((App, "Dota 2"), (appId, title)); return Task.FromResult(answer); };
+        h.Relay.ConfirmCopy = (appId, title, meta, question, _) => { asked = meta; Assert.Equal((App, "Dota 2"), (appId, title)); return Task.FromResult(answer); };
         if (installs)
         {
             Assert.Same(Staged, await h.Fetch());
@@ -167,7 +244,7 @@ public sealed class CabinetHubcapRelayTests
         var h = new Harness();
         h.Server.Answer = new(CabinetRelayStatus.NotNewer, Meta: Meta(Stale));
         bool asked = false;
-        h.Relay.ConfirmOlderCopy = (_, _, _, _) => { asked = true; return Task.FromResult(true); };
+        h.Relay.ConfirmCopy = (_, _, _, _, _) => { asked = true; return Task.FromResult(true); };
         var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => h.Fetch(interactive: false));
         Assert.True(ex.IsCancellation);
         Assert.False(asked);
@@ -310,7 +387,7 @@ public sealed class CabinetHubcapRelayTests
             await coordinator.RefreshUsageAsync([row]);
             Assert.Equal(status, row.Status);
             Assert.Equal(reasons, row.DisabledReasons);
-            Assert.False(row.Locked);
+            Assert.Equal(!(connected && enabled), row.Locked); // not clickable while the relay is off
             Assert.False(row.NeedsKey);
             Assert.Equal(connected && enabled, row.CanDownload);
         }

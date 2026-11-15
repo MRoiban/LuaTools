@@ -75,7 +75,7 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             bool enabled = relay is not null && await relay.IsAvailableAsync(ct);
             if (!enabled) row.Status = "unavailable";
             row.DisabledReasons = enabled ? [] : ["SOURCE_UNAVAILABLE", relay?.IsConnected == true ? "CABINET_RELAY_DISABLED" : "CABINET_NOT_CONNECTED"];
-            row.Locked = false;
+            row.Locked = !enabled; // not clickable while the relay is off (no key involved: the row shows no key hint)
             row.Stats = null;
         }
         var standard = rows.Where(r => !r.NeedsKey && !IsPublic(r.Name) && !IsCabinet(r.Name)).ToList();

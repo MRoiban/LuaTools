@@ -34,8 +34,11 @@ public partial class SourceRowViewModel : ObservableObject
 
     /// <summary>Hubcap key not configured. Show a hint instead of a download button.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanDownload))]
+    [NotifyPropertyChangedFor(nameof(CanDownload), nameof(ShowLockHint))]
     private bool _isLocked;
+
+    /// <summary>The "needs Hubcap key" hint: not for the Cabinet source, which is locked only while its relay is off.</summary>
+    public bool ShowLockHint => IsLocked && Name != Services.Cabinet.CabinetHubcapRelay.SourceName;
 
     [ObservableProperty] private string? _statsText;
     [ObservableProperty] private bool _isSupporter;

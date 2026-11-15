@@ -567,14 +567,51 @@ public sealed class CabinetLuaCacheTests : IDisposable
         byte[] package = Zip(($"{App}.lua", Lua("100")));
         var cabinet = new FakeCabinet { Meta = MetaFor(package, "100"), Package = package };
         var stale = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
-        Assert.Equal(new CabinetLuaCache.Lookup(null, CabinetLuaCache.Sha256(package), false), stale);
-        // Unverifiable (no depot info) counts as stale too: the relay may refresh it.
-        Assert.Equal(CabinetLuaCache.Sha256(package), (await Cache(cabinet, null).LookupAsync(App, null, CancellationToken.None)).StaleSha256);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Stale, stale.Outcome);
+        Assert.Equal(CabinetLuaCache.Sha256(package), stale.StaleSha256);
+        Assert.Equal(0, cabinet.DownloadCalls); // a stale copy isn't downloaded
         var none = await Cache(new FakeCabinet(), Steam("111")).LookupAsync(App, null, CancellationToken.None);
-        Assert.Equal(new CabinetLuaCache.Lookup(null, null, false), none);
+        Assert.Equal(new CabinetLuaCache.Lookup(CabinetLuaCache.LookupOutcome.NotCached), none);
         var current = await Cache(cabinet, Steam("100")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Current, current.Outcome);
         Assert.NotNull(current.File);
         Assert.Null(current.StaleSha256);
+    }
+
+    [Fact]
+    public async Task MissingDepotInfoIsUnverifiableNotStale()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "100"), Package = package };
+        var lookup = await Cache(cabinet, null).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Unverifiable, lookup.Outcome);
+        Assert.Equal(cabinet.Meta, lookup.Meta);
+        Assert.Null(lookup.StaleSha256); // never named as stale: that would spend shared Hubcap quota
+        Assert.Null(lookup.File);        // the other sources' cache-first path still skips it
+        Assert.Null(await Cache(cabinet, null).TryGetCurrentAsync(App, null, CancellationToken.None));
+        // The relay's re-check of a named copy uses the same three answers.
+        Assert.Equal(CabinetLuaCache.BuildCheck.Unverifiable, await Cache(cabinet, null).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+        Assert.Equal(CabinetLuaCache.BuildCheck.Stale, await Cache(cabinet, Steam("111")).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+        Assert.Equal(CabinetLuaCache.BuildCheck.Current, await Cache(cabinet, Steam("100")).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACurrentCopyThatCantBeDownloadedIsAFailureNotStale()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("111")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "111"), DownloadFailure = new HttpRequestException("reset") };
+        var lookup = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, lookup.Outcome);
+        Assert.Null(lookup.StaleSha256);
+        // Bytes that don't match their meta are the server's failure too, not a stale copy.
+        cabinet.DownloadFailure = null;
+        cabinet.Package = Zip(($"{App}.lua", Lua("111") + "-- other bytes\n"));
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None)).Outcome);
+        // A copy evicted between meta and bytes is read again once, then reported as a failure.
+        cabinet.Package = null;
+        int before = cabinet.MetaCalls;
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None)).Outcome);
+        Assert.Equal(before + 2, cabinet.MetaCalls);
     }
 
     [Fact]
@@ -582,13 +619,13 @@ public sealed class CabinetLuaCacheTests : IDisposable
     {
         var cabinet = new FakeCabinet { Failure = new HttpRequestException("down") };
         var cache = Cache(cabinet, Steam("111"));
-        Assert.True((await cache.LookupAsync(App, null, CancellationToken.None)).ServerFailed);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await cache.LookupAsync(App, null, CancellationToken.None)).Outcome);
         Assert.True(cache.BackingOff);
         Assert.Equal(1, cabinet.MetaCalls);
         await cache.LookupAsync(App, null, CancellationToken.None); // backing off: not asked
         Assert.Equal(1, cabinet.MetaCalls);
         cabinet.Failure = null;
-        Assert.Equal(new CabinetLuaCache.Lookup(null, null, false), await cache.LookupAsync(App, null, CancellationToken.None, ignoreBackoff: true));
+        Assert.Equal(new CabinetLuaCache.Lookup(CabinetLuaCache.LookupOutcome.NotCached), await cache.LookupAsync(App, null, CancellationToken.None, ignoreBackoff: true));
         Assert.Equal(2, cabinet.MetaCalls);
     }
 

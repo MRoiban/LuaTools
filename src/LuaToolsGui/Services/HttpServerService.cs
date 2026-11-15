@@ -86,7 +86,7 @@ public class HttpServerService : IHostedService
             var p when method == "GET" && MatchGet(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchStatus(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/dlc-batch-apply/{appid}", out var id) => HandleDlcBatchApply(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/dlc-batch-cancel/{appid}", out var id) => HandleDlcBatchCancel(long.Parse(id)),
-            var p when method == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
+            var p when method == "POST" && MatchPost(p, "/download/{appid}", out var id) => await HandleDownload(long.Parse(id), requestBody, ct),
             var p when method == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
@@ -266,7 +266,7 @@ public class HttpServerService : IHostedService
         }
     }
 
-    private (int, string) HandleDownload(long appId, string body)
+    private async Task<(int, string)> HandleDownload(long appId, string body, CancellationToken ct)
     {
 
         var json = JsonSerializer.Deserialize<JsonElement>(body);
@@ -277,6 +277,9 @@ public class HttpServerService : IHostedService
 
         if (string.IsNullOrWhiteSpace(source))
             return (400, JsonErr("source is required"));
+        // The Cabinet source is offered only while Cabinet Cloud is connected and its relay is enabled.
+        if (!await Cabinet.CabinetHubcapRelay.AdmitsAsync(source, _services.GetService<Cabinet.CabinetHubcapRelay>(), ct))
+            return (409, JsonErr("The Cabinet source is unavailable."));
 
         // The queue's DedupeKey is the real duplicate guard; this keeps the documented 409 contract.
         var queue = _services.GetRequiredService<Services.Downloads.DownloadQueue>();
