@@ -116,7 +116,7 @@ public static class CabinetLuaCachePolicy
     /// capped so a stalled server cannot hold a download for more than two minutes.
     /// </summary>
     public static TimeSpan TransferDeadline(long size) =>
-        TimeSpan.FromSeconds(Math.Clamp(10 + Math.Max(0, size) / (256.0 * 1024), 10, 120));
+        TimeSpan.FromSeconds(Math.Clamp(10 + Math.Max(0, size) / (256 * 1024), 10, 120)); // whole seconds
 }
 
 /// <summary>
