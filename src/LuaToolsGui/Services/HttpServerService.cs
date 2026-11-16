@@ -86,7 +86,7 @@ public class HttpServerService : IHostedService
             var p when method == "GET" && MatchGet(p, "/dlc-batch/{appid}", out var id) => HandleDlcBatchStatus(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/dlc-batch-apply/{appid}", out var id) => HandleDlcBatchApply(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/dlc-batch-cancel/{appid}", out var id) => HandleDlcBatchCancel(long.Parse(id)),
-            var p when method == "POST" && MatchPost(p, "/download/{appid}", out var id) => HandleDownload(long.Parse(id), requestBody),
+            var p when method == "POST" && MatchPost(p, "/download/{appid}", out var id) => await HandleDownload(long.Parse(id), requestBody, ct),
             var p when method == "GET" && MatchGet(p, "/download-status/{appid}", out var id) => HandleStatus(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/cancel/{appid}", out var id) => HandleCancel(long.Parse(id)),
             var p when method == "POST" && MatchPost(p, "/remove/{appid}", out var id) => HandleRemove(long.Parse(id)),
@@ -173,6 +173,7 @@ public class HttpServerService : IHostedService
             downloading = s.Downloading,
             progress = s.Progress,
             indeterminate = s.Indeterminate,
+            detail = s.Detail,
         }).ToList();
 
         return (200, Json(new
@@ -245,6 +246,12 @@ public class HttpServerService : IHostedService
     private (int, string) HandleDlcBatchCancel(long appId) =>
         (200, Json(new { success = _services.GetRequiredService<DlcBatchService>().Cancel(appId) }));
 
+    /// <summary>The legacy /check-sources list: Cabinet first while its relay is on, then lua.tools' sources as given.</summary>
+    internal static List<(string Name, bool Available)> LegacySourceOrder(IReadOnlyDictionary<string, string> statuses, bool cabinet) =>
+        (cabinet ? new[] { (Cabinet.CabinetHubcapRelay.SourceName, true) } : [])
+            .Concat(statuses.Where(kv => kv.Key != Cabinet.CabinetHubcapRelay.SourceName).Select(kv => (kv.Key, kv.Value == "available")))
+            .ToList();
+
     private async Task<(int, string)> HandleCheckSources(long appId)
     {
         // Dynamic source list from the app's real manifest backend (same call the app's
@@ -254,8 +261,10 @@ public class HttpServerService : IHostedService
         {
             var api = _services.GetRequiredService<LuaToolsApiClient>();
             var statuses = await api.CheckSourcesAsync(appId.ToString());
-            var results = statuses
-                .Select(kv => (object)new { name = kv.Key, available = kv.Value == "available", url = (string?)null })
+            var relay = _services.GetService<Cabinet.CabinetHubcapRelay>();
+            bool cabinet = relay is not null && await relay.IsAvailableAsync(CancellationToken.None);
+            var results = LegacySourceOrder(statuses, cabinet)
+                .Select(s => (object)new { name = s.Name, available = s.Available, url = (string?)null })
                 .ToList();
             return (200, Json(new { success = true, results }));
         }
@@ -265,7 +274,7 @@ public class HttpServerService : IHostedService
         }
     }
 
-    private (int, string) HandleDownload(long appId, string body)
+    private async Task<(int, string)> HandleDownload(long appId, string body, CancellationToken ct)
     {
 
         var json = JsonSerializer.Deserialize<JsonElement>(body);
@@ -276,6 +285,9 @@ public class HttpServerService : IHostedService
 
         if (string.IsNullOrWhiteSpace(source))
             return (400, JsonErr("source is required"));
+        // The Cabinet source is offered only while Cabinet Cloud is connected and its relay is enabled.
+        if (!await Cabinet.CabinetHubcapRelay.AdmitsAsync(source, _services.GetService<Cabinet.CabinetHubcapRelay>(), ct))
+            return (409, JsonErr("The Cabinet source is unavailable."));
 
         // The queue's DedupeKey is the real duplicate guard; this keeps the documented 409 contract.
         var queue = _services.GetRequiredService<Services.Downloads.DownloadQueue>();

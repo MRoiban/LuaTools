@@ -36,6 +36,8 @@ public class PluginAddService(
         public bool Downloading { get; set; }
         public double Progress { get; set; }
         public bool Indeterminate { get; set; }
+        /// <summary>The queue item's sub-line while downloading, e.g. the Cabinet relay's queue position.</summary>
+        public string? Detail { get; set; }
         public bool Available => Status == "available";
         public string[] DisabledReasons { get; set; } = [];
         public bool IsSupporter { get; set; }
@@ -150,7 +152,7 @@ public class PluginAddService(
             {
                 var best = result.Sources.FirstOrDefault(r => r.CanDownload);
                 if (best is null) { state.Checking = false; state.Error = Resources.Strings.Err_NoSourceAvailable; }
-                else await DownloadAsync(appId, state, best);
+                else await DownloadAsync(appId, state, best, automatic: true); // one click: Cabinet (when on) first, then fallbacks
             }
         }
         catch (Exception ex)
@@ -189,7 +191,7 @@ public class PluginAddService(
     /// Routing through the queue also makes the popup's Cancel button work for the first time: it posts
     /// to /cancel/{appid}, which now resolves the same queue item this method enqueued.
     /// </remarks>
-    private async Task DownloadAsync(long appId, AddState state, SourceRow row, bool reserved = false)
+    private async Task DownloadAsync(long appId, AddState state, SourceRow row, bool reserved = false, bool automatic = false)
     {
         lock (_gate)
         {
@@ -218,7 +220,7 @@ public class PluginAddService(
                 lock (_gate)
                 {
                     if (!IsCurrent(state)) return null;
-                    return state.QueueItem = _acquisition.Enqueue(appId, state.GameName, row, state.DlcBaseAppId);
+                    return state.QueueItem = _acquisition.Enqueue(appId, state.GameName, row, state.DlcBaseAppId, automatic: automatic);
                 }
             }
             var item = Application.Current is { } app
@@ -234,6 +236,7 @@ public class PluginAddService(
                     row.Indeterminate = item.IsIndeterminate;
                     row.Progress = item.Percent;
                     row.Downloading = item.IsActive;
+                    row.Detail = item.IsActive ? item.Detail : null;
                 }
             }
             item.PropertyChanged += OnChanged;
@@ -257,7 +260,7 @@ public class PluginAddService(
                     else
                     {
                         state.InstallStatus = result.Message
-                            + " " + string.Format(Resources.Strings.Add_FastFetch_Via, row.Name);
+                            + " " + string.Format(Resources.Strings.Add_FastFetch_Via, item.SubTitle); // the source that installed it
                     }
                 }
             }
@@ -281,6 +284,7 @@ public class PluginAddService(
             {
                 row.Downloading = false;
                 row.Indeterminate = false;
+                row.Detail = null;
                 state.Busy = false;
             }
         }

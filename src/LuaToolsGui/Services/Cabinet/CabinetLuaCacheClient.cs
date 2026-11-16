@@ -51,13 +51,45 @@ public interface ICabinetLuaCacheClient
 }
 
 /// <summary>
-/// HTTPS transport for the lua cache. Like the engine's own transport and pairing, it talks only to the
+/// A Hubcap relay request's state on the server (docs/cloud-api.md, "Hubcap relay"). <see cref="Meta"/> is
+/// the Lua cache version to download when <see cref="State"/> is ready or upstream_not_newer.
+/// </summary>
+public sealed record CabinetRelayStatus(string State, int? Position = null, string? Error = null, CabinetLuaMeta? Meta = null)
+{
+    public const string Queued = "queued", Running = "running", Ready = "ready", Failed = "failed", NotNewer = "upstream_not_newer";
+    public bool IsPending => State is Queued or Running;
+}
+
+/// <summary>
+/// The Cabinet server's Hubcap relay: the server owner's Hubcap keys fetch a game once into the shared
+/// lua cache for every user. The client never sees a key, only whether the relay is enabled.
+/// </summary>
+public interface ICabinetHubcapClient
+{
+    /// <summary>True while Cabinet Cloud is connected.</summary>
+    bool IsConnected { get; }
+    /// <summary><c>GET /api/hubcap</c>: whether the server can fetch from Hubcap now. Throws when unreachable.</summary>
+    Task<bool> GetRelayEnabledAsync(CancellationToken ct);
+    /// <summary><c>POST /api/apps/{appid}/hubcap[?stale=]</c>: enqueue, join, or an immediate answer.</summary>
+    Task<CabinetRelayStatus> RequestRelayAsync(long appId, string? staleSha256, CancellationToken ct);
+    /// <summary><c>GET /api/apps/{appid}/hubcap</c>; null when the server has no job for the app.</summary>
+    Task<CabinetRelayStatus?> GetRelayStatusAsync(long appId, CancellationToken ct);
+}
+
+/// <summary>
+/// HTTPS transport for the lua cache and the Hubcap relay. Like the engine's own transport and pairing, it talks only to the
 /// user-selected Cabinet origin (outside the app host allowlist, see ENDPOINTS.md "Cabinet"), with no
 /// redirects, cookies or app account headers, and sends that origin as <c>Origin</c> because Bedrock
 /// refuses writes from non-browser clients without it.
 /// </summary>
-internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposable
+internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, ICabinetHubcapClient, IDisposable
 {
+    /// <summary>A relay POST may wait while the server re-checks its keys' stats with Hubcap.</summary>
+    private static readonly TimeSpan RelayRequestTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RelayStatusTimeout = TimeSpan.FromSeconds(10);
+    private static readonly HashSet<string> RelayStates = new(StringComparer.Ordinal)
+    { CabinetRelayStatus.Queued, CabinetRelayStatus.Running, CabinetRelayStatus.Ready, CabinetRelayStatus.Failed, CabinetRelayStatus.NotNewer };
+
     /// <summary>The server's upload ceiling, and so the largest package worth downloading.</summary>
     public const int MaxPackageBytes = 90 * 1024 * 1024;
     private const int MaxMetaBytes = 256 * 1024;
@@ -116,6 +148,64 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
             Ensure(response);
             return true;
         });
+    }
+
+    public Task<bool> GetRelayEnabledAsync(CancellationToken ct) => WithDeadline(MetaTimeout, ct, async token =>
+    {
+        using var response = await SendAsync(HttpMethod.Get, "/api/hubcap", null, token).ConfigureAwait(false);
+        Ensure(response);
+        try
+        {
+            using var json = JsonDocument.Parse(await ReadAsync(response, MaxMetaBytes, token).ConfigureAwait(false));
+            return json.RootElement.GetProperty("enabled").GetBoolean();
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new InvalidDataException("Malformed Cabinet relay answer.", ex);
+        }
+    });
+
+    public Task<CabinetRelayStatus> RequestRelayAsync(long appId, string? staleSha256, CancellationToken ct)
+    {
+        if (staleSha256 is not null && !IsSha256(staleSha256)) throw new ArgumentException("Invalid SHA-256.", nameof(staleSha256));
+        string query = staleSha256 is null ? "" : "?stale=" + staleSha256;
+        return WithDeadline(RelayRequestTimeout, ct, async token =>
+        {
+            using var response = await SendAsync(HttpMethod.Post, $"/api/apps/{Id(appId)}/hubcap{query}", null, token).ConfigureAwait(false);
+            Ensure(response);
+            return ParseRelayStatus(await ReadAsync(response, MaxMetaBytes, token).ConfigureAwait(false), appId);
+        });
+    }
+
+    public Task<CabinetRelayStatus?> GetRelayStatusAsync(long appId, CancellationToken ct) => WithDeadline(RelayStatusTimeout, ct, async token =>
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"/api/apps/{Id(appId)}/hubcap", null, token).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        Ensure(response);
+        return (CabinetRelayStatus?)ParseRelayStatus(await ReadAsync(response, MaxMetaBytes, token).ConfigureAwait(false), appId);
+    });
+
+    /// <summary>A relay status: a known state, a positive position, a short error code, and meta for this app.</summary>
+    internal static CabinetRelayStatus ParseRelayStatus(byte[] body, long appId)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(body);
+            var root = json.RootElement;
+            string state = root.GetProperty("state").GetString() ?? "";
+            if (!RelayStates.Contains(state)) throw new InvalidDataException();
+            int? position = root.TryGetProperty("position", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetInt32() : null;
+            if (position is <= 0) throw new InvalidDataException();
+            string? error = root.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            if (error is not null && !Regex.IsMatch(error, @"\A[a-z_]{1,64}\z")) throw new InvalidDataException();
+            var meta = root.TryGetProperty("meta", out var m) && m.ValueKind == JsonValueKind.Object ? ParseMeta(m, appId) : null;
+            if (state is CabinetRelayStatus.Ready or CabinetRelayStatus.NotNewer && meta is null) throw new InvalidDataException();
+            return new CabinetRelayStatus(state, position, error, meta);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            throw new InvalidDataException("Malformed Cabinet relay status.", ex);
+        }
     }
 
     /// <summary>The server takes 1–64 characters with no control characters.</summary>
@@ -181,7 +271,15 @@ internal sealed class CabinetLuaCacheClient : ICabinetLuaCacheClient, IDisposabl
         try
         {
             using var json = JsonDocument.Parse(body);
-            var root = json.RootElement;
+            return ParseMeta(json.RootElement, appId);
+        }
+        catch (JsonException ex) { throw new InvalidDataException("Malformed Cabinet lua cache meta.", ex); }
+    }
+
+    internal static CabinetLuaMeta ParseMeta(JsonElement root, long appId)
+    {
+        try
+        {
             string Text(string name, int max)
             {
                 var value = root.GetProperty(name);

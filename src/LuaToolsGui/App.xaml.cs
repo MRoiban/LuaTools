@@ -16,6 +16,47 @@ public partial class App : Application
     private readonly IHost _host;
     private readonly SemaphoreSlim _pluginRuntimeGate = new(1, 1);
 
+    /// <summary>
+    /// The Cabinet source's question before installing a cached copy that is not known to be Steam's current
+    /// build: install it anyway, or don't. The main window comes back from the tray first (a store-page add
+    /// can arrive while LuaTools sits there) and owns the question, so it can't open behind Steam. Cancelling
+    /// the download closes the question, which then counts as "don't".
+    /// </summary>
+    private static async Task<bool> ConfirmCabinetCopyAsync(long appId, string title, CabinetLuaMeta meta, CabinetCopyQuestion question, CancellationToken ct)
+    {
+        if (Current is not { } app || ct.IsCancellationRequested) return false;
+        return await await app.Dispatcher.InvokeAsync(async () =>
+        {
+            if (ct.IsCancellationRequested) return false;
+            var main = app.MainWindow as MainWindow;
+            main?.RestoreFromTray();
+            var owner = main is { IsVisible: true } ? main : null;
+            var (caption, body) = question switch
+            {
+                CabinetCopyQuestion.Unverified => (LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_Unverified_Body),
+                CabinetCopyQuestion.NoOtherSource => (LuaToolsGui.Resources.Strings.Cabinet_Relay_LastResort_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_LastResort_Body),
+                _ => (LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Title, LuaToolsGui.Resources.Strings.Cabinet_Relay_NotNewer_Body),
+            };
+            var box = new Wpf.Ui.Controls.MessageBox
+            {
+                Title = caption,
+                Content = string.Format(body, title),
+                PrimaryButtonText = LuaToolsGui.Resources.Strings.Cabinet_Relay_Prompt_Install,
+                CloseButtonText = LuaToolsGui.Resources.Strings.Cabinet_Relay_Prompt_Skip,
+                Owner = owner,
+                WindowStartupLocation = owner is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.CenterOwner,
+                Topmost = owner is null,
+            };
+            bool closed = false;
+            box.Closed += (_, _) => closed = true;
+            box.Loaded += (_, _) => { box.Activate(); box.Topmost = true; box.Topmost = owner is null; };
+            using var dismiss = ct.Register(() => box.Dispatcher.BeginInvoke(() => { if (!closed) box.Close(); }));
+            try { return await box.ShowDialogAsync(false, ct) == Wpf.Ui.Controls.MessageBoxResult.Primary && !ct.IsCancellationRequested; }
+            catch (OperationCanceledException) { return false; }
+            finally { if (!closed) box.Close(); }
+        });
+    }
+
     private async Task SetPluginRuntimeAsync(bool activate)
     {
         await _pluginRuntimeGate.WaitAsync();
@@ -61,8 +102,14 @@ public partial class App : Application
                 services.AddSingleton<ICabinetService>(sp => sp.GetRequiredService<CabinetService>());
                 services.AddHostedService(sp => sp.GetRequiredService<CabinetService>());
                 // The connected Cabinet server's shared lua cache, used by manifest downloads.
-                services.AddSingleton<ICabinetLuaCacheClient>(sp => new CabinetLuaCacheClient(sp.GetRequiredService<CabinetService>()));
+                services.AddSingleton(sp => new CabinetLuaCacheClient(sp.GetRequiredService<CabinetService>()));
+                services.AddSingleton<ICabinetLuaCacheClient>(sp => sp.GetRequiredService<CabinetLuaCacheClient>());
                 services.AddSingleton<CabinetLuaCache>();
+                // The "Cabinet" source: Hubcap through the connected server's own keys (same transport).
+                services.AddSingleton<ICabinetHubcapClient>(sp => sp.GetRequiredService<CabinetLuaCacheClient>());
+                services.AddSingleton(sp => new CabinetHubcapRelay(sp.GetRequiredService<ICabinetHubcapClient>(),
+                    sp.GetRequiredService<CabinetLuaCache>(), sp.GetRequiredService<ILogger<CabinetHubcapRelay>>())
+                { ConfirmCopy = ConfirmCabinetCopyAsync });
                 services.AddSingleton<UpdateService>();
                 services.AddSingleton<CacheService>();
                 services.AddSingleton<SteamService>();

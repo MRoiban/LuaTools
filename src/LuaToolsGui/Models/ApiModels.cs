@@ -182,6 +182,8 @@ public static class SourceMeta
         ["Sushi"] = new(DiscordUrl: "https://discord.gg/hMdv5dQhcN"),
         ["Skyflare"] = new(DiscordUrl: "https://discord.gg/luatools"),
         ["Sadie (Morrenus)"] = new(DisplayName: "Sadie (Hubcap)", DiscordUrl: "https://discord.gg/hubcapsmanifest", RequiresUserKey: true),
+        // Hubcap through the connected Cabinet server's own keys (Services/Cabinet/CabinetHubcapRelay.cs): no user key.
+        ["Cabinet"] = new(),
     };
 
     public static Meta Get(string name) => All.TryGetValue(name, out var m) ? m : new Meta();

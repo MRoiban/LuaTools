@@ -8,10 +8,14 @@ namespace LuaToolsGui.Services;
 /// <summary>Shared read-only source policy and queue admission for Add, the Steam picker and agents.
 /// Provider HTTP and install logic remain in the existing services/factory.</summary>
 public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService hubcap,
-    SettingsService settings, AuthService auth, DownloadQueue queue, ManifestJobFactory jobs, LuaInstaller? installer = null)
+    SettingsService settings, AuthService auth, DownloadQueue queue, ManifestJobFactory jobs, LuaInstaller? installer = null,
+    Cabinet.CabinetHubcapRelay? relay = null)
 {
     private readonly Func<long, string?>? _readInstalled = installer is null ? null : installer.ReadInstalledLua;
     public const string HubcapSource = "Sadie (Morrenus)";
+    /// <summary>Hubcap through the connected Cabinet server's relay: listed only while it is enabled, needs no user key.</summary>
+    public const string CabinetSource = Cabinet.CabinetHubcapRelay.SourceName;
+    public static bool IsCabinet(string source) => source == CabinetSource;
     public sealed record SourceSnapshot(GameDetails? Details, List<SourceRow> SourcesList)
     {
         public List<SourceRow> Sources => SourcesList;
@@ -33,18 +37,32 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         var premium = new SourceRow { Name = HubcapSource, DisplayName = SourceMeta.Get(HubcapSource).DisplayName ?? HubcapSource,
             NeedsKey = true, Locked = true, Status = hs is null ? "unknown" : hs.ManifestFileExists ? "available" : "unavailable" };
         await RefreshUsageAsync([premium], ct);
+        // Cabinet, when its relay is on, comes first everywhere: an automatic add tries it before anything else
+        // (filling the shared cache, sparing the user's own Hubcap quota) and falls back in this order.
+        var cabinet = relay is not null && await relay.IsAvailableAsync(ct)
+            ? new SourceRow { Name = CabinetSource, DisplayName = SourceMeta.Get(CabinetSource).DisplayName ?? CabinetSource, Status = "available" }
+            : null;
+        if (cabinet is not null) await RefreshUsageAsync([cabinet], ct);
         // The GUI/plugin fast path never probes lower priority providers after eligible Hubcap.
-        if (fastFetch && premium.CanDownload) return new(details, [premium]);
+        if (fastFetch && premium.CanDownload) return new(details, cabinet is null ? [premium] : [cabinet, premium]);
         Dictionary<string, string> statuses;
         try { statuses = await api!.CheckSourcesAsync(appId.ToString(), ct); }
         catch (ApiException) { statuses = []; }
-        var rows = statuses.Where(k => k.Key != HubcapSource).Select(k => new SourceRow
+        var rows = statuses.Where(k => k.Key != HubcapSource && !IsCabinet(k.Key)).Select(k => new SourceRow
         { Name = k.Key, DisplayName = SourceMeta.Get(k.Key).DisplayName ?? k.Key, Status = k.Value,
             NeedsKey = SourceMeta.Get(k.Key).RequiresUserKey }).ToList();
         rows.Insert(0, premium);
+        if (cabinet is not null) rows.Add(cabinet);
         await RefreshUsageAsync(rows, ct);
-        return new(details, rows.OrderByDescending(r => r.NeedsKey).ToList());
+        return new(details, Order(rows));
     }
+
+    /// <summary>
+    /// The provider order every list uses: Cabinet first when listed, then the user's own-key sources, then
+    /// the rest in the order the catalogue gave them. Without the Cabinet row this is the order from before.
+    /// </summary>
+    public static List<SourceRow> Order(IEnumerable<SourceRow> rows) =>
+        rows.OrderByDescending(r => IsCabinet(r.Name)).ThenByDescending(r => r.NeedsKey).ToList();
     public async Task RefreshUsageAsync(IEnumerable<SourceRow> sources, CancellationToken ct = default)
     {
         var rows = sources.ToList();
@@ -61,7 +79,16 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
                 row.Stats = stats is null ? null : $"{stats.DailyUsage}/{stats.DailyLimit}";
             }
         }
-        var standard = rows.Where(r => !r.NeedsKey && !IsPublic(r.Name)).ToList();
+        foreach (var row in rows.Where(r => IsCabinet(r.Name)))
+        {
+            // No lua.tools account or usage involved: only the connection and the server's relay matter.
+            bool enabled = relay is not null && await relay.IsAvailableAsync(ct);
+            if (!enabled) row.Status = "unavailable";
+            row.DisabledReasons = enabled ? [] : ["SOURCE_UNAVAILABLE", relay?.IsConnected == true ? "CABINET_RELAY_DISABLED" : "CABINET_NOT_CONNECTED"];
+            row.Locked = !enabled; // not clickable while the relay is off (no key involved: the row shows no key hint)
+            row.Stats = null;
+        }
+        var standard = rows.Where(r => !r.NeedsKey && !IsPublic(r.Name) && !IsCabinet(r.Name)).ToList();
         StandardUsage? usage = null;
         bool supporter = false;
         if (!auth.IsGuest && standard.Count > 0)
@@ -69,7 +96,7 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             try { usage = await api.GetStandardUsageAsync(ct); supporter = (await api.GetSupporterStatusAsync(ct))?.IsSupporter == true; }
             catch (ApiException) { }
         }
-        foreach (var row in rows.Where(r => !r.NeedsKey))
+        foreach (var row in rows.Where(r => !r.NeedsKey && !IsCabinet(r.Name)))
         {
             var reasons = new List<string>();
             if (row.Status != "available") reasons.Add(row.Status == "unknown" ? "SOURCE_UNKNOWN" : "SOURCE_UNAVAILABLE");
@@ -84,6 +111,9 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
             row.DisabledReasons = reasons.ToArray(); row.Locked = reasons.Count > 0;
         }
     }
+    /// <summary>What an automatic Cabinet add may fall back to: every other usable source, in list order.</summary>
+    public static List<ManifestJobFactory.FallbackSource> FallbacksFrom(IEnumerable<SourceRow> rows) =>
+        rows.Where(r => r.CanDownload && !IsCabinet(r.Name)).Select(r => new ManifestJobFactory.FallbackSource(r.Name, r.NeedsKey)).ToList();
     public static bool IsPublic(string source) => source is SteamMlService.SourceName or DexLuaService.SourceName;
     public async Task<List<SourceRow>> CheckDlcSourcesAsync(string appId, string baseAppId, bool fastFetch, CancellationToken ct = default)
     {
@@ -105,18 +135,26 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
     }
     public DownloadItem Enqueue(long appId, string? name, SourceRow source, string? baseAppId = null,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
-        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null)
-        => EnqueueCaptured(installer?.CaptureInstallation(), appId, name, source, baseAppId, confirm, onFinished, onReveal, installVersion);
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool interactive = true, bool automatic = false)
+        => EnqueueCaptured(installer?.CaptureInstallation(), appId, name, source, baseAppId, confirm, onFinished, onReveal, installVersion,
+            interactive: interactive, automatic: automatic);
 
     internal DownloadItem EnqueueCaptured(InstallationBinding? installation, long appId, string? name, SourceRow source, string? baseAppId = null,
         Func<DownloadedFile, DownloadItem, CancellationToken, Task<bool>>? confirm = null,
-        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool reuseActive = false)
+        Action<DownloadItem, JobResult?>? onFinished = null, Action? onReveal = null, Func<string>? installVersion = null, bool reuseActive = false, bool interactive = true, bool automatic = false)
     {
         if (installation is { IsCurrent: false }) throw new MutationRejectedException("CONTEXT_CHANGED", 6);
         using var pinned = installation?.Pin();
         if (!source.CanDownload) throw new MutationRejectedException(source.DisabledReasons.FirstOrDefault() ?? "SOURCE_UNAVAILABLE", 6);
+        // Cabinet chosen automatically (FastFetch, the plugin's one-click add, an agent add without a source)
+        // falls back to the other usable sources of the queue-time check, in list order. Picked by name, it doesn't.
+        bool cabinetFirst = automatic && baseAppId is null && IsCabinet(source.Name);
+        List<SourceRow> fresh = [];
+        Task<IReadOnlyList<ManifestJobFactory.FallbackSource>> Fallbacks(CancellationToken _) =>
+            Task.FromResult<IReadOnlyList<ManifestJobFactory.FallbackSource>>(FallbacksFrom(fresh));
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
-            : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal);
+            : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal, interactive,
+                cabinetFirst ? Fallbacks : null);
         string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
         string acceptedVersion = CurrentVersion();
         job = job with { ConfirmAsync = async (file, item, ct) =>
@@ -150,10 +188,12 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         {
             if (installation is { IsCurrent: false }) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
             // A queued job is never authorized by a stale GUI badge. Recheck current credentials/usage.
-            var fresh = baseAppId is null ? (await CheckAsync(appId, false, ct)).Sources
+            fresh = baseAppId is null ? (await CheckAsync(appId, false, ct)).Sources
                 : await CheckDlcSourcesAsync(appId.ToString(), baseAppId, false, ct);
             var selected = fresh.FirstOrDefault(r => r.Name == source.Name);
-            if (selected?.CanDownload != true || installation is { IsCurrent: false }) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
+            // An automatic Cabinet add may proceed while any source can deliver: Cabinet going off is a fallback.
+            bool admitted = selected?.CanDownload == true || (cabinetFirst && fresh.Any(r => r.CanDownload));
+            if (!admitted || installation is { IsCurrent: false }) throw new DownloadAbortedException(Resources.Strings.Agent_Add_GateChanged);
             return await original(item, progress, ct);
         }};
         var active = queue.Items.FirstOrDefault(i => i.IsActive && i.Job.DedupeKey == job.DedupeKey);

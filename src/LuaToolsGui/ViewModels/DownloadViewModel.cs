@@ -25,6 +25,8 @@ public partial class SourceRowViewModel : ObservableObject
 
     public bool IsAvailable => Status == "available";
     public string StatusLabel => Status.ToUpperInvariant();
+    /// <summary>The name's tooltip: explains the Cabinet source (Hubcap through the server's keys); none for others.</summary>
+    public string? Tip => Name == Services.Cabinet.CabinetHubcapRelay.SourceName ? Resources.Strings.Add_CabinetSource_Tip : null;
 
     /// <summary>Hide the status badge when availability is unknown (e.g. a Hubcap row with no key set.
     /// We can't check, so we don't show a misleading badge; the "needs key" hint covers it instead).</summary>
@@ -32,8 +34,11 @@ public partial class SourceRowViewModel : ObservableObject
 
     /// <summary>Hubcap key not configured. Show a hint instead of a download button.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanDownload))]
+    [NotifyPropertyChangedFor(nameof(CanDownload), nameof(ShowLockHint))]
     private bool _isLocked;
+
+    /// <summary>The "needs Hubcap key" hint: not for the Cabinet source, which is locked only while its relay is off.</summary>
+    public bool ShowLockHint => IsLocked && Name != Services.Cabinet.CabinetHubcapRelay.SourceName;
 
     [ObservableProperty] private string? _statsText;
     [ObservableProperty] private bool _isSupporter;
@@ -567,7 +572,7 @@ public partial class DownloadViewModel : ObservableObject
                         return;
                     }
                     _fastFetchSource = best.DisplayName;
-                    await DownloadFromSourceAsync(best);
+                    await DownloadFromSourceAsync(best, automatic: true);
                 }
                 else
                 {
@@ -610,7 +615,7 @@ public partial class DownloadViewModel : ObservableObject
     /// suppression is now the queue's DedupeKey, and the queue's concurrency cap (default 1) decides
     /// how many actually run at once.
     /// </remarks>
-    public async Task<DownloadItem?> DownloadFromSourceAsync(SourceRowViewModel source)
+    public async Task<DownloadItem?> DownloadFromSourceAsync(SourceRowViewModel source, bool automatic = false)
     {
         if (Details is not { } details) return null;
         long appId = details.AppId;
@@ -621,8 +626,10 @@ public partial class DownloadViewModel : ObservableObject
         {
         // Hubcap downloads use the user's OWN key and never touch lua.tools, so a guest with a key
         // configured can download without signing in. SteamML is public; lua.tools sources need an account.
+        // The Cabinet source authenticates with the Cabinet connection, not lua.tools.
         bool hubcapWithKey = source.NeedsKey && !string.IsNullOrEmpty(_settings.HubcapApiKey);
-        if (source.Name != SteamMlService.SourceName && source.Name != DexLuaService.SourceName && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
+        if (source.Name != SteamMlService.SourceName && source.Name != DexLuaService.SourceName && source.Name != Services.Cabinet.CabinetHubcapRelay.SourceName
+            && !hubcapWithKey && await PromptSignInIfGuestAsync(Resources.Strings.Add_SignIn_Download)) return null;
 
         Error = null;
         LastDownload = null;
@@ -633,11 +640,13 @@ public partial class DownloadViewModel : ObservableObject
         if (FindActive(appId, installation) is { } active) { Attach(active, source); return active; }
         var checkedSources = await _acquisition.CheckAsync(appId);
         var selected = checkedSources.Sources.FirstOrDefault(r => r.Name == source.Name);
+        // FastFetch: the first usable source now (Cabinet, when on, falls back from there). A click: that row only.
+        if (automatic && selected?.CanDownload != true) selected = checkedSources.Sources.FirstOrDefault(r => r.CanDownload);
         if (selected is null || !selected.CanDownload) { Error = Resources.Strings.Agent_Add_GateChanged; return null; }
         var queued = _acquisition.EnqueueCaptured(installation, appId, gameName, selected,
             confirm: (file, item, ct) => ConfirmOverwriteAsync(file, item.Id, appId, gameName, ct),
             onFinished: (item, result) => OnManifestFinished(item, result, needsKey),
-            onReveal: () => NavigateToGame?.Invoke(appId), reuseActive: true);
+            onReveal: () => NavigateToGame?.Invoke(appId), reuseActive: true, automatic: automatic);
         Attach(queued, source);
         return queued;
         }
@@ -703,7 +712,7 @@ public partial class DownloadViewModel : ObservableObject
             InstallStatus = result.Message;
             if (result.Ok && _fastFetchSource is not null)
             {
-                InstallStatus += " " + string.Format(Resources.Strings.Add_FastFetch_Via, _fastFetchSource);
+                InstallStatus += " " + string.Format(Resources.Strings.Add_FastFetch_Via, item.SubTitle); // the source that actually installed it
                 _fastFetchSource = null;
             }
         }

@@ -385,7 +385,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
         public required SteamService Steam;
     }
 
-    private Job Factory(FakeCabinet cabinet, AppDepotInfo? steam, string sourceLua)
+    private Job Factory(FakeCabinet cabinet, AppDepotInfo? steam, string sourceLua, RelayServer? relay = null, HttpStatusCode dexLuaStatus = HttpStatusCode.OK)
     {
         string steamDir = Path.Combine(_root, "steam");
         Directory.CreateDirectory(steamDir);
@@ -394,14 +394,16 @@ public sealed class CabinetLuaCacheTests : IDisposable
         var steamService = new SteamService(settings);
         var installer = new LuaInstaller(steamService, settings, new CacheService(Path.Combine(_root, "cache.json")),
             new LuaVault(() => steamService.StPlugInDir, Path.Combine(_root, "vault")));
-        var dexLua = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(sourceLua) });
+        var dexLua = new Stub(_ => new HttpResponseMessage(dexLuaStatus) { Content = new StringContent(sourceLua) });
         var hubcap = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(($"{App}.lua", sourceLua))) });
         var unused = new HttpClient(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
         var api = new LuaToolsApiClient(new AuthService(unused, Path.Combine(_root, "auth.dat")), null!, null!, unused,
             dexLua: new DexLuaService(new HttpClient(dexLua)));
         var covers = new CoverCache(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)), Path.Combine(_root, "covers"));
+        var cache = Cache(cabinet, steam);
         var factory = new ManifestJobFactory(api, new HubcapService(new HttpClient(hubcap) { BaseAddress = new Uri(AppConfig.HubcapBaseUrl) }),
-            settings, installer, null!, covers, null!, null!, null!, null!, null!, null!, Cache(cabinet, steam));
+            settings, installer, null!, covers, null!, null!, null!, null!, null!, null!, cache, relay is null ? null
+            : new CabinetHubcapRelay(relay, cache, Microsoft.Extensions.Logging.Abstractions.NullLogger<CabinetHubcapRelay>.Instance) { Delay = relay.Delay, UtcNow = () => relay.Clock, ConfirmCopy = relay.Confirm });
         return new Job { Factory = factory, DexLua = dexLua, Hubcap = hubcap, Steam = steamService };
     }
 
@@ -489,6 +491,210 @@ public sealed class CabinetLuaCacheTests : IDisposable
         Assert.Empty(cabinet.Uploads);
     }
 
+    // ── Cabinet first, automatic fallback ────────────────────────────
+
+    /// <summary>The server's relay: the POST answer is also every poll's answer.</summary>
+    internal sealed class RelayServer : ICabinetHubcapClient
+    {
+        public bool IsConnected { get; set; } = true;
+        public CabinetRelayStatus Answer = new(CabinetRelayStatus.Failed, Error: "no_manifest");
+        public Exception? RequestFailure;
+        public readonly List<string?> Requests = [];
+        public int Polls;
+        public DateTimeOffset Clock = DateTimeOffset.UnixEpoch;
+        public Action<int>? OnDelay;
+        public int Delays;
+        public bool Accept = true;
+        public readonly List<CabinetCopyQuestion> Asked = [];
+        public Func<TimeSpan, CancellationToken, Task> Delay => (span, ct) =>
+        {
+            Clock += span;
+            OnDelay?.Invoke(++Delays);
+            ct.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        };
+        public Func<long, string, CabinetLuaMeta, CabinetCopyQuestion, CancellationToken, Task<bool>> Confirm =>
+            (_, _, _, question, _) => { Asked.Add(question); return Task.FromResult(Accept); };
+        public Task<bool> GetRelayEnabledAsync(CancellationToken ct) => Task.FromResult(true);
+        public Task<CabinetRelayStatus> RequestRelayAsync(long appId, string? staleSha256, CancellationToken ct)
+        {
+            Requests.Add(staleSha256);
+            return RequestFailure is null ? Task.FromResult(Answer) : Task.FromException<CabinetRelayStatus>(RequestFailure);
+        }
+        public Task<CabinetRelayStatus?> GetRelayStatusAsync(long appId, CancellationToken ct) { Polls++; return Task.FromResult<CabinetRelayStatus?>(Answer); }
+    }
+
+    private static Func<CancellationToken, Task<IReadOnlyList<ManifestJobFactory.FallbackSource>>> Then(params (string Name, bool NeedsKey)[] sources) =>
+        _ => Task.FromResult<IReadOnlyList<ManifestJobFactory.FallbackSource>>(sources.Select(s => new ManifestJobFactory.FallbackSource(s.Name, s.NeedsKey)).ToList());
+
+    private static DownloadJob Automatic(Job f, Func<CancellationToken, Task<IReadOnlyList<ManifestJobFactory.FallbackSource>>> fallbacks, bool interactive = true) =>
+        f.Factory.CreateManifestJob(App, "Alpha", CabinetHubcapRelay.SourceName, needsKey: false, interactive: interactive, fallbacks: fallbacks);
+
+    private static async Task<(DownloadItem Item, DownloadedFile File, JobResult Result)> RunItem(DownloadJob job, CancellationToken ct = default)
+    {
+        var item = new DownloadItem(job);
+        var file = await job.DownloadAsync(item, new Progress<DownloadProgress>(), ct);
+        return (item, file, await job.InstallAsync(file, item, ct));
+    }
+
+    [Theory]
+    [InlineData("no_manifest")]
+    [InlineData("quota_exhausted")]
+    [InlineData("key_rejected")]
+    [InlineData("relay_disabled")]
+    [InlineData("failed")]
+    [InlineData("upstream_not_newer")]
+    [InlineData("ready_but_stale")]
+    [InlineData("unverifiable")]
+    [InlineData("disconnected")]
+    [InlineData("unreachable")]
+    [InlineData("timeout")]
+    public async Task AnAutomaticCabinetAddFallsBackSilentlyAndTheFallbackFillsTheCache(string kind)
+    {
+        byte[] stale = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet();
+        var relay = new RelayServer();
+        AppDepotInfo? steam = Steam("111");
+        switch (kind)
+        {
+            case "failed": relay.Answer = new(CabinetRelayStatus.Failed, Error: "hubcap_unavailable"); break;
+            case "upstream_not_newer":
+                cabinet.Meta = MetaFor(stale, "100"); cabinet.Package = stale;
+                relay.Answer = new(CabinetRelayStatus.NotNewer, Meta: MetaFor(stale, "100")); break;
+            case "ready_but_stale": cabinet.Package = stale; relay.Answer = new(CabinetRelayStatus.Ready, Meta: MetaFor(stale, "100")); break;
+            case "unverifiable": cabinet.Meta = MetaFor(stale, "100"); cabinet.Package = stale; steam = null; break;
+            case "disconnected": relay.IsConnected = false; break;
+            case "unreachable": relay.RequestFailure = new HttpRequestException("down"); break;
+            case "timeout": relay.Answer = new(CabinetRelayStatus.Running); break;
+            default: relay.Answer = new(CabinetRelayStatus.Failed, Error: kind); break;
+        }
+        var f = Factory(cabinet, steam, Lua("111"), relay);
+        var (item, file, result) = await RunItem(Automatic(f, Then((DexLuaService.SourceName, false))));
+        Assert.True(result.Ok, result.Message);
+        Assert.IsNotType<CabinetCachedFile>(file);
+        Assert.Equal(1, f.DexLua.Calls);
+        Assert.Empty(relay.Asked);                              // no question on the way
+        Assert.Equal(DexLuaService.SourceName, item.SubTitle);  // the item names the source that installed it
+        if (kind == "timeout") Assert.Equal(CabinetHubcapRelay.AutomaticTimeout, relay.Clock - DateTimeOffset.UnixEpoch);
+        if (kind == "unverifiable") Assert.Empty(relay.Requests);
+        if (steam is null) return; // without Steam's build nothing is shared, by the existing rule
+        await cabinet.Uploaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var upload = Assert.Single(cabinet.Uploads);
+        Assert.Equal(DexLuaService.SourceName, upload.Source);
+        Assert.Equal("111", CabinetPackage.Read(upload.Package, App).Pins[Depot]);
+    }
+
+    [Fact]
+    public async Task AFallbackToTheUsersOwnHubcapKeyIsNeverShared()
+    {
+        var cabinet = new FakeCabinet();
+        var f = Factory(cabinet, Steam("111"), Lua("111"), new RelayServer());
+        var (item, _, result) = await RunItem(Automatic(f, Then((AcquisitionCoordinator.HubcapSource, true), (DexLuaService.SourceName, false))));
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal(1, f.Hubcap.Calls);
+        Assert.Equal(0, f.DexLua.Calls); // the first usable fallback delivered
+        Assert.Equal("Sadie (Hubcap)", item.SubTitle);
+        await Task.Delay(200);
+        Assert.Empty(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task ACurrentCopyFromCabinetNeedsNoFallbackAndIsNotReuploaded()
+    {
+        byte[] current = Zip(($"{App}.lua", Lua("111")));
+        var cabinet = new FakeCabinet { Package = current };
+        var relay = new RelayServer { Answer = new(CabinetRelayStatus.Ready, Meta: MetaFor(current, "111")) };
+        var f = Factory(cabinet, Steam("111"), Lua("999"), relay);
+        var (item, file, result) = await RunItem(Automatic(f, Then((DexLuaService.SourceName, false))));
+        Assert.True(result.Ok, result.Message);
+        Assert.IsType<CabinetCachedFile>(file);
+        Assert.Equal(0, f.DexLua.Calls);
+        Assert.Equal(CabinetHubcapRelay.SourceName, item.SubTitle);
+        await Task.Delay(200);
+        Assert.Empty(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task PickingCabinetExplicitlyNeverFallsBack()
+    {
+        var relay = new RelayServer();
+        var f = Factory(new FakeCabinet(), Steam("111"), Lua("111"), relay);
+        var job = f.Factory.CreateManifestJob(App, "Alpha", CabinetHubcapRelay.SourceName, needsKey: false);
+        var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(new DownloadItem(job), new Progress<DownloadProgress>(), CancellationToken.None));
+        Assert.Equal(LuaToolsGui.Resources.Strings.Cabinet_Relay_Err_NoManifest, ex.Message);
+        Assert.Equal(0, f.DexLua.Calls);
+        // ...and keeps asking its own question about an older copy.
+        byte[] stale = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(stale, "100"), Package = stale };
+        relay = new RelayServer { Answer = new(CabinetRelayStatus.NotNewer, Meta: MetaFor(stale, "100")) };
+        f = Factory(cabinet, Steam("111"), Lua("111"), relay);
+        var (_, file, result) = await RunItem(f.Factory.CreateManifestJob(App, "Alpha", CabinetHubcapRelay.SourceName, needsKey: false));
+        Assert.True(result.Ok, result.Message);
+        Assert.IsType<CabinetCachedFile>(file);
+        Assert.Equal(new[] { CabinetCopyQuestion.NothingNewer }, relay.Asked);
+        Assert.Equal(0, f.DexLua.Calls);
+    }
+
+    [Fact]
+    public async Task CancellingDuringCabinetOrAFallbackCancelsTheWholeAdd()
+    {
+        // While Cabinet is still queued on the server.
+        using var during = new CancellationTokenSource();
+        var relay = new RelayServer { Answer = new(CabinetRelayStatus.Queued, 2), OnDelay = n => { if (n == 2) during.Cancel(); } };
+        var f = Factory(new FakeCabinet(), Steam("111"), Lua("111"), relay);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RunItem(Automatic(f, Then((DexLuaService.SourceName, false))), during.Token));
+        Assert.Equal(0, f.DexLua.Calls);
+        // While moving on to the fallbacks.
+        using var moving = new CancellationTokenSource();
+        f = Factory(new FakeCabinet(), Steam("111"), Lua("111"), new RelayServer());
+        var fallbacks = Then((DexLuaService.SourceName, false));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RunItem(Automatic(f, ct => { moving.Cancel(); return fallbacks(ct); }), moving.Token));
+        Assert.Equal(0, f.DexLua.Calls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WhenEverySourceFailedCabinetsOwnCopyIsTheAskedLastResort(bool interactive)
+    {
+        byte[] stale = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(stale, "100"), Package = stale };
+        var relay = new RelayServer { Answer = new(CabinetRelayStatus.NotNewer, Meta: MetaFor(stale, "100")) };
+        var f = Factory(cabinet, Steam("111"), Lua("111"), relay, dexLuaStatus: HttpStatusCode.NotFound);
+        var job = Automatic(f, Then((DexLuaService.SourceName, false)), interactive);
+        if (interactive)
+        {
+            var (item, file, result) = await RunItem(job);
+            Assert.True(result.Ok, result.Message);
+            Assert.IsType<CabinetCachedFile>(file);
+            Assert.Equal(new[] { CabinetCopyQuestion.NoOtherSource }, relay.Asked);
+            Assert.Equal(CabinetHubcapRelay.SourceName, item.SubTitle);
+        }
+        else
+        {
+            // CLI/agent adds never install it.
+            var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => RunItem(job));
+            Assert.True(ex.IsCancellation);
+            Assert.Empty(relay.Asked);
+        }
+        Assert.Equal(1, f.DexLua.Calls); // the fallback was tried first
+        await Task.Delay(200);
+        Assert.Empty(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task WithoutACachedCopyTheLastFallbacksErrorIsReported()
+    {
+        var relay = new RelayServer();
+        var f = Factory(new FakeCabinet(), Steam("111"), Lua("111"), relay, dexLuaStatus: HttpStatusCode.NotFound);
+        await Assert.ThrowsAnyAsync<Exception>(() => RunItem(Automatic(f, Then((DexLuaService.SourceName, false)))));
+        Assert.Empty(relay.Asked);
+        // No fallback at all: Cabinet's own reason.
+        f = Factory(new FakeCabinet(), Steam("111"), Lua("111"), relay);
+        var ex = await Assert.ThrowsAsync<DownloadAbortedException>(() => RunItem(Automatic(f, Then())));
+        Assert.Equal(LuaToolsGui.Resources.Strings.Cabinet_Relay_Err_NoManifest, ex.Message);
+    }
+
     // ── Transport ────────────────────────────────────────────────────
 
     private sealed class CredentialBox(CabinetCredentials? value) : ICabinetCredentialSource
@@ -557,5 +763,140 @@ public sealed class CabinetLuaCacheTests : IDisposable
         foreach (string bad in new[] { Meta(appid: "440"), Meta(hash: "ABC"), Meta(pins: "{\"x\":\"1\"}"), Meta(pins: "{\"1\":\"a\"}"),
                      Meta(pins: "[]"), Meta(size: "0"), Meta(size: "999999999999"), "{", "[]" })
             Assert.Throws<InvalidDataException>(() => CabinetLuaCacheClient.ParseMeta(Encoding.UTF8.GetBytes(bad), App));
+    }
+
+    // ── For the Hubcap relay (CabinetHubcapRelayTests covers the flow) ──
+
+    [Fact]
+    public async Task LookupNamesTheStaleCopyAndNothingCachedSeparately()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "100"), Package = package };
+        var stale = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Stale, stale.Outcome);
+        Assert.Equal(CabinetLuaCache.Sha256(package), stale.StaleSha256);
+        Assert.Equal(0, cabinet.DownloadCalls); // a stale copy isn't downloaded
+        var none = await Cache(new FakeCabinet(), Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(new CabinetLuaCache.Lookup(CabinetLuaCache.LookupOutcome.NotCached), none);
+        var current = await Cache(cabinet, Steam("100")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Current, current.Outcome);
+        Assert.NotNull(current.File);
+        Assert.Null(current.StaleSha256);
+    }
+
+    [Fact]
+    public async Task MissingDepotInfoIsUnverifiableNotStale()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "100"), Package = package };
+        var lookup = await Cache(cabinet, null).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Unverifiable, lookup.Outcome);
+        Assert.Equal(cabinet.Meta, lookup.Meta);
+        Assert.Null(lookup.StaleSha256); // never named as stale: that would spend shared Hubcap quota
+        Assert.Null(lookup.File);        // the other sources' cache-first path still skips it
+        Assert.Null(await Cache(cabinet, null).TryGetCurrentAsync(App, null, CancellationToken.None));
+        // The relay's re-check of a named copy uses the same three answers.
+        Assert.Equal(CabinetLuaCache.BuildCheck.Unverifiable, await Cache(cabinet, null).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+        Assert.Equal(CabinetLuaCache.BuildCheck.Stale, await Cache(cabinet, Steam("111")).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+        Assert.Equal(CabinetLuaCache.BuildCheck.Current, await Cache(cabinet, Steam("100")).CheckBuildAsync(cabinet.Meta!, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ACurrentCopyThatCantBeDownloadedIsAFailureNotStale()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("111")));
+        var cabinet = new FakeCabinet { Meta = MetaFor(package, "111"), DownloadFailure = new HttpRequestException("reset") };
+        var lookup = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, lookup.Outcome);
+        Assert.Null(lookup.StaleSha256);
+        // Bytes that don't match their meta are the server's failure too, not a stale copy.
+        cabinet.DownloadFailure = null;
+        cabinet.Package = Zip(($"{App}.lua", Lua("111") + "-- other bytes\n"));
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None)).Outcome);
+        // A copy evicted between meta and bytes is read again once, then reported as a failure.
+        cabinet.Package = null;
+        int before = cabinet.MetaCalls;
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None)).Outcome);
+        Assert.Equal(before + 2, cabinet.MetaCalls);
+    }
+
+    [Fact]
+    public async Task LookupForTheRelayIgnoresTheBackoffButReportsServerFailures()
+    {
+        var cabinet = new FakeCabinet { Failure = new HttpRequestException("down") };
+        var cache = Cache(cabinet, Steam("111"));
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Failed, (await cache.LookupAsync(App, null, CancellationToken.None)).Outcome);
+        Assert.True(cache.BackingOff);
+        Assert.Equal(1, cabinet.MetaCalls);
+        await cache.LookupAsync(App, null, CancellationToken.None); // backing off: not asked
+        Assert.Equal(1, cabinet.MetaCalls);
+        cabinet.Failure = null;
+        Assert.Equal(new CabinetLuaCache.Lookup(CabinetLuaCache.LookupOutcome.NotCached), await cache.LookupAsync(App, null, CancellationToken.None, ignoreBackoff: true));
+        Assert.Equal(2, cabinet.MetaCalls);
+    }
+
+    [Fact]
+    public async Task ExactDownloadVerifiesTheNamedVersionButNotSteamsBuild()
+    {
+        byte[] package = Zip(($"{App}.lua", Lua("100")));
+        var meta = MetaFor(package, "100");
+        var cabinet = new FakeCabinet { Package = package };
+        var file = await Cache(cabinet, Steam("111")).DownloadExactAsync(meta, null, CancellationToken.None);
+        Assert.IsType<CabinetCachedFile>(file);
+        Assert.Equal(package, File.ReadAllBytes(file.FilePath));
+        // Other bytes than the meta names, a version no longer kept, or a package a shared copy may not be.
+        cabinet.Package = Zip(($"{App}.lua", Lua("101")));
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(meta, null, CancellationToken.None));
+        cabinet.Package = null;
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(meta, null, CancellationToken.None));
+        byte[] undeclared = Zip(($"{App}.lua", "addappid(440)\n"));
+        cabinet.Package = undeclared;
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, null).DownloadExactAsync(MetaFor(undeclared, "1"), null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RelayTransportSendsTheStaleShaAndParsesStatuses()
+    {
+        var requests = new List<HttpRequestMessage>();
+        string sha = new('d', 64);
+        string meta = $"{{\"appid\":\"570\",\"sha256\":\"{sha}\",\"size\":12,\"pins\":{{}},\"source\":\"Hubcap (Cabinet)\",\"uploadedAt\":1,\"uploader\":\"Cabinet Cloud\"}}";
+        var transport = new Stub(r =>
+        {
+            requests.Add(r);
+            string path = r.RequestUri!.AbsolutePath;
+            if (path == "/api/hubcap") return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"enabled\":true}") };
+            if (r.Method == HttpMethod.Post) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"state\":\"queued\",\"position\":3}") };
+            if (path == "/api/apps/440/hubcap") return new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("{\"error\":\"not_found\"}") };
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{{\"state\":\"ready\",\"meta\":{meta}}}") };
+        });
+        using var client = new CabinetLuaCacheClient(new CredentialBox(new CabinetCredentials("https://cabinet.example.test", Token, "device1")), transport);
+        Assert.True(await client.GetRelayEnabledAsync(CancellationToken.None));
+        Assert.Equal(new CabinetRelayStatus("queued", 3), await client.RequestRelayAsync(App, sha, CancellationToken.None));
+        await client.RequestRelayAsync(App, null, CancellationToken.None);
+        var ready = await client.GetRelayStatusAsync(App, CancellationToken.None);
+        Assert.Equal(("ready", sha, "Cabinet Cloud"), (ready!.State, ready.Meta!.Sha256, ready.Meta.Uploader));
+        Assert.Null(await client.GetRelayStatusAsync(440, CancellationToken.None));
+        Assert.Equal($"/api/apps/570/hubcap?stale={sha}", requests[1].RequestUri!.PathAndQuery);
+        Assert.Equal(HttpMethod.Post, requests[1].Method);
+        Assert.Equal("/api/apps/570/hubcap", requests[2].RequestUri!.PathAndQuery);
+        foreach (var request in requests)
+        {
+            Assert.Equal("Bearer " + Token, request.Headers.Authorization!.ToString());
+            Assert.Equal("https://cabinet.example.test", request.Headers.GetValues("Origin").Single());
+        }
+        await Assert.ThrowsAsync<ArgumentException>(() => client.RequestRelayAsync(App, "not-a-sha", CancellationToken.None));
+    }
+
+    [Fact]
+    public void MalformedRelayStatusesAreRefused()
+    {
+        string meta = $"{{\"appid\":\"570\",\"sha256\":\"{new string('e', 64)}\",\"size\":1,\"pins\":{{}},\"source\":\"s\",\"uploadedAt\":1,\"uploader\":\"u\"}}";
+        CabinetRelayStatus Parse(string json) => CabinetLuaCacheClient.ParseRelayStatus(Encoding.UTF8.GetBytes(json), App);
+        Assert.Equal(new CabinetRelayStatus("failed", null, "no_manifest"), Parse("{\"state\":\"failed\",\"error\":\"no_manifest\"}"));
+        Assert.Equal("upstream_not_newer", Parse($"{{\"state\":\"upstream_not_newer\",\"meta\":{meta}}}").State);
+        Assert.True(Parse("{\"state\":\"running\"}").IsPending);
+        foreach (string bad in new[] { "{\"state\":\"done\"}", "{\"state\":\"ready\"}", "{\"state\":\"queued\",\"position\":0}",
+                     "{\"state\":\"failed\",\"error\":\"<b>x</b>\"}", $"{{\"state\":\"ready\",\"meta\":{meta.Replace("\"570\"", "\"440\"")}}}", "[]", "{" })
+            Assert.Throws<InvalidDataException>(() => Parse(bad));
     }
 }

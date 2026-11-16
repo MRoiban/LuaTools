@@ -459,7 +459,8 @@
                                         <TextBlock
                                             FontSize="13.5"
                                             FontWeight="Medium"
-                                            Text="{Binding DisplayName}" />
+                                            Text="{Binding DisplayName}"
+                                            ToolTip="{Binding Tip}" />
                                         <ui:SymbolIcon
                                             Margin="6,0,0,0"
                                             FontSize="15"
@@ -554,7 +555,7 @@
                                         Foreground="#a78bfa"
                                         Text="{x:Static res:Strings.Add_NeedsHubcapKey}"
                                         ToolTip="{x:Static res:Strings.Add_NeedsHubcapKey_Tip}"
-                                        Visibility="{Binding IsLocked, Converter={StaticResource BoolToVis}}" />
+                                        Visibility="{Binding ShowLockHint, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
 
                                 <!--  Progress is owned by the shared download queue; this row is just a view onto it.  -->

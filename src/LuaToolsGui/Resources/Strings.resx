@@ -958,4 +958,37 @@ LuaTools can close Steam, write the change to its files, then start Steam again.
   <data name="Tools_Err_CloudRedirectStatsRejected" xml:space="preserve"><value>Steam didn't accept the stat change ({0}). CloudRedirect would overwrite a change written to Steam's files, so nothing was written.</value></data>
   <data name="Tools_Err_CloudRedirectMixed" xml:space="preserve"><value>CloudRedirect manages this game: achievement locks need Steam closed, stat changes need Steam running. Nothing was written; save them separately.</value></data>
   <data name="Tools_Note_CloudRedirectStats" xml:space="preserve"><value>CloudRedirect manages this game: stat changes are only saved while Steam is running.</value></data>
+  <data name="Cabinet_Relay_Queued" xml:space="preserve"><value>Queued on Cabinet (position {0})</value></data>
+  <data name="Cabinet_Relay_Waiting" xml:space="preserve"><value>Waiting for Cabinet</value></data>
+  <data name="Cabinet_Relay_Fetching" xml:space="preserve"><value>Fetching from Hubcap</value></data>
+  <data name="Cabinet_Relay_Err_NoManifest" xml:space="preserve"><value>Hubcap has no Lua config for this game.</value></data>
+  <data name="Cabinet_Relay_Err_Quota" xml:space="preserve"><value>The Cabinet server’s Hubcap keys have reached today’s limit. Try again tomorrow or pick another source.</value></data>
+  <data name="Cabinet_Relay_Err_KeyExpired" xml:space="preserve"><value>The Cabinet server’s Hubcap key has expired. Ask the server owner to renew it.</value></data>
+  <data name="Cabinet_Relay_Err_KeyRejected" xml:space="preserve"><value>Hubcap rejected the Cabinet server’s key. Ask the server owner to check it.</value></data>
+  <data name="Cabinet_Relay_Err_Disabled" xml:space="preserve"><value>The Cabinet server has no usable Hubcap key right now.</value></data>
+  <data name="Cabinet_Relay_Err_HubcapUnavailable" xml:space="preserve"><value>The Cabinet server could not reach Hubcap. Try again in a few minutes.</value></data>
+  <data name="Cabinet_Relay_Err_InvalidPackage" xml:space="preserve"><value>Hubcap’s package for this game was refused by the Cabinet server.</value></data>
+  <data name="Cabinet_Relay_Err_Failed" xml:space="preserve"><value>Cabinet could not get this game from Hubcap ({0}).</value></data>
+  <data name="Cabinet_Relay_Err_Timeout" xml:space="preserve"><value>Cabinet is taking too long. The server keeps working on it; try again in a few minutes.</value></data>
+  <data name="Cabinet_Relay_Err_Server" xml:space="preserve"><value>Cabinet Cloud could not be reached. Try again later.</value></data>
+  <data name="Cabinet_Relay_Err_NotConnected" xml:space="preserve"><value>Connect Cabinet Cloud in Settings to use this source.</value></data>
+  <data name="Cabinet_Relay_Err_CopyUnusable" xml:space="preserve"><value>The copy Cabinet fetched could not be verified, so it was not installed.</value></data>
+  <data name="Cabinet_Relay_NotNewer_Title" xml:space="preserve"><value>No newer build on Hubcap</value></data>
+  <data name="Cabinet_Relay_NotNewer_Body" xml:space="preserve"><value>Hubcap doesn’t have a newer build of {0} yet.
+
+Install the copy Cabinet already has anyway? It may be for an older version of the game.</value></data>
+  <data name="Cabinet_Relay_NotNewer_Declined" xml:space="preserve"><value>Not installed: Hubcap doesn’t have a newer build yet.</value></data>
+  <data name="Add_CabinetSource_Tip" xml:space="preserve"><value>Hubcap configs fetched by your Cabinet server. No key needed.</value></data>
+  <data name="Cabinet_Relay_Unverified_Title" xml:space="preserve"><value>Build can’t be checked</value></data>
+  <data name="Cabinet_Relay_Unverified_Body" xml:space="preserve"><value>Steam’s build information for {0} isn’t available right now, so LuaTools can’t tell whether Cabinet’s copy is for the current version of the game.
+
+Install Cabinet’s copy anyway?</value></data>
+  <data name="Cabinet_Relay_Unverified_Declined" xml:space="preserve"><value>Not installed: the build of Cabinet’s copy couldn’t be checked.</value></data>
+  <data name="Cabinet_Relay_Prompt_Install" xml:space="preserve"><value>Install anyway</value></data>
+  <data name="Cabinet_Relay_Prompt_Skip" xml:space="preserve"><value>Don’t install</value></data>
+  <data name="Cabinet_Relay_LastResort_Title" xml:space="preserve"><value>No current copy found</value></data>
+  <data name="Cabinet_Relay_LastResort_Body" xml:space="preserve"><value>No source could provide a current Lua config for {0}. Cabinet has a copy that may be for an older version of the game.
+
+Install Cabinet’s copy anyway?</value></data>
+  <data name="Cabinet_Relay_LastResort_Declined" xml:space="preserve"><value>Not installed: no source had a current copy.</value></data>
 </root>

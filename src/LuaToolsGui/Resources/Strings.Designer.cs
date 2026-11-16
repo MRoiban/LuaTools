@@ -902,4 +902,33 @@ public static class Strings
     public static string Tools_Err_CloudRedirectStatsRejected => Get(nameof(Tools_Err_CloudRedirectStatsRejected));
     public static string Tools_Err_CloudRedirectMixed => Get(nameof(Tools_Err_CloudRedirectMixed));
     public static string Tools_Note_CloudRedirectStats => Get(nameof(Tools_Note_CloudRedirectStats));
+
+    // ── Cabinet Hubcap relay ──
+    public static string Cabinet_Relay_Queued => Get(nameof(Cabinet_Relay_Queued));
+    public static string Cabinet_Relay_Waiting => Get(nameof(Cabinet_Relay_Waiting));
+    public static string Cabinet_Relay_Fetching => Get(nameof(Cabinet_Relay_Fetching));
+    public static string Cabinet_Relay_Err_NoManifest => Get(nameof(Cabinet_Relay_Err_NoManifest));
+    public static string Cabinet_Relay_Err_Quota => Get(nameof(Cabinet_Relay_Err_Quota));
+    public static string Cabinet_Relay_Err_KeyExpired => Get(nameof(Cabinet_Relay_Err_KeyExpired));
+    public static string Cabinet_Relay_Err_KeyRejected => Get(nameof(Cabinet_Relay_Err_KeyRejected));
+    public static string Cabinet_Relay_Err_Disabled => Get(nameof(Cabinet_Relay_Err_Disabled));
+    public static string Cabinet_Relay_Err_HubcapUnavailable => Get(nameof(Cabinet_Relay_Err_HubcapUnavailable));
+    public static string Cabinet_Relay_Err_InvalidPackage => Get(nameof(Cabinet_Relay_Err_InvalidPackage));
+    public static string Cabinet_Relay_Err_Failed => Get(nameof(Cabinet_Relay_Err_Failed));
+    public static string Cabinet_Relay_Err_Timeout => Get(nameof(Cabinet_Relay_Err_Timeout));
+    public static string Cabinet_Relay_Err_Server => Get(nameof(Cabinet_Relay_Err_Server));
+    public static string Cabinet_Relay_Err_NotConnected => Get(nameof(Cabinet_Relay_Err_NotConnected));
+    public static string Cabinet_Relay_Err_CopyUnusable => Get(nameof(Cabinet_Relay_Err_CopyUnusable));
+    public static string Cabinet_Relay_NotNewer_Title => Get(nameof(Cabinet_Relay_NotNewer_Title));
+    public static string Cabinet_Relay_NotNewer_Body => Get(nameof(Cabinet_Relay_NotNewer_Body));
+    public static string Cabinet_Relay_NotNewer_Declined => Get(nameof(Cabinet_Relay_NotNewer_Declined));
+    public static string Add_CabinetSource_Tip => Get(nameof(Add_CabinetSource_Tip));
+    public static string Cabinet_Relay_Unverified_Title => Get(nameof(Cabinet_Relay_Unverified_Title));
+    public static string Cabinet_Relay_Unverified_Body => Get(nameof(Cabinet_Relay_Unverified_Body));
+    public static string Cabinet_Relay_Unverified_Declined => Get(nameof(Cabinet_Relay_Unverified_Declined));
+    public static string Cabinet_Relay_Prompt_Install => Get(nameof(Cabinet_Relay_Prompt_Install));
+    public static string Cabinet_Relay_Prompt_Skip => Get(nameof(Cabinet_Relay_Prompt_Skip));
+    public static string Cabinet_Relay_LastResort_Title => Get(nameof(Cabinet_Relay_LastResort_Title));
+    public static string Cabinet_Relay_LastResort_Body => Get(nameof(Cabinet_Relay_LastResort_Body));
+    public static string Cabinet_Relay_LastResort_Declined => Get(nameof(Cabinet_Relay_LastResort_Declined));
 }
