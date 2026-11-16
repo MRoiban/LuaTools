@@ -202,7 +202,9 @@ public class CabinetLuaCache
     /// What a lookup found. <see cref="Meta"/> describes the cached copy whenever one was read (also for
     /// <see cref="LookupOutcome.Failed"/> after the meta was read).
     /// </summary>
-    public sealed record Lookup(LookupOutcome Outcome, CabinetCachedFile? File = null, CabinetLuaMeta? Meta = null)
+    /// <param name="KeysMissing">The copy is stale because it has no key for the game's main depot: it is
+    /// never offered, only replaced.</param>
+    public sealed record Lookup(LookupOutcome Outcome, CabinetCachedFile? File = null, CabinetLuaMeta? Meta = null, bool KeysMissing = false)
     {
         /// <summary>The copy's SHA-256 when it is verifiably stale: the only case a refetch may name it.</summary>
         public string? StaleSha256 => Outcome == LookupOutcome.Stale ? Meta?.Sha256 : null;
@@ -271,6 +273,13 @@ public class CabinetLuaCache
                     _log.LogInformation("Cabinet lua cache: copy of {AppId} carries an older manifest; using the normal source", appId);
                     return new(LookupOutcome.Stale, null, meta);
                 }
+                // A copy Steam can't download the game from (no key for its main depot, e.g. shared by an
+                // older LuaTools from a public source) counts as stale, so the relay replaces it from Hubcap.
+                if (!Coverage(bytes, depots).Usable)
+                {
+                    _log.LogInformation("Cabinet lua cache: copy of {AppId} has no key for the game's main depot; using the normal source", appId);
+                    return new(LookupOutcome.Stale, null, meta, KeysMissing: true);
+                }
                 var file = Stage(bytes, appId);
                 _log.LogInformation("Cabinet lua cache: installing the shared copy of {AppId} from {Source}", appId, meta.Source);
                 return new(LookupOutcome.Current, file, meta);
@@ -299,8 +308,16 @@ public class CabinetLuaCache
         if (!string.Equals(Sha256(bytes), meta.Sha256, StringComparison.Ordinal))
             throw new InvalidDataException("The Cabinet copy does not match its description.");
         CabinetPackage.Read(bytes, meta.AppId);
+        // Freshness is the relay's call, but a copy without the main depot's key is never worth offering.
+        if (!Coverage(bytes, await DepotsAsync(meta.AppId, ct).ConfigureAwait(false)).Usable)
+            throw new InvalidDataException("The Cabinet copy has no key for the game's main depot.");
         return Stage(bytes, meta.AppId);
     }
+
+    /// <summary>A package's key coverage; a package without a readable lua covers nothing it can vouch for.</summary>
+    private static KeyCoverage Coverage(byte[] package, AppDepotInfo? depots) =>
+        LuaKeyCoverage.ReadLua(package) is { } lua ? LuaKeyCoverage.Check(lua, depots)
+            : new KeyCoverage(KeyCoverageVerdict.MissingMain, null, []);
 
     /// <summary>Steam's current depot info, or null when it is unavailable or slow. Never cancels the shared fetch.</summary>
     private async Task<AppDepotInfo?> DepotsAsync(long appId, CancellationToken ct)
@@ -358,6 +375,14 @@ public class CabinetLuaCache
             {
                 _log.LogInformation("Cabinet lua cache: {AppId} is not shared ({Reason})", appId,
                     depots is null ? "Steam depot info unavailable" : "not Steam's current build");
+                return;
+            }
+            // Every user tries the cache first, so only a copy with a key for every depot Steam installs
+            // is offered. A pin-free lua is always "current", which made this the only real gate for one.
+            if (Coverage(package, depots) is { Shareable: false } coverage)
+            {
+                _log.LogInformation("Cabinet lua cache: {AppId} is not shared (keys missing for {Count} depot(s): {Depots})",
+                    appId, coverage.Missing.Count, string.Join(", ", coverage.Missing.Take(5)));
                 return;
             }
             await _client.UploadAsync(appId, package, Sha256(package), source, ct).ConfigureAwait(false);

@@ -620,6 +620,9 @@ Annuler - continuer le téléchargement</value></data>
   <data name="Builds_Select_NoKey" xml:space="preserve"><value>Aucune clé de déchiffrement dans le Lua pour ce depot.</value></data>
   <data name="Depot_Err_BadKey" xml:space="preserve"><value>La clé de déchiffrement du depot {0} est incorrecte.</value></data>
   <data name="Depot_Err_NoKeyFor" xml:space="preserve"><value>Aucune clé de déchiffrement dans le Lua pour le depot {0}.</value></data>
+  <data name="Download_Err_NoMainKey" xml:space="preserve"><value>Le fichier de {0} n'a pas de clé pour le depot principal de ce jeu ({1}) : Steam ne pourrait pas télécharger le jeu. Essayez une autre source.</value></data>
+  <data name="Download_Err_NoKeys" xml:space="preserve"><value>Le fichier de {0} n'a de clé pour aucun depot de ce jeu : Steam ne pourrait pas télécharger le jeu. Essayez une autre source.</value></data>
+  <data name="Download_Warn_PartialKeys" xml:space="preserve"><value>{0} depot(s) secondaire(s) sans clé ({1}) : certaines parties du jeu pourraient ne pas se télécharger.</value></data>
   <data name="Builds_Select_SharedHint" xml:space="preserve"><value>Runtime partagé — généralement déjà installé. Cochez pour le télécharger quand même.</value></data>
   <data name="Downloads_ClearHistory_Confirm" xml:space="preserve"><value>Supprimer les {0} entrées de l'historique des téléchargements ? Les fichiers téléchargés ne sont pas affectés.</value></data>
   <data name="Fixes_Applied_Hint" xml:space="preserve"><value>Ce correctif est déjà appliqué. Annulez-le pour en installer un autre.</value></data>
@@ -936,6 +939,7 @@ LuaTools peut fermer Steam, écrire la modification dans ses fichiers, puis rela
   <data name="Cabinet_Relay_Err_InvalidPackage" xml:space="preserve"><value>Le paquet Hubcap de ce jeu a été refusé par le serveur Cabinet.</value></data>
   <data name="Cabinet_Relay_Err_Failed" xml:space="preserve"><value>Cabinet n’a pas pu obtenir ce jeu depuis Hubcap ({0}).</value></data>
   <data name="Cabinet_Relay_Err_Timeout" xml:space="preserve"><value>Cabinet met trop de temps. Le serveur continue ; réessayez dans quelques minutes.</value></data>
+  <data name="Cabinet_Relay_Err_KeysMissing" xml:space="preserve"><value>La copie de Cabinet n'a pas de clé pour le depot principal de ce jeu, et Hubcap n'a encore rien de plus récent. Essayez une autre source.</value></data>
   <data name="Cabinet_Relay_Err_Server" xml:space="preserve"><value>Cabinet Cloud est injoignable. Réessayez plus tard.</value></data>
   <data name="Cabinet_Relay_Err_NotConnected" xml:space="preserve"><value>Connectez Cabinet Cloud dans les paramètres pour utiliser cette source.</value></data>
   <data name="Cabinet_Relay_Err_CopyUnusable" xml:space="preserve"><value>La copie récupérée par Cabinet n’a pas pu être vérifiée ; elle n’a pas été installée.</value></data>

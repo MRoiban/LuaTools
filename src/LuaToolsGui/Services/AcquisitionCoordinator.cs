@@ -114,6 +114,15 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
     /// <summary>What an automatic Cabinet add may fall back to: every other usable source, in list order.</summary>
     public static List<ManifestJobFactory.FallbackSource> FallbacksFrom(IEnumerable<SourceRow> rows) =>
         rows.Where(r => r.CanDownload && !IsCabinet(r.Name)).Select(r => new ManifestJobFactory.FallbackSource(r.Name, r.NeedsKey)).ToList();
+    /// <summary>
+    /// What an add picked by name may switch to when its file can't download the game (no key for the main
+    /// depot): Cabinet and the public sources (SteamML, DexLua), in list order. Neither costs the user
+    /// anything; the user's own Hubcap key and lua.tools daily quota are never spent on a source they
+    /// didn't pick.
+    /// </summary>
+    public static List<ManifestJobFactory.FallbackSource> AlternativesFrom(IEnumerable<SourceRow> rows, string chosen) =>
+        rows.Where(r => r.CanDownload && !r.NeedsKey && (IsCabinet(r.Name) || IsPublic(r.Name)) && r.Name != chosen)
+            .Select(r => new ManifestJobFactory.FallbackSource(r.Name, false)).ToList();
     public static bool IsPublic(string source) => source is SteamMlService.SourceName or DexLuaService.SourceName;
     public async Task<List<SourceRow>> CheckDlcSourcesAsync(string appId, string baseAppId, bool fastFetch, CancellationToken ct = default)
     {
@@ -152,9 +161,11 @@ public sealed class AcquisitionCoordinator(LuaToolsApiClient api, HubcapService 
         List<SourceRow> fresh = [];
         Task<IReadOnlyList<ManifestJobFactory.FallbackSource>> Fallbacks(CancellationToken _) =>
             Task.FromResult<IReadOnlyList<ManifestJobFactory.FallbackSource>>(FallbacksFrom(fresh));
+        Task<IReadOnlyList<ManifestJobFactory.FallbackSource>> Alternatives(CancellationToken _) =>
+            Task.FromResult<IReadOnlyList<ManifestJobFactory.FallbackSource>>(AlternativesFrom(fresh, source.Name));
         var job = baseAppId is not null ? jobs.CreateDlcJob(appId, baseAppId, name, onFinished, onReveal, source.Name)
             : jobs.CreateManifestJob(appId, name, source.Name, source.NeedsKey, confirm, onFinished, onReveal, interactive,
-                cabinetFirst ? Fallbacks : null);
+                cabinetFirst ? Fallbacks : null, cabinetFirst ? null : Alternatives);
         string CurrentVersion() => _readInstalled?.Invoke(appId) is { } path ? LuaVault.HashFile(path) : "missing";
         string acceptedVersion = CurrentVersion();
         job = job with { ConfirmAsync = async (file, item, ct) =>

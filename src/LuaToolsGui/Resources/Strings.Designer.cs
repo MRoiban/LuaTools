@@ -625,6 +625,9 @@ public static class Strings
     public static string Builds_Select_NoKey => Get(nameof(Builds_Select_NoKey));
     public static string Depot_Err_BadKey => Get(nameof(Depot_Err_BadKey));
     public static string Depot_Err_NoKeyFor => Get(nameof(Depot_Err_NoKeyFor));
+    public static string Download_Err_NoMainKey => Get(nameof(Download_Err_NoMainKey));
+    public static string Download_Err_NoKeys => Get(nameof(Download_Err_NoKeys));
+    public static string Download_Warn_PartialKeys => Get(nameof(Download_Warn_PartialKeys));
     public static string Builds_Select_SharedHint => Get(nameof(Builds_Select_SharedHint));
     public static string Downloads_ClearHistory_Confirm => Get(nameof(Downloads_ClearHistory_Confirm));
     public static string Cabinet_Title => Get(nameof(Cabinet_Title));
@@ -919,6 +922,7 @@ public static class Strings
     public static string Cabinet_Relay_Err_Timeout => Get(nameof(Cabinet_Relay_Err_Timeout));
     public static string Cabinet_Relay_Err_Server => Get(nameof(Cabinet_Relay_Err_Server));
     public static string Cabinet_Relay_Err_NotConnected => Get(nameof(Cabinet_Relay_Err_NotConnected));
+    public static string Cabinet_Relay_Err_KeysMissing => Get(nameof(Cabinet_Relay_Err_KeysMissing));
     public static string Cabinet_Relay_Err_CopyUnusable => Get(nameof(Cabinet_Relay_Err_CopyUnusable));
     public static string Cabinet_Relay_NotNewer_Title => Get(nameof(Cabinet_Relay_NotNewer_Title));
     public static string Cabinet_Relay_NotNewer_Body => Get(nameof(Cabinet_Relay_NotNewer_Body));

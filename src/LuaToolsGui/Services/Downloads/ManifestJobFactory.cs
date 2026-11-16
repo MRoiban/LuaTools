@@ -50,6 +50,13 @@ public class ManifestJobFactory(
     /// Chosen automatically (<paramref name="fallbacks"/> supplied) it asks nothing: anything short of a
     /// verified-current copy moves on to the next usable source, whose install is shared as usual, and
     /// only when every source failed is Cabinet's own copy offered (<see cref="CabinetFirstAsync"/>).
+    /// <para>
+    /// Every file from a normal source is checked against Steam's depot list before it installs
+    /// (<see cref="LuaKeyCoverage"/>). A file without the key for the game's main depot can't download the
+    /// game, so it is never installed: an automatic add moves on to its next source, and an add picked by
+    /// name tries <paramref name="alternatives"/> (Cabinet and the other sources that need no personal key)
+    /// before failing with the reason. A file missing only smaller depots installs with a warning.
+    /// </para>
     /// </remarks>
     public DownloadJob CreateManifestJob(
         long appId, string? gameName, string sourceName, bool needsKey,
@@ -57,11 +64,15 @@ public class ManifestJobFactory(
         Action<DownloadItem, JobResult?>? onFinished = null,
         Action? onReveal = null,
         bool interactive = true,
-        Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>>? fallbacks = null)
+        Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>>? fallbacks = null,
+        Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>>? alternatives = null)
     {
         string title = gameName ?? appId.ToString();
         // Where the installed bytes came from: decides sharing (a fallback source, not Cabinet, may upload).
         var installedFrom = new FallbackSource(sourceName, needsKey);
+        // The key check of the file that will install; Cabinet copies were checked by the cache itself.
+        var coverage = KeyCoverage.Unverifiable;
+        var depots = new DepotList();
         return installer.CaptureInstallation().Bind(new DownloadJob(
             DownloadKind.Manifest,
             $"manifest:{appId}",
@@ -72,12 +83,15 @@ public class ManifestJobFactory(
             async (item, progress, ct) =>
             {
                 installedFrom = new FallbackSource(sourceName, needsKey);
+                coverage = KeyCoverage.Unverifiable;
+                depots = new DepotList();
                 if (sourceName == CabinetHubcapRelay.SourceName)
                 {
                     if (fallbacks is not null)
                     {
-                        var (file, from) = await CabinetFirstAsync(item, appId, title, gameName, interactive, fallbacks, progress, ct);
+                        var (file, from, checkedKeys) = await CabinetFirstAsync(item, appId, title, gameName, interactive, fallbacks, depots, progress, ct);
                         installedFrom = from;
+                        coverage = checkedKeys;
                         return file;
                     }
                     // The Cabinet provider, picked explicitly: the shared cache, else the relay. Never a personal key.
@@ -91,9 +105,42 @@ public class ManifestJobFactory(
                     return cached;
                 }
                 OnUi(() => item.SourceOverride = null);
-                return await DownloadFromSourceAsync(appId, gameName, sourceName, needsKey, progress, ct);
+                var chosen = await DownloadCheckedAsync(appId, gameName, installedFrom, depots, progress, ct);
+                if (chosen.File is { } verified) { coverage = chosen.Coverage; return verified; }
+                if (alternatives is not null)
+                {
+                    foreach (var other in await alternatives(ct))
+                    {
+                        if (other.Name == sourceName) continue;
+                        ct.ThrowIfCancellationRequested();
+                        OnUi(() => item.SourceOverride = SourceMeta.Get(other.Name).DisplayName ?? other.Name);
+                        try
+                        {
+                            if (other.Name == CabinetHubcapRelay.SourceName)
+                            {
+                                // The shared cache was asked above; only the relay is new here.
+                                if (hubcapRelay is null) continue;
+                                CabinetHubcapRelay.CabinetAttempt attempt;
+                                try { attempt = await hubcapRelay.TryFetchAsync(appId, detail => OnUi(() => item.Detail = detail), progress, ct); }
+                                finally { OnUi(() => item.Detail = null); }
+                                if (attempt.File is not { } relayed) continue;
+                                installedFrom = other;
+                                return relayed;
+                            }
+                            var alt = await DownloadCheckedAsync(appId, gameName, other, depots, progress, ct);
+                            if (alt.File is not { } altFile) continue;
+                            installedFrom = other;
+                            coverage = alt.Coverage;
+                            return altFile;
+                        }
+                        catch (OperationCanceledException) when (ct.IsCancellationRequested) { OnUi(() => item.SourceOverride = null); throw; }
+                        catch (Exception) { /* this alternative failed too: try the next, else report the first reason */ }
+                    }
+                    OnUi(() => item.SourceOverride = null);
+                }
+                throw new DownloadAbortedException(MissingKeyMessage(installedFrom.Name, chosen.Coverage));
             },
-            (file, _, _) => Task.FromResult(InstallAndShareManifest(file, appId, title, installedFrom.Name, installedFrom.NeedsKey)),
+            (file, _, _) => Task.FromResult(InstallAndShareManifest(file, appId, title, installedFrom.Name, installedFrom.NeedsKey, coverage)),
             confirm,
             onFinished,
             onReveal));
@@ -104,6 +151,56 @@ public class ManifestJobFactory(
         ? hubcap.DownloadManifestAsync(appId.ToString(), settings.HubcapApiKey ?? "", progress, ct)
         : api.DownloadManifestAsync(appId.ToString(), sourceName, gameName, progress, ct);
 
+    /// <summary>How long the key check waits for Steam's depot list before letting the file install unverified.</summary>
+    internal static TimeSpan KeyCheckWait { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// <see cref="DownloadFromSourceAsync"/>, then the key check. A file without the main depot's key is
+    /// deleted and returned as a null File with its coverage, so the caller can try another source.
+    /// </summary>
+    private async Task<(DownloadedFile? File, KeyCoverage Coverage)> DownloadCheckedAsync(long appId, string? gameName,
+        FallbackSource source, DepotList depots, IProgress<DownloadProgress> progress, CancellationToken ct)
+    {
+        var file = await DownloadFromSourceAsync(appId, gameName, source.Name, source.NeedsKey, progress, ct);
+        KeyCoverage coverage;
+        try { coverage = await CheckKeysAsync(file.FilePath, appId, depots, ct); }
+        catch { DeleteStaged(file.FilePath); throw; }
+        if (coverage.Usable) return (file, coverage);
+        DeleteStaged(file.FilePath);
+        return (null, coverage);
+    }
+
+    /// <summary>Steam's depot list for one download attempt, fetched once however many sources it checks.</summary>
+    private sealed class DepotList
+    {
+        public Task<AppDepotInfo?>? Fetch;
+        /// <summary>Set once the list missed <see cref="KeyCheckWait"/>: later sources don't wait again.</summary>
+        public bool GaveUp;
+    }
+
+    /// <summary>
+    /// The staged file's keys against Steam's depot list. Unverifiable when the list doesn't arrive within
+    /// <see cref="KeyCheckWait"/> or the file has no single lua (the install reports that itself): being
+    /// offline must not block an install.
+    /// </summary>
+    private async Task<KeyCoverage> CheckKeysAsync(string stagedPath, long appId, DepotList depots, CancellationToken ct)
+    {
+        if (depotInfo is null || depots.GaveUp || LuaKeyCoverage.ReadLuaFile(stagedPath) is not { } lua) return KeyCoverage.Unverifiable;
+        AppDepotInfo? info;
+        try { info = await (depots.Fetch ??= depotInfo.GetAsync(appId, CancellationToken.None)).WaitAsync(KeyCheckWait, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception) { info = null; depots.GaveUp = true; }
+        return LuaKeyCoverage.Check(lua, info);
+    }
+
+    private static string MissingKeyMessage(string sourceName, KeyCoverage coverage)
+    {
+        string source = SourceMeta.Get(sourceName).DisplayName ?? sourceName;
+        return coverage.MainDepot is { } depot
+            ? string.Format(Resources.Strings.Download_Err_NoMainKey, source, depot)
+            : string.Format(Resources.Strings.Download_Err_NoKeys, source);
+    }
+
     /// <summary>
     /// Cabinet chosen automatically, first: a verified-current copy (cache or relay, within
     /// <see cref="CabinetHubcapRelay.AutomaticTimeout"/>) installs; otherwise each fallback source is tried in
@@ -111,8 +208,8 @@ public class ManifestJobFactory(
     /// that delivered. When every fallback failed and Cabinet holds a copy, that copy is offered (interactive
     /// adds only). Cancellation always ends the whole add.
     /// </summary>
-    private async Task<(DownloadedFile File, FallbackSource From)> CabinetFirstAsync(DownloadItem item, long appId, string title, string? gameName,
-        bool interactive, Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>> fallbacks, IProgress<DownloadProgress> progress, CancellationToken ct)
+    private async Task<(DownloadedFile File, FallbackSource From, KeyCoverage Coverage)> CabinetFirstAsync(DownloadItem item, long appId, string title, string? gameName,
+        bool interactive, Func<CancellationToken, Task<IReadOnlyList<FallbackSource>>> fallbacks, DepotList depots, IProgress<DownloadProgress> progress, CancellationToken ct)
     {
         var cabinet = new FallbackSource(CabinetHubcapRelay.SourceName, false);
         CabinetHubcapRelay.CabinetAttempt attempt;
@@ -123,7 +220,7 @@ public class ManifestJobFactory(
                 : await hubcapRelay.TryFetchAsync(appId, detail => OnUi(() => item.Detail = detail), progress, ct);
         }
         finally { OnUi(() => item.Detail = null); }
-        if (attempt.File is { } delivered) return (delivered, cabinet);
+        if (attempt.File is { } delivered) return (delivered, cabinet, KeyCoverage.Unverifiable);
 
         Exception? last = null;
         foreach (var source in await fallbacks(ct))
@@ -132,13 +229,19 @@ public class ManifestJobFactory(
             ct.ThrowIfCancellationRequested();
             hubcapRelay?.NoteFallback(appId, attempt.Reason, source.Name);
             OnUi(() => item.SourceOverride = SourceMeta.Get(source.Name).DisplayName ?? source.Name);
-            try { return (await DownloadFromSourceAsync(appId, gameName, source.Name, source.NeedsKey, progress, ct), source); }
+            try
+            {
+                var (file, coverage) = await DownloadCheckedAsync(appId, gameName, source, depots, progress, ct);
+                if (file is not null) return (file, source, coverage);
+                // A file Steam can't download the game from is a failed source, not a result.
+                throw new DownloadAbortedException(MissingKeyMessage(source.Name, coverage));
+            }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { last = ex; hubcapRelay?.NoteFallbackFailed(appId, source.Name, ex); }
         }
         OnUi(() => item.SourceOverride = null);
         if (attempt.CachedCopy is { } copy && hubcapRelay is not null)
-            return (await hubcapRelay.OfferAsync(appId, title, interactive, copy, attempt.LastResortQuestion, progress, ct), cabinet);
+            return (await hubcapRelay.OfferAsync(appId, title, interactive, copy, attempt.LastResortQuestion, progress, ct), cabinet, KeyCoverage.Unverifiable);
         if (last is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(last).Throw();
         throw new DownloadAbortedException(attempt.Message);
     }
@@ -148,14 +251,20 @@ public class ManifestJobFactory(
     /// <see cref="CabinetLuaCachePolicy.ShouldUpload"/> allows it. The bytes are read first because the
     /// install deletes the staged file; the upload runs in the background and cannot fail this job.
     /// </summary>
-    private JobResult InstallAndShareManifest(DownloadedFile file, long appId, string title, string sourceName, bool needsKey)
+    private JobResult InstallAndShareManifest(DownloadedFile file, long appId, string title, string sourceName, bool needsKey,
+        KeyCoverage coverage)
     {
-        byte[]? package = luaCache is not null
+        // A file that misses depots is never offered: the cache checks every upload again (ShareAsync), but
+        // there's no reason to send one this install already knows is incomplete.
+        byte[]? package = luaCache is not null && coverage.Verdict != KeyCoverageVerdict.Partial
             && CabinetLuaCachePolicy.ShouldUpload(luaCache.IsConnected,
                 CabinetLuaCachePolicy.UsesPersonalKey(sourceName, needsKey), file is CabinetCachedFile)
             ? luaCache.ReadPackage(file.FilePath, appId) : null;
         var result = InstallManifest(file, appId, title);
         if (result.Ok && package is not null) _ = luaCache!.ShareInBackground(appId, package, sourceName);
+        if (result.Ok && coverage.Verdict == KeyCoverageVerdict.Partial)
+            result = result with { Message = result.Message + " " + string.Format(Resources.Strings.Download_Warn_PartialKeys,
+                coverage.Missing.Count, string.Join(", ", coverage.Missing.Take(5)) + (coverage.Missing.Count > 5 ? ", …" : "")) };
         return result;
     }
 
