@@ -1544,8 +1544,9 @@ namespace CabinetEngine
         }
         static Ledger ParseLedger(string text)
         {
-            if (!text.EndsWith("\n")) return null; // every save ends with a newline: this one was cut short
             var ledger = new Ledger();
+            if (text.Length == 0) return ledger; // older builds wrote an empty ledger as an empty file
+            if (!text.EndsWith("\n")) return null; // every save ends with a newline: this one was cut short
             foreach (var l in text.Split('\n'))
             {
                 var p = l.TrimEnd('\r').Split('|');
@@ -1841,8 +1842,8 @@ namespace CabinetEngine
                 while (ParentAlive(parent, started) && Playtime.SteamRunning() && !stop.WaitOne(0))
                 {
                     session.Pump();
-                    StateFile.WriteFlushed(args[4] + ".tmp", session.PresenceSnapshot(), new UTF8Encoding(false));
-                    StateFile.Commit(args[4] + ".tmp", args[4]);
+                    File.WriteAllText(args[4] + ".tmp", session.PresenceSnapshot(), new UTF8Encoding(false));
+                    StateFile.Commit(args[4] + ".tmp", args[4]); // throwaway, rewritten every second: atomic, not flushed
                     stop.WaitOne(1000);
                 }
             }

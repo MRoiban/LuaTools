@@ -21,6 +21,39 @@ public sealed class CabinetStateRecoveryTests
     [Fact] public void PlaytimeLedgerIsRecoveredOrResetWithAMarker() => CloudSelfTest.LedgerRecoveredOrReset();
     [Fact] public void LedgerResetNeverPushesImportedMinutesAsOwn() => CloudSelfTest.LedgerResetNeverPushesImportedMinutes();
     [Fact] public void DurableWriterLeavesNoTemporaryFiles() => CloudSelfTest.DurableWritesLeaveNoTemporaryFiles();
+    [Fact] public void DamagedFileStaysUntilFreshStateReplacesIt() => CloudSelfTest.DamageSurvivesACrashBeforeTheFreshWrite();
+    [Fact] public void UnreadableLeftoverStopsTheLoadAndMovesNothing() => CloudSelfTest.UnreadableLeftoverStopsTheLoad();
+    [Fact] public void MissingSettingsKeepTheJournalsDevice() => CloudSelfTest.MissingSettingsKeepTheJournalsDevice();
+    [Fact] public void LegacyJournalRecoversTheDeviceAndArchivesUnknownHistory() => CloudSelfTest.LegacyJournalRecoversTheDeviceOnConnect();
+    [Fact] public void JournalOfThePreviousAccountIsSwitchedOut() => CloudSelfTest.JournalOfThePreviousAccountIsSwitchedOut();
+    [Fact] public void LaterJournalLossDoesNotCountLedgerImportsTwice() => CloudSelfTest.LedgerResetAfterLaterImportsKeepsOwnMinutes();
+    [Fact] public void LostPendingMinutesAreNotTakenAsImported() => CloudSelfTest.LostPendingMinutesAreNotTakenAsImported();
+    [Fact] public void EmptyLedgerFileIsAnEmptyLedger() => CloudSelfTest.EmptyLedgerFileIsAnEmptyLedger();
+
+    [Fact]
+    public void CloudClientIsNeverUsedWithoutTheEngineMutex()
+    {
+        // No test owns Local\Cabinet, so the shared client must refuse instead of loading the real data folder.
+        Assert.False(CloudSync.Owned);
+        Assert.Throws<InvalidOperationException>(() => CloudSync.Connected);
+        CloudSync.Release();
+        Assert.False(CloudSync.Owned);
+    }
+
+    [Fact]
+    public async Task InactiveEngineRefusesDisconnectAndDefersCloudRedirect()
+    {
+        var service = new CabinetService(new Switches());
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => service.DisconnectAsync());
+            Assert.Contains("not active", refused.Message);
+            await service.ConfigureCloudRedirectAsync();
+            Assert.False(CloudSync.Owned);
+        }
+        finally { await service.StopAsync(CancellationToken.None); }
+    }
 
     [Fact]
     public void MissingFileWithoutLeftoversStartsFreshQuietly()
@@ -80,6 +113,8 @@ public sealed class CabinetStateRecoveryTests
                 Assert.Equal(StateLoad.Damaged, result);
                 Assert.Contains(warnings, w => w.Contains("cloud.json was damaged") && w.Contains("cloud.json.corrupt-"));
                 Assert.DoesNotContain(warnings, w => w.Contains("secret-token-value"));
+                Assert.Empty(Directory.GetFiles(dir, "cloud.json.corrupt-*"));
+                StateFile.Write(path, "{}");
                 Assert.Single(Directory.GetFiles(dir, "cloud.json.corrupt-*"));
             });
         }
@@ -106,6 +141,14 @@ public sealed class CabinetStateRecoveryTests
         Directory.CreateDirectory(dir);
         try { test(dir); }
         finally { Directory.Delete(dir, true); }
+    }
+
+    private sealed class Switches : ICabinetSettings
+    {
+        public bool CabinetEnabled => false;
+        public bool CabinetLivePlaytime => false;
+        public bool CabinetFetchSchemas => false;
+        public bool CabinetWorkshopLinks => false;
     }
 
     private sealed class StatusCloud : ICabinetCloud

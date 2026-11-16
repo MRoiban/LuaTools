@@ -104,16 +104,20 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         });
     }
 
+    // Refused while the engine is inactive, like ConnectAsync: standalone Cabinet may own the shared
+    // cloud.json then, and would overwrite an edit made behind its back from its own memory.
     public Task DisconnectAsync(CancellationToken cancellationToken = default) => OnEngine(() =>
     {
+        if (_instance is null) throw new InvalidOperationException("Cabinet engine is not active");
         if (CloudSync.Busy) throw new InvalidOperationException("Cabinet Cloud is busy");
         CloudSync.Disconnect();
         try { _cloudRedirectConfig.Remove(); _cloudRedirectVersion = CloudSync.ConnectionVersion; }
         finally { PublishCloudSnapshot(); }
     });
 
-    // Called after the add-on is enabled. Credentials stay on the engine thread.
-    internal Task ConfigureCloudRedirectAsync() => OnEngine(() => ReconcileCloudRedirect(force: true));
+    // Called after the add-on is enabled. Credentials stay on the engine thread. While the engine is
+    // inactive, the next active tick reconciles instead (the cloud client is never used without the mutex).
+    internal Task ConfigureCloudRedirectAsync() => OnEngine(() => { if (_instance is not null) ReconcileCloudRedirect(force: true); });
 
     private void ReconcileCloudRedirect(bool force = false)
     {
@@ -201,6 +205,7 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
                 return false;
             }
             _instance = mutex;
+            CloudSync.Owned = true;
         }
         if (_playtime is null)
         {
@@ -231,6 +236,9 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         _state.Clear(); _syncTimes.Clear();
         if (_instance is not null)
         {
+            // Drop the cloud client before giving up Local\Cabinet: its journal is reloaded from disk next time.
+            CloudSync.Release();
+            _cloudRedirectVersion = -1;
             try { _instance.ReleaseMutex(); } catch (ApplicationException) { }
             _instance.Dispose();
             _instance = null;
