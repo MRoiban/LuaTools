@@ -49,10 +49,11 @@ namespace CabinetEngine
         // 1. the file itself;
         // 2. else the newest parseable leftover of an interrupted write beside it (File.Replace's
         //    "<name>~RF*.TMP" backup, Write's "<name>.<guid>.tmp"), which is written back durably;
-        // 3. else the damaged file is renamed "<name>.corrupt-<UTC time>" and null is returned (Damaged).
+        // 3. else the damaged file is renamed "<name>.corrupt-<UTC time>" (or, without quarantine, left in
+        //    place for a caller that must not lose it) and null is returned (Damaged).
         // Missing (null) means neither the file nor any leftover exists. Read errors such as a locked
         // file are not damage and are rethrown. Messages name files only, never their contents.
-        internal static T Load<T>(string path, Func<string, T> parse, Action<string> log, out StateLoad result) where T : class
+        internal static T Load<T>(string path, Func<string, T> parse, Action<string> log, out StateLoad result, bool quarantine = true) where T : class
         {
             string name = Path.GetFileName(path);
             bool exists = File.Exists(path);
@@ -76,6 +77,7 @@ namespace CabinetEngine
                 result = StateLoad.Recovered; return value;
             }
             if (!exists && leftovers.Count == 0) { result = StateLoad.Missing; return null; }
+            if (!quarantine) { Warn(log, name + " was damaged and no intact copy was found; left it in place"); result = StateLoad.Damaged; return null; }
             string moved = exists ? Quarantine(path) : null;
             Warn(log, name + " was damaged and no intact copy was found; " + (exists ? (moved != null ? "moved it to " + Path.GetFileName(moved) : "it could not be moved aside") + " and " : "") + "started fresh");
             result = StateLoad.Damaged; return null;
