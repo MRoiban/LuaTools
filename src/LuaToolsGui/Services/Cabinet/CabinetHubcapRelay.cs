@@ -191,8 +191,10 @@ public sealed class CabinetHubcapRelay
             case CabinetLuaCache.LookupOutcome.Unverifiable:
                 return new Offer(lookup.Meta!, CabinetCopyQuestion.Unverified, "unverifiable");
         }
-        // A verifiably stale copy can still be offered if nothing better turns up.
-        var cached = lookup.Outcome == CabinetLuaCache.LookupOutcome.Stale ? lookup.Meta : null;
+        // A verifiably stale copy can still be offered if nothing better turns up, unless it has no key for
+        // the main depot: Steam can't download the game from that one, so it is only ever replaced.
+        var cached = lookup.Outcome == CabinetLuaCache.LookupOutcome.Stale && !lookup.KeysMissing ? lookup.Meta : null;
+        bool StillKeyless(CabinetLuaMeta meta) => lookup.KeysMissing && meta.Sha256 == lookup.StaleSha256;
 
         // 2. Ask the server; 3. poll while queued or running.
         CabinetRelayStatus status;
@@ -237,6 +239,7 @@ public sealed class CabinetHubcapRelay
             case CabinetRelayStatus.Ready:
                 // "Ready" is the server's word that this is the newest copy it has, not that it matches Steam:
                 // Hubcap may still be behind, or someone may have shared an older build.
+                if (StillKeyless(status.Meta!)) return new Failure(Resources.Strings.Cabinet_Relay_Err_KeysMissing, "keys_missing", null);
                 var build = await _checkBuild(status.Meta!, ct).ConfigureAwait(false);
                 if (build != CabinetLuaCache.BuildCheck.Current)
                 {
@@ -248,6 +251,7 @@ public sealed class CabinetHubcapRelay
                 try { return new Delivered(await DownloadAsync(status.Meta!, progress, ct).ConfigureAwait(false)); }
                 catch (DownloadAbortedException ex) { return new Failure(ex.Message, "copy_unusable", cached); }
             case CabinetRelayStatus.NotNewer:
+                if (StillKeyless(status.Meta!)) return new Failure(Resources.Strings.Cabinet_Relay_Err_KeysMissing, "keys_missing", null);
                 return new Offer(status.Meta!, CabinetCopyQuestion.NothingNewer, "upstream_not_newer");
             default:
                 if (status.Error is "relay_disabled" or "quota_exhausted" or "key_expired" or "key_rejected") InvalidateAvailability();

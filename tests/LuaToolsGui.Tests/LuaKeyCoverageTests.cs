@@ -34,6 +34,20 @@ public sealed class LuaKeyCoverageTests
     }
 
     [Fact]
+    public void VariantsOnlySomeInstallsPickAreNeverRequiredNorTheMainDepot()
+    {
+        // Larger than the real depot, yet a correct file keys only what 64-bit Windows outside China installs.
+        var steam = Steam(
+            new ContentDepot(2868830, 9_000_000_000, null, false, "windows", null, "7") { Arch = "32" },
+            new ContentDepot(2868831, 9_000_000_000, null, false, "windows", null, "8") { LowViolence = true },
+            new ContentDepot(2868832, 9_000_000_000, null, false, "windows", null, "9") { Realm = "steamchina" },
+            new ContentDepot(2868833, 1, null, false, "windows", null, "10") { Arch = "64" });
+        Assert.Equal([2868841L, 2868833L], LuaKeyCoverage.RequiredDepots(steam).Select(d => d.Id));
+        var coverage = LuaKeyCoverage.Check($"addappid({App})\naddappid(2868841, 1, \"{Key('a')}\")\naddappid(2868833, 1, \"{Key('b')}\")\n", steam);
+        Assert.Equal(KeyCoverageVerdict.Complete, coverage.Verdict);
+    }
+
+    [Fact]
     public void AScriptWithANeighbouringGamesKeysInsteadOfItsOwnIsMissingTheMainDepot()
     {
         // DexLua's actual shape for this app: keys for Card Survival's depots (app 2868860), none for 2868841.
@@ -86,8 +100,11 @@ public sealed class LuaKeyCoverageTests
         Assert.Equal(KeyCoverageVerdict.Unverifiable, LuaKeyCoverage.Check($"addappid({App})\n", null).Verdict);
         Assert.True(KeyCoverage.Unverifiable.Usable);
         Assert.False(KeyCoverage.Unverifiable.Shareable);
+        // Nothing to hold the lua to (unreleased; only language packs): installable, never shareable.
         var unreleased = new AppDepotInfo(App, [new ContentDepot(2868841, 0, null, false, "windows", null)], [], []);
-        Assert.Equal(KeyCoverageVerdict.Complete, LuaKeyCoverage.Check($"addappid({App})\n", unreleased).Verdict);
+        Assert.Equal(KeyCoverageVerdict.Unverifiable, LuaKeyCoverage.Check($"addappid({App})\n", unreleased).Verdict);
+        var languagesOnly = new AppDepotInfo(App, [new ContentDepot(2868841, 5, null, false, null, "english", "1")], [], []);
+        Assert.False(LuaKeyCoverage.Check($"addappid({App})\naddappid(999, 0, \"{Key('a')}\")\n", languagesOnly).Shareable);
     }
 
     [Fact]
@@ -124,6 +141,8 @@ public sealed class LuaKeyCoverageTests
             Row(AcquisitionCoordinator.CabinetSource), Row(AcquisitionCoordinator.HubcapSource, needsKey: true),
             Row(SteamMlService.SourceName), Row(DexLuaService.SourceName), Row("Ryuu", locked: true),
         };
+        // Ryuu needs no key but spends the user's lua.tools daily quota, so even unlocked it's never switched to.
+        rows[4].Locked = false;
         var alternatives = AcquisitionCoordinator.AlternativesFrom(rows, DexLuaService.SourceName);
         Assert.Equal([AcquisitionCoordinator.CabinetSource, SteamMlService.SourceName], alternatives.Select(a => a.Name));
         Assert.All(alternatives, a => Assert.False(a.NeedsKey));

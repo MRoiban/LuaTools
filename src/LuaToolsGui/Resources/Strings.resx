@@ -974,6 +974,7 @@ LuaTools can close Steam, write the change to its files, then start Steam again.
   <data name="Cabinet_Relay_Err_InvalidPackage" xml:space="preserve"><value>Hubcap’s package for this game was refused by the Cabinet server.</value></data>
   <data name="Cabinet_Relay_Err_Failed" xml:space="preserve"><value>Cabinet could not get this game from Hubcap ({0}).</value></data>
   <data name="Cabinet_Relay_Err_Timeout" xml:space="preserve"><value>Cabinet is taking too long. The server keeps working on it; try again in a few minutes.</value></data>
+  <data name="Cabinet_Relay_Err_KeysMissing" xml:space="preserve"><value>Cabinet's copy of this game has no key for its main depot, and Hubcap has nothing newer yet. Try another source.</value></data>
   <data name="Cabinet_Relay_Err_Server" xml:space="preserve"><value>Cabinet Cloud could not be reached. Try again later.</value></data>
   <data name="Cabinet_Relay_Err_NotConnected" xml:space="preserve"><value>Connect Cabinet Cloud in Settings to use this source.</value></data>
   <data name="Cabinet_Relay_Err_CopyUnusable" xml:space="preserve"><value>The copy Cabinet fetched could not be verified, so it was not installed.</value></data>

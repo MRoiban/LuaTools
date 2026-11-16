@@ -386,7 +386,7 @@ public sealed class CabinetLuaCacheTests : IDisposable
     }
 
     private Job Factory(FakeCabinet cabinet, AppDepotInfo? steam, string sourceLua, RelayServer? relay = null, HttpStatusCode dexLuaStatus = HttpStatusCode.OK,
-        string? hubcapLua = null, string? steamcmd = null)
+        string? hubcapLua = null, string? steamcmd = null, string? steamMlLua = null)
     {
         string steamDir = Path.Combine(_root, "steam");
         Directory.CreateDirectory(steamDir);
@@ -401,8 +401,9 @@ public sealed class CabinetLuaCacheTests : IDisposable
         var depotInfo = steamcmd is null ? null
             : new SteamDepotInfo(new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(steamcmd) }));
         var unused = new HttpClient(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var steamMl = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(($"{App}.lua", steamMlLua ?? sourceLua))) });
         var api = new LuaToolsApiClient(new AuthService(unused, Path.Combine(_root, "auth.dat")), null!, null!, unused,
-            dexLua: new DexLuaService(new HttpClient(dexLua)));
+            steamMl: new SteamMlService(new HttpClient(steamMl)), dexLua: new DexLuaService(new HttpClient(dexLua)));
         var covers = new CoverCache(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)), Path.Combine(_root, "covers"));
         var cache = Cache(cabinet, steam);
         var factory = new ManifestJobFactory(api, new HubcapService(new HttpClient(hubcap) { BaseAddress = new Uri(AppConfig.HubcapBaseUrl) }),
@@ -557,15 +558,29 @@ public sealed class CabinetLuaCacheTests : IDisposable
     [Fact]
     public async Task AnAddPickedByNameSwitchesToAnAlternativeWhoseFileHasTheKeys()
     {
-        var f = Factory(new FakeCabinet(), Steam("111"), Keyless, hubcapLua: Lua("111"), steamcmd: SteamCmd());
+        var f = Factory(new FakeCabinet(), Steam("111"), Keyless, steamMlLua: Lua("111"), steamcmd: SteamCmd());
+        // What AlternativesFrom gives a DexLua pick: the other public source, never a personal-key one.
         var job = f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false,
-            alternatives: Then((AcquisitionCoordinator.HubcapSource, true)));
+            alternatives: Then((DexLuaService.SourceName, false), (SteamMlService.SourceName, false)));
         var (item, _, result) = await RunItem(job);
         Assert.True(result.Ok, result.Message);
-        Assert.Equal(1, f.DexLua.Calls);
-        Assert.Equal(1, f.Hubcap.Calls);
-        Assert.Equal(LuaToolsGui.Models.SourceMeta.Get(AcquisitionCoordinator.HubcapSource).DisplayName ?? AcquisitionCoordinator.HubcapSource, item.SubTitle);
+        Assert.Equal(1, f.DexLua.Calls); // the picked source is not tried twice
+        Assert.Equal(0, f.Hubcap.Calls);
+        Assert.Equal(SteamMlService.SourceName, item.SubTitle);
         Assert.Contains(Key, Installed());
+    }
+
+    [Fact]
+    public async Task AnAddPickedByNameFailsWithTheReasonWhenNoAlternativeHasTheKeys()
+    {
+        var f = Factory(new FakeCabinet(), Steam("111"), Keyless, steamMlLua: Keyless, steamcmd: SteamCmd());
+        var job = f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false,
+            alternatives: Then((SteamMlService.SourceName, false)));
+        var item = new DownloadItem(job);
+        var error = await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(item, new Progress<DownloadProgress>(), CancellationToken.None));
+        Assert.Contains(DexLuaService.SourceName, error.Message); // the picked source's reason, not the alternative's
+        Assert.Null(item.SourceOverride);
+        Assert.Null(Installed());
     }
 
     [Fact]
@@ -585,12 +600,11 @@ public sealed class CabinetLuaCacheTests : IDisposable
     public async Task AFileMissingOnlyASmallerDepotInstallsWithAWarningAndIsNotShared()
     {
         var cabinet = new FakeCabinet();
-        var f = Factory(cabinet, Steam("111", new ContentDepot(572, 10, null, false, null, null, "222")), Lua("111"), steamcmd: SteamCmd(smallDepot: true));
+        var f = Factory(cabinet, Steam("111", new ContentDepot(572, 0, null, false, null, null, "222")), Lua("111"), steamcmd: SteamCmd(smallDepot: true));
         var (_, result) = await Run(f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false));
         Assert.True(result.Ok, result.Message);
         Assert.Contains("572", result.Message);
-        await Task.Delay(200); // an upload would run in the background
-        Assert.Empty(cabinet.Uploads);
+        Assert.Empty(cabinet.Uploads); // the share decision is made before the install returns
     }
 
     [Fact]
@@ -614,9 +628,30 @@ public sealed class CabinetLuaCacheTests : IDisposable
 
         var share = new FakeCabinet();
         await Cache(share, Steam("111")).ShareAsync(App, keyless, DexLuaService.SourceName, CancellationToken.None);
-        await Cache(share, Steam("111", new ContentDepot(572, 10, null, false, null, null, "222")))
+        // Partial (571 is the main depot, 572 a smaller one without a key): installable, never shared.
+        await Cache(share, Steam("111", new ContentDepot(572, 0, null, false, null, null, "222")))
             .ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), DexLuaService.SourceName, CancellationToken.None);
         Assert.Empty(share.Uploads);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ACachedCopyWithoutTheKeysIsReplacedNeverOffered(bool notNewer)
+    {
+        byte[] keyless = Zip(($"{App}.lua", Keyless));
+        var meta = MetaFor(keyless, "111");
+        var cabinet = new FakeCabinet { Meta = meta, Package = keyless };
+        var relay = new RelayServer { Answer = notNewer ? new(CabinetRelayStatus.NotNewer, Meta: meta) : new(CabinetRelayStatus.Ready, Meta: meta) };
+        var cache = Cache(cabinet, Steam("111"));
+        var attempt = await new CabinetHubcapRelay(relay, cache, Microsoft.Extensions.Logging.Abstractions.NullLogger<CabinetHubcapRelay>.Instance)
+            { Delay = relay.Delay, UtcNow = () => relay.Clock, ConfirmCopy = relay.Confirm }
+            .TryFetchAsync(App, _ => { }, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.Sha256(keyless), Assert.Single(relay.Requests)); // reported stale, so Hubcap is asked
+        Assert.Null(attempt.File);
+        Assert.Null(attempt.CachedCopy);        // nothing to offer as a last resort
+        Assert.Equal("keys_missing", attempt.Reason);
+        Assert.Empty(relay.Asked);
     }
 
     private static Func<CancellationToken, Task<IReadOnlyList<ManifestJobFactory.FallbackSource>>> Then(params (string Name, bool NeedsKey)[] sources) =>

@@ -78,13 +78,16 @@ public static partial class LuaKeyCoverage
     }
 
     /// <summary>
-    /// The depots Steam installs for the base game on Windows by default: its own (not shared, not DLC),
-    /// for Windows or every OS, without a language, and shipped on the public branch.
+    /// The depots Steam installs for the base game on 64-bit Windows by default: its own (not shared, not
+    /// DLC), for Windows or every OS, without a language, shipped on the public branch, and not a variant
+    /// only some installs pick (32-bit, low-violence, Steam China). Generators key only what is installed,
+    /// so a variant counted here could reject a correct file.
     /// </summary>
     public static IReadOnlyList<ContentDepot> RequiredDepots(AppDepotInfo info) =>
         info.Depots.Where(d => !d.IsDlc && !d.IsShared && d.PublicManifestId is not null
                 && (string.IsNullOrEmpty(d.Os) || d.Os.Contains("windows", StringComparison.OrdinalIgnoreCase))
-                && string.IsNullOrEmpty(d.Language))
+                && string.IsNullOrEmpty(d.Language)
+                && d.Arch != "32" && !d.LowViolence && string.IsNullOrEmpty(d.Realm))
             .OrderByDescending(d => d.Size).ThenBy(d => d.Id).ToList();
 
     /// <summary>Checks a lua's keys against Steam's depot list (null: unavailable).</summary>
@@ -92,8 +95,9 @@ public static partial class LuaKeyCoverage
     {
         if (info is null) return KeyCoverage.Unverifiable;
         var required = RequiredDepots(info);
-        // Nothing Steam ships on the public branch (unreleased, token-gated): nothing to hold a lua to.
-        if (required.Count == 0) return new(KeyCoverageVerdict.Complete, null, []);
+        // Nothing to hold a lua to (unreleased, token-gated, every depot a language pack): it may install,
+        // but nothing vouches for it, so it is never shared.
+        if (required.Count == 0) return KeyCoverage.Unverifiable;
         var keyed = ReadKeyedIds(lua);
         var missing = required.Where(d => !keyed.Contains(d.Id)).Select(d => d.Id).ToList();
         long main = required[0].Id;

@@ -922,6 +922,7 @@ public static class Strings
     public static string Cabinet_Relay_Err_Timeout => Get(nameof(Cabinet_Relay_Err_Timeout));
     public static string Cabinet_Relay_Err_Server => Get(nameof(Cabinet_Relay_Err_Server));
     public static string Cabinet_Relay_Err_NotConnected => Get(nameof(Cabinet_Relay_Err_NotConnected));
+    public static string Cabinet_Relay_Err_KeysMissing => Get(nameof(Cabinet_Relay_Err_KeysMissing));
     public static string Cabinet_Relay_Err_CopyUnusable => Get(nameof(Cabinet_Relay_Err_CopyUnusable));
     public static string Cabinet_Relay_NotNewer_Title => Get(nameof(Cabinet_Relay_NotNewer_Title));
     public static string Cabinet_Relay_NotNewer_Body => Get(nameof(Cabinet_Relay_NotNewer_Body));

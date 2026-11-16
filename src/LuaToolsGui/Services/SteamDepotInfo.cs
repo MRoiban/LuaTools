@@ -17,6 +17,15 @@ public record ContentDepot(long Id, long Size, long? DlcAppId, bool IsShared, st
 {
     public bool IsDlc => DlcAppId is not null;
 
+    /// <summary><c>config.osarch</c> ("32"/"64") when declared: a 32-bit depot isn't installed on 64-bit Windows.</summary>
+    public string? Arch { get; init; }
+
+    /// <summary><c>config.lowviolence</c>: a censored variant only some regions install instead of the normal depot.</summary>
+    public bool LowViolence { get; init; }
+
+    /// <summary><c>config.realm</c> when declared, e.g. "steamchina" for the Steam China duplicate of a depot.</summary>
+    public string? Realm { get; init; }
+
     /// <summary>
     /// The app that actually owns this depot's content (<c>depotfromapp</c>), for shared redistributables
     /// like the VC++/DirectX runtimes under app 228980. Null for a game's own depots.
@@ -126,17 +135,21 @@ public class SteamDepotInfo
 
                     long? dlcAppId = v.TryGetProperty("dlcappid", out var dlcEl) ? ReadId(dlcEl) : null;
 
-                    string? os = null, lang = null;
+                    string? os = null, lang = null, arch = null, realm = null;
+                    bool lowViolence = false;
                     if (v.TryGetProperty("config", out var cfg) && cfg.ValueKind == JsonValueKind.Object)
                     {
                         if (cfg.TryGetProperty("oslist", out var osEl)) os = osEl.GetString();
                         if (cfg.TryGetProperty("dlclanguage", out var lEl)) lang = lEl.GetString();
                         else if (cfg.TryGetProperty("language", out var l2)) lang = l2.GetString();
+                        if (cfg.TryGetProperty("osarch", out var archEl) && archEl.ValueKind == JsonValueKind.String) arch = archEl.GetString();
+                        if (cfg.TryGetProperty("realm", out var realmEl) && realmEl.ValueKind == JsonValueKind.String) realm = realmEl.GetString();
+                        lowViolence = cfg.TryGetProperty("lowviolence", out var lvEl) && lvEl.ValueKind == JsonValueKind.String && lvEl.GetString() == "1";
                     }
 
-                    if (os?.Length > 256 || lang?.Length > 256) throw new InvalidDataException();
+                    if (os?.Length > 256 || lang?.Length > 256 || arch?.Length > 256 || realm?.Length > 256) throw new InvalidDataException();
                     depots.Add(new ContentDepot(depotId, ReadPublicSize(v), dlcAppId, isShared, os, lang,
-                        ReadPublicManifestId(v)) { FromAppId = fromAppId });
+                        ReadPublicManifestId(v)) { FromAppId = fromAppId, Arch = arch, LowViolence = lowViolence, Realm = realm });
                 }
             }
 

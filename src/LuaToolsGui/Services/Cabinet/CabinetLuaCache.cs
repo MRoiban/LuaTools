@@ -202,7 +202,9 @@ public class CabinetLuaCache
     /// What a lookup found. <see cref="Meta"/> describes the cached copy whenever one was read (also for
     /// <see cref="LookupOutcome.Failed"/> after the meta was read).
     /// </summary>
-    public sealed record Lookup(LookupOutcome Outcome, CabinetCachedFile? File = null, CabinetLuaMeta? Meta = null)
+    /// <param name="KeysMissing">The copy is stale because it has no key for the game's main depot: it is
+    /// never offered, only replaced.</param>
+    public sealed record Lookup(LookupOutcome Outcome, CabinetCachedFile? File = null, CabinetLuaMeta? Meta = null, bool KeysMissing = false)
     {
         /// <summary>The copy's SHA-256 when it is verifiably stale: the only case a refetch may name it.</summary>
         public string? StaleSha256 => Outcome == LookupOutcome.Stale ? Meta?.Sha256 : null;
@@ -276,7 +278,7 @@ public class CabinetLuaCache
                 if (!Coverage(bytes, depots).Usable)
                 {
                     _log.LogInformation("Cabinet lua cache: copy of {AppId} has no key for the game's main depot; using the normal source", appId);
-                    return new(LookupOutcome.Stale, null, meta);
+                    return new(LookupOutcome.Stale, null, meta, KeysMissing: true);
                 }
                 var file = Stage(bytes, appId);
                 _log.LogInformation("Cabinet lua cache: installing the shared copy of {AppId} from {Source}", appId, meta.Source);
