@@ -133,7 +133,8 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         // Snapshot for the lua cache (any thread), taken here on the engine thread with the status it matches.
         Volatile.Write(ref _credentials, CloudSync.Connected && server is not null
             ? new CabinetCredentials(server, CloudSync.Token, CloudSync.DeviceId) : null);
-        return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
+        return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null)
+            : CloudSync.ConnectionDamaged ? CabinetCloudStatus.Disconnected with { ConnectionDamaged = true } : CabinetCloudStatus.Disconnected;
     }
 
     // ── ICabinetCredentialSource: the shared lua cache's view of the connection ──
@@ -204,9 +205,12 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         if (_playtime is null)
         {
             Directory.CreateDirectory(CabinetApp.DataDir);
+            // Recovered or quarantined state files also reach the event history (file names only).
+            StateFile.Warning = message => AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", message);
             LoadState();
             _playtime = new Playtime(Path.Combine(CabinetApp.DataDir, "playtime.txt"), CabinetApp.Log);
-            CloudSync.Configure(CabinetApp.Log, _playtime.QueueCloudMinutes, _playtime.CloudMinutesInSteam, () => _playtime!.RunningApps());
+            var playtime = _playtime;
+            CloudSync.Configure(CabinetApp.Log, playtime.QueueCloudMinutes, playtime.CloudMinutesInSteam, () => playtime.RunningApps(), () => playtime.ResetMarker);
             CabinetApp.Log("started inside LuaTools");
         }
         if (_settings.CabinetLivePlaytime) _shadows ??= new Shadows(CabinetApp.Log);

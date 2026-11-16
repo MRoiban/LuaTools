@@ -88,6 +88,8 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
     public bool CloudConnected => _cloud?.Status.Connected == true;
+    /// <summary>Shown above the connect box when the saved connection was damaged and reset.</summary>
+    public string? CloudNotice => !CloudConnected && _cloud?.Status.ConnectionDamaged == true ? Resources.Strings.CabinetCloud_ConnectionDamaged : null;
     public bool CloudFriendsEnabled => CabinetEnabled && CloudConnected && !CloudBusy;
     public string CloudIdentity => string.Format(Resources.Strings.CabinetCloud_ConnectedAs, _cloud?.Status.UserName);
     public string CloudDetails => string.Format(Resources.Strings.CabinetCloud_Details, _cloud?.Status.ServerHost,
@@ -105,7 +107,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnCloudBusyChanged(bool value) => RefreshCloud();
     private void RefreshCloud()
     {
-        OnPropertyChanged(nameof(CloudConnected)); OnPropertyChanged(nameof(CloudFriendsEnabled));
+        OnPropertyChanged(nameof(CloudConnected)); OnPropertyChanged(nameof(CloudNotice)); OnPropertyChanged(nameof(CloudFriendsEnabled));
         OnPropertyChanged(nameof(CloudIdentity)); OnPropertyChanged(nameof(CloudDetails)); OnPropertyChanged(nameof(CloudFriendLabels));
     }
     [RelayCommand]

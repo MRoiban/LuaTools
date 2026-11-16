@@ -579,6 +579,7 @@
             <Border Style="{StaticResource SettingsCard}" IsEnabled="{Binding CabinetOptionsEnabled}">
                 <StackPanel>
                     <StackPanel Margin="14,12" Visibility="{Binding CloudConnected, Converter={StaticResource InverseBoolToVis}}">
+                        <TextBlock Margin="0,0,0,10" FontSize="12" Foreground="#fbbf24" TextWrapping="Wrap" Text="{Binding CloudNotice}" Visibility="{Binding CloudNotice, Converter={StaticResource NullToCollapsed}}"/>
                         <TextBlock FontWeight="Medium" Text="{x:Static res:Strings.CabinetCloud_NotConnected}"/>
                         <TextBlock Margin="0,4,0,0" FontSize="12" Foreground="#6b7280" TextWrapping="Wrap" Text="{x:Static res:Strings.CabinetCloud_SharingHint}"/>
                         <TextBlock Margin="0,10,0,0" Text="{x:Static res:Strings.CabinetCloud_PairingCode}"/>
