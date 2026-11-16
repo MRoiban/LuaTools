@@ -362,11 +362,11 @@ namespace CabinetEngine
                 var bdir = Path.Combine(App.DataDir, "backup");
                 Directory.CreateDirectory(bdir);
                 var bpath = Path.Combine(bdir, Path.GetFileName(userPath));
-                if (!File.Exists(bpath)) File.WriteAllBytes(bpath, original);
+                if (!File.Exists(bpath)) StateFile.Write(bpath, original);
             }
             var tmp = userPath + ".tmp";
-            File.WriteAllBytes(tmp, userRoot.Write());
-            if (File.Exists(userPath)) File.Replace(tmp, userPath, null); else File.Move(tmp, userPath);
+            try { StateFile.WriteFlushed(tmp, userRoot.Write()); StateFile.Commit(tmp, userPath); }
+            finally { StateFile.TryDelete(tmp); }
             return r;
         }
 
@@ -498,11 +498,11 @@ namespace CabinetEngine
                 var bdir = backupDir ?? Path.Combine(App.DataDir, "backup");
                 Directory.CreateDirectory(bdir);
                 var bpath = Path.Combine(bdir, Path.GetFileName(userPath));
-                if (!File.Exists(bpath)) File.WriteAllBytes(bpath, original);
+                if (!File.Exists(bpath)) StateFile.Write(bpath, original);
             }
             var tmp = userPath + ".tmp";
-            File.WriteAllBytes(tmp, userRoot.Write());
-            if (File.Exists(userPath)) File.Replace(tmp, userPath, null); else File.Move(tmp, userPath);
+            try { StateFile.WriteFlushed(tmp, userRoot.Write()); StateFile.Commit(tmp, userPath); }
+            finally { StateFile.TryDelete(tmp); }
             return added;
         }
     }
@@ -1230,7 +1230,13 @@ namespace CabinetEngine
         DateTime lastScan = DateTime.MinValue, lastTick = DateTime.UtcNow;
         public readonly Action<string> Log;
 
-        public Playtime(string path, Action<string> log) { this.path = path; Log = log; Load(); }
+        string resetMarker;
+        public Playtime(string path, Action<string> log) : this(path, log, true) { }
+        // The shadow helper only detects running games: it never reads or writes the ledger.
+        internal Playtime(string path, Action<string> log, bool load) { this.path = path; Log = log; if (load) Load(); }
+        // Set once the ledger had to start over (damaged playtime.txt); the cloud journal then stops
+        // pushing the cloud minutes already in Steam back as this PC's own (CloudClient.LedgerReset).
+        public string ResetMarker { get { return resetMarker; } }
 
         public static long Unix(DateTime utc) { return (long)(utc - new DateTime(1970, 1, 1)).TotalSeconds; }
 
@@ -1483,11 +1489,11 @@ namespace CabinetEngine
             {
                 Save();
                 if (SteamRunning()) throw new IOException("Steam restarted during playtime preparation");
-                File.WriteAllText(tmp, vdf.Text, new UTF8Encoding(false));
+                StateFile.WriteFlushed(tmp, vdf.Text, new UTF8Encoding(false));
                 if (SteamRunning()) throw new IOException("Steam restarted before playtime commit");
                 File.Replace(tmp, cfg, null);
             }
-            catch { RecoverApplyConfig(cfg); throw; }
+            catch { StateFile.TryDelete(tmp); RecoverApplyConfig(cfg); throw; }
             foreach (var kv in pending) kv.Value.ApplyIntent = false;
             Save();
             return L.T("Playtime added (shows when Steam starts):\n", "Temps de jeu ajouté (visible au démarrage de Steam) :\n") + string.Join("\n", added);
@@ -1520,15 +1526,34 @@ namespace CabinetEngine
 
         public static string FormatMin(int m) { return m >= 60 ? (m / 60) + "h " + (m % 60) + "m" : m + "m"; }
 
+        sealed class Ledger { public readonly Dictionary<string, Entry> Entries = new Dictionary<string, Entry>(); public readonly List<string> Receipts = new List<string>(); public string Reset; }
+        // A damaged ledger is recovered from an interrupted write's leftover, or moved aside (StateFile):
+        // the engine then starts with an empty ledger instead of failing at every start.
         void Load()
         {
-            if (!File.Exists(path)) return;
-            foreach (var l in File.ReadAllLines(path))
+            StateLoad loaded; var ledger = StateFile.Load(path, ParseLedger, Log, out loaded);
+            if (ledger != null)
             {
-                var p = l.Split('|');
-                if (p.Length == 2 && p[0] == "#cloud-receipt") { cloudReceipts.Add(p[1]); continue; }
+                foreach (var e in ledger.Entries) entries[e.Key] = e.Value;
+                cloudReceipts.UnionWith(ledger.Receipts); resetMarker = ledger.Reset; return;
+            }
+            if (loaded != StateLoad.Damaged) return;
+            // Pending minutes, receipts and imported-minute provenance are gone.
+            resetMarker = DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+            try { Save(); } catch (Exception ex) { Log("playtime ledger not saved yet: " + ex.GetType().Name); }
+        }
+        static Ledger ParseLedger(string text)
+        {
+            var ledger = new Ledger();
+            if (text.Length == 0) return ledger; // older builds wrote an empty ledger as an empty file
+            if (!text.EndsWith("\n")) return null; // every save ends with a newline: this one was cut short
+            foreach (var l in text.Split('\n'))
+            {
+                var p = l.TrimEnd('\r').Split('|');
+                if (p.Length == 2 && p[0] == "#cloud-receipt") { ledger.Receipts.Add(p[1]); continue; }
+                if (p.Length == 2 && p[0] == "#ledger-reset") { ledger.Reset = p[1]; continue; }
                 if (p.Length < 6) continue;
-                entries[p[0]] = new Entry
+                ledger.Entries[p[0]] = new Entry
                 {
                     PendingSec = double.Parse(p[1], CultureInfo.InvariantCulture),
                     InflightMin = int.Parse(p[2]),
@@ -1541,6 +1566,7 @@ namespace CabinetEngine
                     ApplyIntent = p.Length > 9 && p[9] == "1"
                 };
             }
+            return ledger;
         }
 
         void Save()
@@ -1549,7 +1575,8 @@ namespace CabinetEngine
                 kv.Value.PendingSec.ToString(CultureInfo.InvariantCulture), kv.Value.InflightMin, kv.Value.Expected,
                 kv.Value.AppliedAt, kv.Value.LastPlayed, kv.Value.PendingCloud, kv.Value.InflightCloud,
                 kv.Value.CreditedCloud, kv.Value.ApplyIntent ? "1" : "0"))
-                .Concat(cloudReceipts.Select(r => "#cloud-receipt|" + r));
+                .Concat(cloudReceipts.Select(r => "#cloud-receipt|" + r))
+                .Concat(resetMarker == null ? new string[0] : new[] { "#ledger-reset|" + resetMarker });
             WorkshopEngine.AtomicWrite(path, string.Join(Environment.NewLine, lines) + Environment.NewLine);
         }
     }
@@ -1816,7 +1843,7 @@ namespace CabinetEngine
                 {
                     session.Pump();
                     File.WriteAllText(args[4] + ".tmp", session.PresenceSnapshot(), new UTF8Encoding(false));
-                    if (File.Exists(args[4])) File.Replace(args[4] + ".tmp", args[4], null); else File.Move(args[4] + ".tmp", args[4]);
+                    StateFile.Commit(args[4] + ".tmp", args[4]); // throwaway, rewritten every second: atomic, not flushed
                     stop.WaitOne(1000);
                 }
             }
@@ -1850,7 +1877,7 @@ namespace CabinetEngine
                     using (source)
                     using (var session = new SteamSession(id, Log))
                     {
-                        var detector = new Playtime(Path.Combine(DataDir, "playtime.txt"), Log);
+                        var detector = new Playtime(Path.Combine(DataDir, "playtime.txt"), Log, false);
                         detector.RefreshGames();
                         while (ParentAlive(parent, started) && Playtime.SteamRunning() && !stop.WaitOne(0))
                         {

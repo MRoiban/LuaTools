@@ -31,6 +31,8 @@ public sealed record CabinetGame(
 public sealed record CabinetCloudStatus(bool Connected, string? UserName, string? ServerHost, DateTimeOffset? LastSync)
 {
     public static readonly CabinetCloudStatus Disconnected = new(false, null, null, null);
+    /// <summary>Disconnected because the saved connection (cloud.json) was damaged and set aside; connect again.</summary>
+    public bool ConnectionDamaged { get; init; }
 }
 
 public sealed record CabinetStatus(

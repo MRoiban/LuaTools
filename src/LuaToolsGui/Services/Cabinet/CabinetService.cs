@@ -104,16 +104,20 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         });
     }
 
+    // Refused while the engine is inactive, like ConnectAsync: standalone Cabinet may own the shared
+    // cloud.json then, and would overwrite an edit made behind its back from its own memory.
     public Task DisconnectAsync(CancellationToken cancellationToken = default) => OnEngine(() =>
     {
+        if (_instance is null) throw new InvalidOperationException("Cabinet engine is not active");
         if (CloudSync.Busy) throw new InvalidOperationException("Cabinet Cloud is busy");
         CloudSync.Disconnect();
         try { _cloudRedirectConfig.Remove(); _cloudRedirectVersion = CloudSync.ConnectionVersion; }
         finally { PublishCloudSnapshot(); }
     });
 
-    // Called after the add-on is enabled. Credentials stay on the engine thread.
-    internal Task ConfigureCloudRedirectAsync() => OnEngine(() => ReconcileCloudRedirect(force: true));
+    // Called after the add-on is enabled. Credentials stay on the engine thread. While the engine is
+    // inactive, the next active tick reconciles instead (the cloud client is never used without the mutex).
+    internal Task ConfigureCloudRedirectAsync() => OnEngine(() => { if (_instance is not null) ReconcileCloudRedirect(force: true); });
 
     private void ReconcileCloudRedirect(bool force = false)
     {
@@ -133,7 +137,8 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         // Snapshot for the lua cache (any thread), taken here on the engine thread with the status it matches.
         Volatile.Write(ref _credentials, CloudSync.Connected && server is not null
             ? new CabinetCredentials(server, CloudSync.Token, CloudSync.DeviceId) : null);
-        return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null) : CabinetCloudStatus.Disconnected;
+        return CloudSync.Connected ? new CabinetCloudStatus(true, CloudSync.UserName, host, null)
+            : CloudSync.ConnectionDamaged ? CabinetCloudStatus.Disconnected with { ConnectionDamaged = true } : CabinetCloudStatus.Disconnected;
     }
 
     // ── ICabinetCredentialSource: the shared lua cache's view of the connection ──
@@ -200,13 +205,17 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
                 return false;
             }
             _instance = mutex;
+            CloudSync.Owned = true;
         }
         if (_playtime is null)
         {
             Directory.CreateDirectory(CabinetApp.DataDir);
+            // Recovered or quarantined state files also reach the event history (file names only).
+            StateFile.Warning = message => AppEventLog.Shared.Write(Microsoft.Extensions.Logging.LogLevel.Warning, "Cabinet", message);
             LoadState();
             _playtime = new Playtime(Path.Combine(CabinetApp.DataDir, "playtime.txt"), CabinetApp.Log);
-            CloudSync.Configure(CabinetApp.Log, _playtime.QueueCloudMinutes, _playtime.CloudMinutesInSteam, () => _playtime!.RunningApps());
+            var playtime = _playtime;
+            CloudSync.Configure(CabinetApp.Log, playtime.QueueCloudMinutes, playtime.CloudMinutesInSteam, () => playtime.RunningApps(), () => playtime.ResetMarker);
             CabinetApp.Log("started inside LuaTools");
         }
         if (_settings.CabinetLivePlaytime) _shadows ??= new Shadows(CabinetApp.Log);
@@ -227,6 +236,9 @@ public sealed class CabinetService : ICabinetService, ICabinetCloud, ICabinetCre
         _state.Clear(); _syncTimes.Clear();
         if (_instance is not null)
         {
+            // Drop the cloud client before giving up Local\Cabinet: its journal is reloaded from disk next time.
+            CloudSync.Release();
+            _cloudRedirectVersion = -1;
             try { _instance.ReleaseMutex(); } catch (ApplicationException) { }
             _instance.Dispose();
             _instance = null;

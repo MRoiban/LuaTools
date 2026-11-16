@@ -19,5 +19,6 @@ public sealed class CabinetEngineSelfTestTests
         Assert.Contains("PASS: no save upload or download", output.ToString());
         Assert.Contains("PASS: local saves left untouched", output.ToString());
         Assert.Contains("Cabinet Cloud self-test passed", output.ToString());
+        Assert.Contains("Cabinet Cloud recovery self-test passed", output.ToString());
     }
 }
