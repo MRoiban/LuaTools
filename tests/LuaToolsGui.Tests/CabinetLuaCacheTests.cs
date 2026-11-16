@@ -385,7 +385,8 @@ public sealed class CabinetLuaCacheTests : IDisposable
         public required SteamService Steam;
     }
 
-    private Job Factory(FakeCabinet cabinet, AppDepotInfo? steam, string sourceLua, RelayServer? relay = null, HttpStatusCode dexLuaStatus = HttpStatusCode.OK)
+    private Job Factory(FakeCabinet cabinet, AppDepotInfo? steam, string sourceLua, RelayServer? relay = null, HttpStatusCode dexLuaStatus = HttpStatusCode.OK,
+        string? hubcapLua = null, string? steamcmd = null)
     {
         string steamDir = Path.Combine(_root, "steam");
         Directory.CreateDirectory(steamDir);
@@ -395,14 +396,17 @@ public sealed class CabinetLuaCacheTests : IDisposable
         var installer = new LuaInstaller(steamService, settings, new CacheService(Path.Combine(_root, "cache.json")),
             new LuaVault(() => steamService.StPlugInDir, Path.Combine(_root, "vault")));
         var dexLua = new Stub(_ => new HttpResponseMessage(dexLuaStatus) { Content = new StringContent(sourceLua) });
-        var hubcap = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(($"{App}.lua", sourceLua))) });
+        var hubcap = new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Zip(($"{App}.lua", hubcapLua ?? sourceLua))) });
+        // The key check's depot list (api.steamcmd.net); without one the check can't run, as before it existed.
+        var depotInfo = steamcmd is null ? null
+            : new SteamDepotInfo(new Stub(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(steamcmd) }));
         var unused = new HttpClient(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
         var api = new LuaToolsApiClient(new AuthService(unused, Path.Combine(_root, "auth.dat")), null!, null!, unused,
             dexLua: new DexLuaService(new HttpClient(dexLua)));
         var covers = new CoverCache(new Stub(_ => new HttpResponseMessage(HttpStatusCode.NotFound)), Path.Combine(_root, "covers"));
         var cache = Cache(cabinet, steam);
         var factory = new ManifestJobFactory(api, new HubcapService(new HttpClient(hubcap) { BaseAddress = new Uri(AppConfig.HubcapBaseUrl) }),
-            settings, installer, null!, covers, null!, null!, null!, null!, null!, null!, cache, relay is null ? null
+            settings, installer, null!, covers, null!, null!, depotInfo!, null!, null!, null!, cache, relay is null ? null
             : new CabinetHubcapRelay(relay, cache, Microsoft.Extensions.Logging.Abstractions.NullLogger<CabinetHubcapRelay>.Instance) { Delay = relay.Delay, UtcNow = () => relay.Clock, ConfirmCopy = relay.Confirm });
         return new Job { Factory = factory, DexLua = dexLua, Hubcap = hubcap, Steam = steamService };
     }
@@ -522,6 +526,97 @@ public sealed class CabinetLuaCacheTests : IDisposable
             return RequestFailure is null ? Task.FromResult(Answer) : Task.FromException<CabinetRelayStatus>(RequestFailure);
         }
         public Task<CabinetRelayStatus?> GetRelayStatusAsync(long appId, CancellationToken ct) { Polls++; return Task.FromResult<CabinetRelayStatus?>(Answer); }
+    }
+
+    // ── The key check ────────────────────────────────────────────────
+
+    // Steam's depot list for the fixture app: Depot is the main (largest) Windows depot; 572 a smaller one.
+    private static string SteamCmd(bool smallDepot = false) =>
+        "{\"data\":{\"" + App + "\":{\"depots\":{\"" + Depot + "\":{\"config\":{\"oslist\":\"windows\"},\"manifests\":{\"public\":{\"gid\":\"111\",\"size\":\"1000\"}}}"
+        + (smallDepot ? ",\"572\":{\"manifests\":{\"public\":{\"gid\":\"222\",\"size\":\"10\"}}}" : "") + "}}}}";
+
+    // DexLua's failure shape: grammatical, but the only key is for a depot that isn't this game's.
+    private static readonly string Keyless = $"addappid({App})\naddappid(999, 0, \"{new string('b', 64)}\")\n";
+
+    private string? Installed() => File.Exists(Path.Combine(_root, "steam", "config", "stplug-in", $"{App}.lua"))
+        ? File.ReadAllText(Path.Combine(_root, "steam", "config", "stplug-in", $"{App}.lua")) : null;
+
+    [Fact]
+    public async Task AFileWithoutTheMainDepotsKeyIsNeverInstalled()
+    {
+        var cabinet = new FakeCabinet();
+        var f = Factory(cabinet, Steam("111"), Keyless, steamcmd: SteamCmd());
+        var job = f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false);
+        var error = await Assert.ThrowsAsync<DownloadAbortedException>(() => job.DownloadAsync(new DownloadItem(job), new Progress<DownloadProgress>(), CancellationToken.None));
+        Assert.Contains(Depot.ToString(), error.Message);
+        Assert.Contains(DexLuaService.SourceName, error.Message);
+        Assert.Null(Installed());
+        Assert.Empty(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task AnAddPickedByNameSwitchesToAnAlternativeWhoseFileHasTheKeys()
+    {
+        var f = Factory(new FakeCabinet(), Steam("111"), Keyless, hubcapLua: Lua("111"), steamcmd: SteamCmd());
+        var job = f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false,
+            alternatives: Then((AcquisitionCoordinator.HubcapSource, true)));
+        var (item, _, result) = await RunItem(job);
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal(1, f.DexLua.Calls);
+        Assert.Equal(1, f.Hubcap.Calls);
+        Assert.Equal(LuaToolsGui.Models.SourceMeta.Get(AcquisitionCoordinator.HubcapSource).DisplayName ?? AcquisitionCoordinator.HubcapSource, item.SubTitle);
+        Assert.Contains(Key, Installed());
+    }
+
+    [Fact]
+    public async Task AnAutomaticAddSkipsAFallbackWhoseFileHasNoKeyForTheMainDepot()
+    {
+        var cabinet = new FakeCabinet();
+        var f = Factory(cabinet, Steam("111"), Keyless, hubcapLua: Lua("111"), steamcmd: SteamCmd());
+        var (_, _, result) = await RunItem(Automatic(f, Then((DexLuaService.SourceName, false), (AcquisitionCoordinator.HubcapSource, true))));
+        Assert.True(result.Ok, result.Message);
+        Assert.Equal(1, f.DexLua.Calls);
+        Assert.Equal(1, f.Hubcap.Calls);
+        Assert.Contains(Key, Installed());
+        Assert.Empty(cabinet.Uploads); // the user's own Hubcap key is never shared
+    }
+
+    [Fact]
+    public async Task AFileMissingOnlyASmallerDepotInstallsWithAWarningAndIsNotShared()
+    {
+        var cabinet = new FakeCabinet();
+        var f = Factory(cabinet, Steam("111", new ContentDepot(572, 10, null, false, null, null, "222")), Lua("111"), steamcmd: SteamCmd(smallDepot: true));
+        var (_, result) = await Run(f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false));
+        Assert.True(result.Ok, result.Message);
+        Assert.Contains("572", result.Message);
+        await Task.Delay(200); // an upload would run in the background
+        Assert.Empty(cabinet.Uploads);
+    }
+
+    [Fact]
+    public async Task WithoutSteamsDepotListTheFileInstallsUnchecked()
+    {
+        var f = Factory(new FakeCabinet(), Steam("111"), Keyless, steamcmd: "{\"data\":{}}");
+        var (_, result) = await Run(f.Factory.CreateManifestJob(App, "Alpha", DexLuaService.SourceName, needsKey: false));
+        Assert.True(result.Ok, result.Message);
+        Assert.NotNull(Installed());
+    }
+
+    [Fact]
+    public async Task ACachedCopyWithoutTheMainDepotsKeyIsStaleAndNeverShared()
+    {
+        byte[] keyless = Zip(($"{App}.lua", Keyless));
+        var cabinet = new FakeCabinet { Meta = MetaFor(keyless, "111"), Package = keyless };
+        var lookup = await Cache(cabinet, Steam("111")).LookupAsync(App, null, CancellationToken.None);
+        Assert.Equal(CabinetLuaCache.LookupOutcome.Stale, lookup.Outcome);
+        Assert.Equal(CabinetLuaCache.Sha256(keyless), lookup.StaleSha256); // so the relay replaces it from Hubcap
+        await Assert.ThrowsAsync<InvalidDataException>(() => Cache(cabinet, Steam("111")).DownloadExactAsync(cabinet.Meta!, null, CancellationToken.None));
+
+        var share = new FakeCabinet();
+        await Cache(share, Steam("111")).ShareAsync(App, keyless, DexLuaService.SourceName, CancellationToken.None);
+        await Cache(share, Steam("111", new ContentDepot(572, 10, null, false, null, null, "222")))
+            .ShareAsync(App, Zip(($"{App}.lua", Lua("111"))), DexLuaService.SourceName, CancellationToken.None);
+        Assert.Empty(share.Uploads);
     }
 
     private static Func<CancellationToken, Task<IReadOnlyList<ManifestJobFactory.FallbackSource>>> Then(params (string Name, bool NeedsKey)[] sources) =>

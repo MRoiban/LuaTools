@@ -671,6 +671,9 @@ Cancel - keep downloading</value></data>
   <data name="Builds_Select_NoKey" xml:space="preserve"><value>No decryption key in Lua for this depot.</value></data>
   <data name="Depot_Err_BadKey" xml:space="preserve"><value>The decryption key for depot {0} is wrong.</value></data>
   <data name="Depot_Err_NoKeyFor" xml:space="preserve"><value>No decryption key in Lua for depot {0}.</value></data>
+  <data name="Download_Err_NoMainKey" xml:space="preserve"><value>{0}'s file has no key for this game's main depot ({1}), so Steam couldn't download the game. Try another source.</value></data>
+  <data name="Download_Err_NoKeys" xml:space="preserve"><value>{0}'s file has no key for any of this game's depots, so Steam couldn't download the game. Try another source.</value></data>
+  <data name="Download_Warn_PartialKeys" xml:space="preserve"><value>{0} smaller depot(s) have no key ({1}), so parts of the game may not download.</value></data>
   <data name="Builds_Select_SharedHint" xml:space="preserve"><value>Shared runtime — usually already installed. Tick to download anyway.</value></data>
   <data name="Downloads_ClearHistory_Confirm" xml:space="preserve"><value>Remove all {0} entries from the download history? Downloaded files are not affected.</value></data>
   <data name="Settings_Section_ExecutableWorkflows" xml:space="preserve"><value>Executable workflows</value></data>
